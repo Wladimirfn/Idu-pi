@@ -21,6 +21,22 @@ async function withTempDb(
 	}
 }
 
+function queryProposals(dbPath: string): Array<Record<string, unknown>> {
+	const output = execFileSync(
+		"sqlite3",
+		[
+			"-json",
+			dbPath,
+			"SELECT id, finding_id, proposal_type, summary, details, priority, status FROM proposals ORDER BY id;",
+		],
+		{
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "pipe"],
+		},
+	).trim();
+	return output ? (JSON.parse(output) as Array<Record<string, unknown>>) : [];
+}
+
 function queryLabRuns(dbPath: string): Array<Record<string, unknown>> {
 	const output = execFileSync(
 		"sqlite3",
@@ -125,6 +141,92 @@ test("LabDbRepository hides closed findings and returns open statuses", async ()
 			.sort();
 
 		assert.deepEqual(openStatuses, ["accepted", "deferred", "new", "triaged"]);
+	});
+});
+
+test("LabDbRepository records a proposal associated to a finding", async () => {
+	await withTempDb((dbPath, repository) => {
+		repository.recordFindingWithProposal({
+			finding: {
+				id: "finding-with-proposal",
+				projectId: "pi-telegram-bridge",
+				title: "Build fails",
+				description: "Build exits with TypeScript errors.",
+				severity: "high",
+				confidence: "medium",
+				evidence: "corepack pnpm build exited with code 2",
+				dedupeKey: "pi-telegram-bridge:spark:build-fails",
+			},
+			proposal: {
+				id: "proposal-1",
+				proposalType: "fix",
+				summary: "Export the missing type.",
+				details: "Add the export from the module barrel.",
+				priority: 2,
+				createdByAgentId: "spark",
+			},
+		});
+
+		assert.deepEqual(queryProposals(dbPath), [
+			{
+				id: "proposal-1",
+				finding_id: "finding-with-proposal",
+				proposal_type: "fix",
+				summary: "Export the missing type.",
+				details: "Add the export from the module barrel.",
+				priority: 2,
+				status: "proposed",
+			},
+		]);
+	});
+});
+
+test("LabDbRepository does not duplicate finding when dedupeKey matches", async () => {
+	await withTempDb((_dbPath, repository) => {
+		const finding = {
+			projectId: "pi-telegram-bridge",
+			title: "Build fails",
+			description: "Build exits with TypeScript errors.",
+			severity: "high" as const,
+			confidence: "medium" as const,
+			evidence: "corepack pnpm build exited with code 2",
+			dedupeKey: "pi-telegram-bridge:spark:build-fails",
+		};
+
+		repository.recordFindingWithProposal({
+			finding: { ...finding, id: "finding-1" },
+		});
+		repository.recordFindingWithProposal({
+			finding: {
+				...finding,
+				id: "finding-2",
+				description: "Updated description.",
+			},
+		});
+
+		const findings = repository.listOpenFindings("pi-telegram-bridge");
+		assert.equal(findings.length, 1);
+		assert.equal(findings[0].description, "Updated description.");
+	});
+});
+
+test("LabDbRepository records finding when proposal is absent", async () => {
+	await withTempDb((_dbPath, repository) => {
+		repository.recordFindingWithProposal({
+			finding: {
+				id: "finding-no-proposal",
+				projectId: "pi-telegram-bridge",
+				title: "No proposal",
+				description: "Finding has no proposal yet.",
+				severity: "info",
+				confidence: "low",
+				evidence: "Agent reported an informational issue.",
+			},
+		});
+
+		const findings = repository.listOpenFindings("pi-telegram-bridge");
+		assert.equal(findings.length, 1);
+		assert.equal(findings[0].id, "finding-no-proposal");
 	});
 });
 

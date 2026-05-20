@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
 import { AgentRouter, type AgentSession } from "../src/agent-router.js";
+import type { BugFindingInput, ProposalInput } from "../src/lab-db.js";
 import { parseLabDuration, runTestLab } from "../src/lab.js";
 import { LabReportStore, type LabRunRecord } from "../src/lab-reports.js";
 import type { PiRpcOptions, PiRpcPromptResult } from "../src/pi-rpc.js";
@@ -25,9 +26,17 @@ after(async () => {
 
 class FakeLabRunRecorder {
 	records: LabRunRecord[] = [];
+	findings: Array<{ finding: BugFindingInput; proposal?: ProposalInput }> = [];
 
 	recordLabRun(record: LabRunRecord): void {
 		this.records.push(record);
+	}
+
+	recordFindingWithProposal(input: {
+		finding: BugFindingInput;
+		proposal?: ProposalInput;
+	}): void {
+		this.findings.push(input);
 	}
 }
 
@@ -131,6 +140,50 @@ test("runTestLab records secondary SQLite copy after JSONL", async () => {
 	);
 	assert.match(jsonl, new RegExp(`"id":"${record.id}"`, "u"));
 	assert.deepEqual(labRunRecorder.records, [record]);
+});
+
+test("runTestLab records parsed finding after secondary lab run copy", async () => {
+	const session = new FakeSession(
+		"C:/w/spark",
+		false,
+		JSON.stringify({
+			findings: [
+				{
+					title: "Build fails",
+					description: "Build exits with TypeScript errors.",
+					evidence: "corepack pnpm build exited with code 2",
+					severity: "high",
+					confidence: "medium",
+					proposal: {
+						proposalType: "fix",
+						summary: "Export the missing type.",
+					},
+				},
+			],
+		}),
+	);
+	const store = new LabReportStore(tempDir());
+	const labRunRecorder = new FakeLabRunRecorder();
+	const router = routerWithSession(session);
+	const profile = router.labProfiles()[0];
+
+	const record = await runTestLab({
+		router,
+		profile,
+		duration: quickDepth,
+		projectId: "p",
+		projectPath: "C:/p",
+		store,
+		labRunRecorder,
+	});
+
+	assert.equal(labRunRecorder.records[0], record);
+	assert.equal(labRunRecorder.findings.length, 1);
+	assert.equal(labRunRecorder.findings[0].finding.title, "Build fails");
+	assert.equal(
+		labRunRecorder.findings[0].proposal?.summary,
+		"Export the missing type.",
+	);
 });
 
 test("runTestLab ignores SQLite failure and preserves JSONL and visible result", async () => {

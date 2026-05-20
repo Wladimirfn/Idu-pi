@@ -2,9 +2,11 @@ import {
 	initLabDb,
 	listOpenFindings,
 	recordBugFinding,
+	recordFindingWithProposal,
 	recordLabRun,
 	type BugFinding,
 	type BugFindingInput,
+	type FindingWithProposalInput,
 	type InitLabDbResult,
 } from "./lab-db.js";
 import type { LabRunRecord } from "./lab-reports.js";
@@ -22,6 +24,10 @@ export class LabDbRepository {
 
 	recordLabRun(record: LabRunRecord): void {
 		recordLabRun(this.dbPath, record);
+	}
+
+	recordFindingWithProposal(input: FindingWithProposalInput): void {
+		recordFindingWithProposal(this.dbPath, input);
 	}
 
 	listOpenFindings(projectId: string): BugFinding[] {

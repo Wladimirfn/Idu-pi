@@ -41,6 +41,22 @@ export type BugFinding = Required<
 	dedupeKey: string;
 };
 
+export type ProposalType = "fix" | "test" | "investigation" | "docs" | "memory";
+
+export type ProposalInput = {
+	id: string;
+	proposalType: ProposalType;
+	summary: string;
+	details?: string;
+	priority?: number;
+	createdByAgentId?: string;
+};
+
+export type FindingWithProposalInput = {
+	finding: BugFindingInput;
+	proposal?: ProposalInput;
+};
+
 export type InitLabDbResult = {
 	dbPath: string;
 	created: boolean;
@@ -219,6 +235,93 @@ ON CONFLICT(id) DO UPDATE SET
   finished_at = excluded.finished_at;
 `;
 	runSql(dbPath, sql);
+}
+
+export function recordFindingWithProposal(
+	dbPath: string,
+	input: FindingWithProposalInput,
+): void {
+	initLabDb(dbPath);
+	const status = input.finding.status ?? "new";
+	const affectedFiles = JSON.stringify(input.finding.affectedFiles ?? []);
+	const sql = `
+INSERT INTO bug_findings (
+  id, project_id, title, description, severity, confidence, status,
+  evidence, suspected_cause, affected_files, dedupe_key, updated_at
+) VALUES (
+  ${sqlString(input.finding.id)},
+  ${sqlString(input.finding.projectId)},
+  ${sqlString(input.finding.title)},
+  ${sqlString(input.finding.description)},
+  ${sqlString(input.finding.severity)},
+  ${sqlString(input.finding.confidence)},
+  ${sqlString(status)},
+  ${sqlString(input.finding.evidence)},
+  ${sqlString(input.finding.suspectedCause)},
+  ${sqlString(affectedFiles)},
+  ${sqlString(input.finding.dedupeKey)},
+  datetime('now')
+)
+ON CONFLICT(id) DO UPDATE SET
+  title = excluded.title,
+  description = excluded.description,
+  severity = excluded.severity,
+  confidence = excluded.confidence,
+  status = excluded.status,
+  evidence = excluded.evidence,
+  suspected_cause = excluded.suspected_cause,
+  affected_files = excluded.affected_files,
+  dedupe_key = excluded.dedupe_key,
+  updated_at = datetime('now')
+ON CONFLICT(project_id, dedupe_key) WHERE dedupe_key IS NOT NULL AND dedupe_key != '' DO UPDATE SET
+  title = excluded.title,
+  description = excluded.description,
+  severity = excluded.severity,
+  confidence = excluded.confidence,
+  status = excluded.status,
+  evidence = excluded.evidence,
+  suspected_cause = excluded.suspected_cause,
+  affected_files = excluded.affected_files,
+  updated_at = datetime('now');
+`;
+	runSql(dbPath, sql);
+	if (!input.proposal) return;
+	const findingId = findingIdForProposal(dbPath, input.finding);
+	const proposalSql = `
+INSERT INTO proposals (
+  id, finding_id, proposal_type, summary, details, priority, created_by_agent_id
+) VALUES (
+  ${sqlString(input.proposal.id)},
+  ${sqlString(findingId)},
+  ${sqlString(input.proposal.proposalType)},
+  ${sqlString(input.proposal.summary)},
+  ${sqlString(input.proposal.details)},
+  ${sqlInteger(input.proposal.priority ?? 3, "priority")},
+  ${sqlString(input.proposal.createdByAgentId)}
+)
+ON CONFLICT(id) DO UPDATE SET
+  finding_id = excluded.finding_id,
+  proposal_type = excluded.proposal_type,
+  summary = excluded.summary,
+  details = excluded.details,
+  priority = excluded.priority,
+  created_by_agent_id = excluded.created_by_agent_id;
+`;
+	runSql(dbPath, proposalSql);
+}
+
+function findingIdForProposal(
+	dbPath: string,
+	finding: BugFindingInput,
+): string {
+	if (!finding.dedupeKey) return finding.id;
+	const output = runSql(
+		dbPath,
+		`SELECT id FROM bug_findings WHERE project_id = ${sqlString(finding.projectId)} AND dedupe_key = ${sqlString(finding.dedupeKey)} LIMIT 1;`,
+	).trim();
+	if (!output) return finding.id;
+	const rows = JSON.parse(output) as Array<{ id: string }>;
+	return rows[0]?.id ?? finding.id;
 }
 
 export function recordBugFinding(dbPath: string, input: BugFindingInput): void {

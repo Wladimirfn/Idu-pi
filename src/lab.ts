@@ -1,5 +1,7 @@
 import type { AgentProfile } from "./config.js";
 import type { AgentRouter } from "./agent-router.js";
+import type { BugFindingInput, ProposalInput } from "./lab-db.js";
+import { parseLabFindingsFromOutput } from "./lab-finding-parser.js";
 import {
 	type LabReportStore,
 	summarizeOutput,
@@ -57,7 +59,20 @@ export function labPrompt(duration: LabDuration, agent: AgentProfile): string {
 
 export type LabRunRecorder = {
 	recordLabRun(record: LabRunRecord): void;
+	recordFindingWithProposal?(input: {
+		finding: BugFindingInput;
+		proposal?: ProposalInput;
+	}): void;
 };
+
+function parseLabFindings(record: LabRunRecord) {
+	if (!record.rawOutput) return [];
+	return parseLabFindingsFromOutput(record.rawOutput, {
+		projectId: record.projectId,
+		agentId: record.agentId,
+		labRunId: record.id,
+	});
+}
 
 function persistLabRun(options: {
 	store: LabReportStore;
@@ -67,8 +82,24 @@ function persistLabRun(options: {
 	options.store.append(options.record);
 	try {
 		options.labRunRecorder?.recordLabRun(options.record);
+		for (const finding of parseLabFindings(options.record)) {
+			const { proposal, ...bugFinding } = finding;
+			options.labRunRecorder?.recordFindingWithProposal?.({
+				finding: bugFinding,
+				proposal: proposal
+					? {
+							id: `${finding.id}-proposal`,
+							proposalType: proposal.proposalType ?? "investigation",
+							summary: proposal.summary,
+							details: proposal.details,
+							priority: proposal.priority,
+							createdByAgentId: options.record.agentId,
+						}
+					: undefined,
+			});
+		}
 	} catch {
-		// SQLite is a secondary copy; JSONL remains the source of truth.
+		// SQLite/parser persistence is secondary; JSONL remains the source of truth.
 	}
 }
 
