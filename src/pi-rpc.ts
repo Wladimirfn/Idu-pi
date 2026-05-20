@@ -295,7 +295,8 @@ export class PiRpcSession {
 		) {
 			const textDelta = delta.delta ?? "";
 			this.pending.text += textDelta;
-			if (textDelta) this.emitProgress({ type: "assistant_delta", delta: textDelta });
+			if (textDelta)
+				this.emitProgress({ type: "assistant_delta", delta: textDelta });
 			return;
 		}
 

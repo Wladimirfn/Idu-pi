@@ -14,7 +14,10 @@ export type AgentSession = {
 	readonly running: boolean;
 	readonly busy: boolean;
 	start(): void;
-	prompt(message: string, onProgress?: (event: PiRpcProgressEvent) => void): Promise<PiRpcPromptResult>;
+	prompt(
+		message: string,
+		onProgress?: (event: PiRpcProgressEvent) => void,
+	): Promise<PiRpcPromptResult>;
 	answerUiRequest(value: unknown): boolean;
 	cancel(): boolean;
 	stop(reason?: string): void;

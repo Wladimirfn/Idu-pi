@@ -2,8 +2,18 @@ import type { PiRpcUiRequest } from "./pi-rpc.js";
 
 export type ServerCommand = "run" | "restart" | "off" | "status";
 
+export type TelegramInlineKeyboard = {
+	inline_keyboard: Array<Array<{ text: string; callback_data: string }>>;
+};
+
+export type UiCallbackData = {
+	token: string;
+	answer: string;
+};
+
 export function parseServerCommand(text: string): ServerCommand | undefined {
-	const [, rawArg = "status"] = text.trim().match(/^\/server(?:\s+(\S+))?/iu) ?? [];
+	const [, rawArg = "status"] =
+		text.trim().match(/^\/server(?:\s+(\S+))?/iu) ?? [];
 	const arg = rawArg.toLowerCase();
 	if (arg === "run" || arg === "restart" || arg === "off" || arg === "status")
 		return arg;
@@ -41,6 +51,34 @@ function normalize(text: string): string {
 		.replace(/\.$/u, "");
 }
 
+export function inlineKeyboardForUiRequest(
+	request: PiRpcUiRequest,
+	token = request.id,
+): TelegramInlineKeyboard | undefined {
+	if (request.method === "confirm") {
+		return {
+			inline_keyboard: [[
+				{ text: "✅ Sí", callback_data: `ui:${token}:yes` },
+				{ text: "❌ No", callback_data: `ui:${token}:no` },
+			]],
+		};
+	}
+	if (request.method === "select") {
+		const buttons = (request.options ?? []).map((_option, index) => ({
+			text: `U${index + 1}`,
+			callback_data: `ui:${token}:${index + 1}`,
+		}));
+		return buttons.length ? { inline_keyboard: [buttons] } : undefined;
+	}
+	return undefined;
+}
+
+export function parseUiCallbackData(data: string): UiCallbackData | undefined {
+	const match = data.match(/^ui:([^:]+):(.+)$/u);
+	if (!match) return undefined;
+	return { token: match[1], answer: match[2] };
+}
+
 export function parseUiRequestAnswer(
 	request: PiRpcUiRequest,
 	text: string,
@@ -55,7 +93,11 @@ export function parseUiRequestAnswer(
 			return { type: "extension_ui_response", id: request.id, confirmed: true };
 		}
 		if (["no", "n", "2"].includes(normalized)) {
-			return { type: "extension_ui_response", id: request.id, confirmed: false };
+			return {
+				type: "extension_ui_response",
+				id: request.id,
+				confirmed: false,
+			};
 		}
 		return undefined;
 	}
@@ -75,7 +117,11 @@ export function parseUiRequestAnswer(
 	}
 
 	if (request.method === "input" || request.method === "editor") {
-		return { type: "extension_ui_response", id: request.id, value: text.trim() };
+		return {
+			type: "extension_ui_response",
+			id: request.id,
+			value: text.trim(),
+		};
 	}
 
 	return { type: "extension_ui_response", id: request.id, confirmed: true };

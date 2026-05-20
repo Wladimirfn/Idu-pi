@@ -43,8 +43,10 @@ import {
 } from "./sessions.js";
 import {
 	formatUiRequestForTelegram,
+	inlineKeyboardForUiRequest,
 	isBlockingUiRequest,
 	parseServerCommand,
+	parseUiCallbackData,
 	parseUiRequestAnswer,
 } from "./telegram-ui.js";
 
@@ -67,6 +69,8 @@ const agentRouter = new AgentRouter({
 const labReportStore = new LabReportStore(config.agentWorkspaceRoot);
 let pendingLabRequest: { profileIndexes: number[] } | null = null;
 let pendingUiRequest: PiRpcUiRequest | null = null;
+let pendingUiToken: string | null = null;
+let pendingUiCounter = 0;
 let pendingAction:
 	| "addproject-path"
 	| "useproject-id"
@@ -447,8 +451,11 @@ async function runPrompt(ctx: Context, prompt: string): Promise<void> {
 		if (event.type === "ui_request") {
 			if (isBlockingUiRequest(event.request)) {
 				pendingUiRequest = event.request;
+				pendingUiToken = String(++pendingUiCounter);
 				pendingAction = "extension-ui";
-				void ctx.reply(formatUiRequestForTelegram(event.request));
+				void ctx.reply(formatUiRequestForTelegram(event.request), {
+					reply_markup: inlineKeyboardForUiRequest(event.request, pendingUiToken),
+				});
 				return;
 			}
 			if (event.request.method === "notify") {
@@ -457,18 +464,22 @@ async function runPrompt(ctx: Context, prompt: string): Promise<void> {
 			return;
 		}
 		if (event.type === "ended") {
-			void ctx.reply("Orquestador: cerrando respuesta y preparando resumen final...");
+			void ctx.reply(
+				"Orquestador: cerrando respuesta y preparando resumen final...",
+			);
 		}
 	};
 
 	try {
 		const result = await agentRouter.prompt(prompt, progress);
 		pendingUiRequest = null;
+		pendingUiToken = null;
 		if (pendingAction === "extension-ui") pendingAction = null;
 		const prefix = result.ok ? "✅ Pi terminó" : "⚠️ Pi terminó con error";
 		await replyLong(ctx, `${prefix}\n\n${result.output}`);
 	} catch (error) {
 		pendingUiRequest = null;
+		pendingUiToken = null;
 		if (pendingAction === "extension-ui") pendingAction = null;
 		const message = error instanceof Error ? error.message : String(error);
 		await ctx.reply(`Error inesperado: ${message}`);
@@ -513,6 +524,7 @@ bot.command("server", async (ctx) => {
 	if (command === "restart") {
 		const runtime = agentRouter.restartActive();
 		pendingUiRequest = null;
+		pendingUiToken = null;
 		if (pendingAction === "extension-ui") pendingAction = null;
 		await ctx.reply(
 			`Servidor Pi reiniciado.\nAgente: ${runtime.profile.label}\nWorkspace: ${runtime.cwd}`,
@@ -521,6 +533,7 @@ bot.command("server", async (ctx) => {
 	}
 	const stopped = agentRouter.stopActive();
 	pendingUiRequest = null;
+	pendingUiToken = null;
 	if (pendingAction === "extension-ui") pendingAction = null;
 	await ctx.reply(
 		stopped
@@ -940,6 +953,7 @@ bot.command("cancel", async (ctx) => {
 	pendingAction = null;
 	pendingLabRequest = null;
 	pendingUiRequest = null;
+	pendingUiToken = null;
 	const cancelledActive = agentRouter.cancelActive();
 	const cancelledLabs = agentRouter.cancelProfiles(
 		agentRouter.labProfiles().map((profile) => profile.id),
@@ -956,6 +970,53 @@ bot.command(["sessions", "use", "approve", "reject"], async (ctx) => {
 	await ctx.reply(
 		"Este comando queda para la próxima iteración. Esta versión mantiene una sesión RPC por CWD.",
 	);
+});
+
+async function sendPendingUiResponse(
+	ctx: Context,
+	text: string,
+): Promise<boolean> {
+	if (!pendingUiRequest) {
+		pendingAction = null;
+		pendingUiToken = null;
+		await ctx.reply("No hay decisión pendiente. Mandá tu próximo mensaje normal.");
+		return true;
+	}
+	const response = parseUiRequestAnswer(pendingUiRequest, text);
+	if (!response) {
+		await ctx.reply(formatUiRequestForTelegram(pendingUiRequest), {
+			reply_markup: pendingUiToken
+				? inlineKeyboardForUiRequest(pendingUiRequest, pendingUiToken)
+				: undefined,
+		});
+		return true;
+	}
+	const sent = agentRouter.answerActiveUiRequest(response);
+	if (!sent) {
+		await ctx.reply("No pude enviar la decisión porque el servidor Pi no está activo.");
+		return true;
+	}
+	pendingUiRequest = null;
+	pendingUiToken = null;
+	pendingAction = null;
+	await ctx.reply("Decisión enviada al orquestador.");
+	return true;
+}
+
+bot.on("callback_query:data", async (ctx) => {
+	if (!(await guard(ctx))) return;
+	const callback = parseUiCallbackData(ctx.callbackQuery.data);
+	if (!callback) return;
+	await ctx.answerCallbackQuery();
+	if (
+		pendingAction !== "extension-ui" ||
+		!pendingUiToken ||
+		callback.token !== pendingUiToken
+	) {
+		await ctx.reply("Ese botón ya no corresponde a la decisión pendiente.");
+		return;
+	}
+	await sendPendingUiResponse(ctx, callback.answer);
 });
 
 bot.on("message:text", async (ctx) => {
@@ -998,24 +1059,7 @@ bot.on("message:text", async (ctx) => {
 	}
 
 	if (pendingAction === "extension-ui") {
-		if (!pendingUiRequest) {
-			pendingAction = null;
-			await ctx.reply("No hay decisión pendiente. Mandá tu próximo mensaje normal.");
-			return;
-		}
-		const response = parseUiRequestAnswer(pendingUiRequest, text);
-		if (!response) {
-			await ctx.reply(formatUiRequestForTelegram(pendingUiRequest));
-			return;
-		}
-		const sent = agentRouter.answerActiveUiRequest(response);
-		if (!sent) {
-			await ctx.reply("No pude enviar la decisión porque el servidor Pi no está activo.");
-			return;
-		}
-		pendingUiRequest = null;
-		pendingAction = null;
-		await ctx.reply("Decisión enviada al orquestador.");
+		await sendPendingUiResponse(ctx, text);
 		return;
 	}
 
