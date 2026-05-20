@@ -7,7 +7,11 @@ New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 $LogFile = Join-Path $LogDir 'bridge.log'
 function Log($Message) {
   $line = "$(Get-Date -Format o) $Message"
-  Add-Content -Path $LogFile -Value $line
+  try {
+    Add-Content -Path $LogFile -Value $line -ErrorAction Stop
+  } catch {
+    Write-Host "Log ocupado; continuo sin escribir esta linea: $Message" -ForegroundColor DarkYellow
+  }
 }
 
 function Step($Message) {

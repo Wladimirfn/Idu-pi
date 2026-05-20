@@ -33,8 +33,8 @@ export const TELEGRAM_COMMANDS: TelegramCommandEntry[] = [
 	},
 	{
 		command: "server",
-		description: "Controlar bridge Telegram",
-		help: "/server status|run|restart|off - controlar bridge Telegram",
+		description: "Controlar sesión Pi RPC",
+		help: "/server status|run|restart|off - controlar sesión Pi RPC activa",
 		usage: ["/server status", "/server run", "/server restart", "/server off"],
 	},
 	{

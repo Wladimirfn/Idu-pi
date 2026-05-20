@@ -2,10 +2,6 @@ import { Bot, type Context } from "grammy";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { AgentRouter, formatAgentProfiles } from "./agent-router.js";
-import {
-	bridgeLifecycleReply,
-	launchBridgeLifecycle,
-} from "./bridge-lifecycle.js";
 import { chunkTelegramText } from "./chunk.js";
 import { formatCommandCatalog, formatHelpText } from "./command-catalog.js";
 import { canonicalDirectory, isAllowedCwd, loadConfig } from "./config.js";
@@ -639,16 +635,32 @@ bot.command("server", async (ctx) => {
 		await ctx.reply(formatServerStatus());
 		return;
 	}
-	if (command === "run" || command === "restart") {
-		await ctx.reply(bridgeLifecycleReply(command));
-		launchBridgeLifecycle(command, resolve("."));
+	if (command === "run") {
+		const runtime = agentRouter.startActive();
+		await ctx.reply(
+			`Servidor Pi activo iniciado/en espera.\nAgente: ${runtime.profile.label}\nWorkspace: ${runtime.cwd}`,
+		);
 		return;
 	}
+	if (command === "restart") {
+		const runtime = agentRouter.restartActive();
+		pendingUiRequest = null;
+		pendingUiToken = null;
+		if (pendingAction === "extension-ui") pendingAction = null;
+		await ctx.reply(
+			`Servidor Pi reiniciado.\nAgente: ${runtime.profile.label}\nWorkspace: ${runtime.cwd}`,
+		);
+		return;
+	}
+	const stopped = agentRouter.stopActive();
 	pendingUiRequest = null;
 	pendingUiToken = null;
 	if (pendingAction === "extension-ui") pendingAction = null;
-	await ctx.reply(bridgeLifecycleReply("off"));
-	setTimeout(() => launchBridgeLifecycle("off", resolve(".")), 500).unref();
+	await ctx.reply(
+		stopped
+			? "Servidor Pi activo detenido."
+			: "El servidor Pi activo ya estaba detenido.",
+	);
 });
 
 bot.command("agents", async (ctx) => {
@@ -1159,7 +1171,7 @@ bot.on("callback_query:data", async (ctx) => {
 	if (!callback) return;
 	await ctx.answerCallbackQuery();
 	if (
-		pendingAction !== "extension-ui" ||
+		!pendingUiRequest ||
 		!pendingUiToken ||
 		callback.token !== pendingUiToken
 	) {
@@ -1172,7 +1184,14 @@ bot.on("callback_query:data", async (ctx) => {
 bot.on("message:text", async (ctx) => {
 	if (!(await guard(ctx))) return;
 	const text = ctx.message.text.trim();
-	if (!text || text.startsWith("/")) return;
+	if (!text) return;
+
+	if (pendingUiRequest && !text.startsWith("/")) {
+		await sendPendingUiResponse(ctx, text);
+		return;
+	}
+
+	if (text.startsWith("/")) return;
 
 	if (pendingAction === "addproject-path") {
 		pendingAction = null;
@@ -1205,11 +1224,6 @@ bot.on("message:text", async (ctx) => {
 			const message = error instanceof Error ? error.message : String(error);
 			await ctx.reply(message);
 		}
-		return;
-	}
-
-	if (pendingAction === "extension-ui") {
-		await sendPendingUiResponse(ctx, text);
 		return;
 	}
 

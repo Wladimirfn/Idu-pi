@@ -171,14 +171,14 @@ Si mandás mensajes mientras Pi está ocupado, Idu-pi los guarda en una cola FIF
 
 ### `/server status|run|restart|off`
 
-Controla el proceso bridge de Telegram:
+Controla la sesión Pi RPC activa, no el proceso del bot de Telegram:
 
 - `/server status`: muestra estado del bridge, RPC, proyecto y agente activo.
-- `/server run`: abre una ventana CMD y ejecuta `scripts/start-bridge.ps1`.
-- `/server restart`: abre una ventana CMD y ejecuta `scripts/start-bridge.ps1`; ese script cierra bridges anteriores antes de iniciar.
-- `/server off`: responde por Telegram y luego abre una ventana CMD para ejecutar `scripts/stop-bridge.ps1`, que cierra bridges abiertos sin volver a iniciar.
+- `/server run`: inicia o deja listo el RPC activo sin mandar un prompt nuevo.
+- `/server restart`: reinicia solo la sesión RPC activa.
+- `/server off`: detiene solo la sesión RPC activa.
 
-Nota: si el proceso del bot de Telegram está completamente caído, no puede recibir comandos. Para auto-recuperación completa usá el supervisor por tarea programada.
+Nota: si el proceso del bot de Telegram está completamente caído, no puede recibir comandos. Para auto-recuperación completa usá el supervisor por tarea programada o `start-pi-telegram-bridge.bat`.
 
 ### Supervisor Windows / auto-restart
 
