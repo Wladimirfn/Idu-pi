@@ -28,9 +28,15 @@ import { detectAgents, formatAgents, formatDoctor } from "./doctor.js";
 import {
 	formatDurationChoices,
 	parseLabDuration,
-	runTestLab,
 	type LabDuration,
 } from "./lab.js";
+import {
+	formatLabRunResultLines,
+	labProfilesForIndexes,
+	runLabForProfiles as runLabForProfilesService,
+	syncPendingReportsToEngram,
+	triagePendingReports,
+} from "./lab-service.js";
 import {
 	cleanAgentOutput,
 	LabReportStore,
@@ -293,12 +299,6 @@ function addProjectFromPath(pathInput: string) {
 	return project;
 }
 
-function labProfilesForIndexes(indexes: number[]) {
-	return indexes
-		.map((index) => agentRouter.profiles[index - 1])
-		.filter((profile) => profile && profile.id !== agentRouter.profiles[0].id);
-}
-
 function formatLabAgentChoices(): string {
 	return agentRouter.profiles
 		.map((profile, index) => ({ profile, index: index + 1 }))
@@ -333,7 +333,7 @@ async function runLabForProfiles(
 	profileIndexes: number[],
 	duration: LabDuration,
 ): Promise<void> {
-	const profiles = labProfilesForIndexes(profileIndexes);
+	const profiles = labProfilesForIndexes(agentRouter.profiles, profileIndexes);
 	if (!profiles.length) {
 		await ctx.reply(
 			"No hay agentes lab para ejecutar. El agente 1/default queda excluido.",
@@ -343,123 +343,27 @@ async function runLabForProfiles(
 	await ctx.reply(
 		`Iniciando test lab ${duration.label}:\n${profiles.map((profile) => `- ${profile.label}`).join("\n")}`,
 	);
-	const results = await Promise.allSettled(
-		profiles.map((profile) =>
-			runTestLab({
-				router: agentRouter,
-				profile,
-				duration,
-				projectId: currentProjectId(),
-				projectPath: currentCwd,
-				store: labReportStore,
-			}),
-		),
-	);
-	const lines = results.map((result, index) => {
-		const profile = profiles[index];
-		if (result.status === "rejected")
-			return `${profile.label}: failed - ${result.reason}`;
-		const output = cleanAgentOutput(
-			result.value.rawOutput || result.value.error || result.value.summary,
-		);
-		return `${profile.label}: ${result.value.status} · ${result.value.id}\n\n${output}`;
+	const { results } = await runLabForProfilesService({
+		router: agentRouter,
+		profileIndexes,
+		duration,
+		projectId: currentProjectId(),
+		projectPath: currentCwd,
+		store: labReportStore,
 	});
+	const lines = formatLabRunResultLines(profiles, results);
 	await replyLong(ctx, `Test lab terminado:\n\n${lines.join("\n\n")}`);
-	const triageLines = await triagePendingReports(profiles.length);
+	const triageLines = await triagePendingReports({
+		router: agentRouter,
+		store: labReportStore,
+		limit: profiles.length,
+	});
 	if (triageLines.length) {
 		await replyLong(
 			ctx,
 			`Triage listo. Usá /reports para ver resumen y /report <id> para detalle.\n\n${triageLines.join("\n")}`,
 		);
 	}
-}
-
-async function triageLabReport(reportId: string): Promise<string> {
-	const report = labReportStore.get(reportId);
-	if (!report) return "not-found";
-	if ((report.triageStatus ?? "pending") !== "pending") {
-		return report.triageStatus ?? "pending";
-	}
-	const orchestrator = agentRouter.runtimeForProfile(
-		agentRouter.profiles[0].id,
-	);
-	if (orchestrator.session.busy) return "pending";
-	try {
-		const result = await orchestrator.session.prompt(
-			`Orquestación obligatoria con Engram como contexto, pero NO guardes este reporte raw en Engram todavía. Evaluá este reporte de laboratorio, descartá ruido, priorizá hallazgos graves, indicá confianza/impacto y proponé qué preguntarle al usuario. No tomes decisión final autónoma.\n\nFormato obligatorio: empezá con una línea "Resumen usuario:" y explicá qué pasó en lenguaje simple. No empieces hablando de Engram ni herramientas; si Engram falla, dejalo para una sección técnica al final.\n\nReporte lab:\n${JSON.stringify(report, null, 2)}`,
-		);
-		labReportStore.update(report.id, {
-			triageStatus: result.ok ? "triaged" : "failed",
-			triageSummary: result.ok
-				? summarizeOutput(result.output, 180)
-				: undefined,
-			triageRaw: result.ok ? result.output : undefined,
-			triagedAt: new Date().toISOString(),
-			triageError: result.ok ? undefined : result.output,
-		});
-		return result.ok ? "triaged" : "failed";
-	} catch (error) {
-		labReportStore.update(report.id, {
-			triageStatus: "failed",
-			triagedAt: new Date().toISOString(),
-			triageError: error instanceof Error ? error.message : String(error),
-		});
-		return "failed";
-	}
-}
-
-async function syncLabReportToEngram(reportId: string): Promise<string> {
-	const report = labReportStore.get(reportId);
-	if (!report) return "not-found";
-	if (report.engramStatus !== "approved")
-		return report.engramStatus ?? "pending";
-	const orchestrator = agentRouter.runtimeForProfile(
-		agentRouter.profiles[0].id,
-	);
-	if (orchestrator.session.busy) return "pending";
-	try {
-		const result = await orchestrator.session.prompt(
-			`Orquestación obligatoria con Engram. El usuario/orquestador aprobó guardar o trabajar este hallazgo. Guardá en Engram solo la decisión durable, resumen útil, evidencia clave y próximos pasos.\n\nReporte lab triageado:\n${JSON.stringify(report, null, 2)}`,
-		);
-		labReportStore.update(report.id, {
-			engramStatus: result.ok ? "saved" : "failed",
-			engramSyncedAt: new Date().toISOString(),
-			engramError: result.ok ? undefined : result.output,
-		});
-		return result.ok ? "saved" : "failed";
-	} catch (error) {
-		labReportStore.update(report.id, {
-			engramStatus: "failed",
-			engramSyncedAt: new Date().toISOString(),
-			engramError: error instanceof Error ? error.message : String(error),
-		});
-		return "failed";
-	}
-}
-
-async function triagePendingReports(limit = 5): Promise<string[]> {
-	const reports = labReportStore.pendingTriage(limit);
-	const lines: string[] = [];
-	for (const report of reports) {
-		const status = await triageLabReport(report.id);
-		const updated = labReportStore.get(report.id);
-		lines.push(
-			`${report.id} · ${report.agentLabel}: ${status}${updated?.triageSummary ? ` · ${oneLine(updated.triageSummary, 120)}` : ""}`,
-		);
-		if (status === "pending") break;
-	}
-	return lines;
-}
-
-async function syncPendingReportsToEngram(limit = 5): Promise<string[]> {
-	const reports = labReportStore.pendingEngram(limit);
-	const lines: string[] = [];
-	for (const report of reports) {
-		const status = await syncLabReportToEngram(report.id);
-		lines.push(`${report.id} · ${report.agentLabel}: ${status}`);
-		if (status === "pending") break;
-	}
-	return lines;
 }
 
 async function handleTestLabCommand(
@@ -628,7 +532,9 @@ function sourceSkillsDir(): string | undefined {
 	const sourceProject = registry.projects.find(
 		(project) => project.id === "sistema_de_mantencion",
 	);
-	return sourceProject ? join(sourceProject.path, ".agents", "skills") : undefined;
+	return sourceProject
+		? join(sourceProject.path, ".agents", "skills")
+		: undefined;
 }
 
 function currentConfigReport() {
@@ -804,7 +710,10 @@ bot.command("config", async (ctx) => {
 			);
 			return;
 		}
-		await replyLong(ctx, formatSkillsSyncResult(syncNecessarySkills(source, currentCwd)));
+		await replyLong(
+			ctx,
+			formatSkillsSyncResult(syncNecessarySkills(source, currentCwd)),
+		);
 		return;
 	}
 	await ctx.reply(
@@ -855,7 +764,11 @@ bot.command("gentest_model_lab", async (ctx) => {
 
 bot.command("triagereports", async (ctx) => {
 	if (!(await guard(ctx))) return;
-	const lines = await triagePendingReports(10);
+	const lines = await triagePendingReports({
+		router: agentRouter,
+		store: labReportStore,
+		limit: 10,
+	});
 	await replyLong(
 		ctx,
 		lines.length
@@ -866,7 +779,11 @@ bot.command("triagereports", async (ctx) => {
 
 bot.command("syncreports", async (ctx) => {
 	if (!(await guard(ctx))) return;
-	const lines = await syncPendingReportsToEngram(10);
+	const lines = await syncPendingReportsToEngram({
+		router: agentRouter,
+		store: labReportStore,
+		limit: 10,
+	});
 	await replyLong(
 		ctx,
 		lines.length
