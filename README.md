@@ -82,6 +82,8 @@ corepack pnpm dev
 /task docs README
 /queue
 /queue_clear
+/config
+/comandos
 /agents
 /useproject
 /trabajos
@@ -95,6 +97,10 @@ arreglá los tests de este proyecto
 ```
 
 ## Comandos principales
+
+### `/comandos`
+
+Muestra el catálogo completo generado desde una fuente única en el código: comandos para BotFather `/setcommands`, usos con argumentos, comandos CLI `pnpm`, batch directos y PowerShell directos. Usalo cuando se agreguen comandos nuevos para copiar la lista actualizada sin revisar archivos a mano.
 
 ### `/trabajos`
 
@@ -125,6 +131,26 @@ Estos comandos lanzan prompts operativos prearmados contra el orquestador activo
 ```
 
 Si falta el tipo o no es válido, el bot muestra ayuda breve.
+
+### Configuración guiada
+
+`/config` muestra un checklist del bridge y del proyecto activo. Sirve para validar proyecto, agentes, workspaces y assets versionables.
+
+```text
+/config
+/config doctor
+/config init_assets
+```
+
+`/config init_assets` crea estructura project-local mínima para skills y MCP:
+
+```text
+.agents/skills/.gitkeep
+.atl/skill-registry.md
+.mcp/config.json
+```
+
+No ejecuta MCP, no copia secretos, no commitea y no pushea.
 
 ### Cola de tareas
 

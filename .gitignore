@@ -23,7 +23,8 @@ serviceAccountKey.json
 
 # Local runtime state
 data/
-.atl/
+.atl/*
+!.atl/skill-registry.md
 .pi/
 openspec/
 

@@ -3,7 +3,15 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { AgentRouter, formatAgentProfiles } from "./agent-router.js";
 import { chunkTelegramText } from "./chunk.js";
+import { formatCommandCatalog, formatHelpText } from "./command-catalog.js";
 import { canonicalDirectory, isAllowedCwd, loadConfig } from "./config.js";
+import {
+	formatConfigDoctor,
+	formatConfigOverview,
+	formatInitAssetsResult,
+	initProjectAssets,
+	inspectProjectConfig,
+} from "./config-wizard.js";
 import { detectAgents, formatAgents, formatDoctor } from "./doctor.js";
 import {
 	formatDurationChoices,
@@ -438,14 +446,13 @@ async function handleTestLabCommand(
 	await runLabForProfiles(ctx, profileIndexes, duration);
 }
 
-async function drainTaskQueue(
-	ctx: Context,
-	generation: number,
-): Promise<void> {
+async function drainTaskQueue(ctx: Context, generation: number): Promise<void> {
 	while (taskQueue.size && generation === taskQueueGeneration) {
 		const queuedPrompt = taskQueue.dequeue();
 		if (!queuedPrompt) return;
-		await ctx.reply(`Ejecutando tarea en cola. Restantes después de esta: ${taskQueue.size}.`);
+		await ctx.reply(
+			`Ejecutando tarea en cola. Restantes después de esta: ${taskQueue.size}.`,
+		);
 		await runPrompt(ctx, queuedPrompt, { fromQueue: true });
 	}
 	if (generation !== taskQueueGeneration) {
@@ -552,11 +559,27 @@ function formatServerStatus(): string {
 	return `Estado agente activo: ${state.busy ? "ocupado" : "libre"}\nRPC agente activo: ${state.rpcRunning ? "iniciado" : "en espera"}\nPID bridge: ${state.bridgePid}\nProyecto: ${state.projectLabel}\nAgente: ${state.agentLabel} (${state.agentId})\nProyecto target: ${state.currentCwd}\nWorkspace: ${state.workspace}\nModo workspace: ${state.workspaceKind}\nModo agente activo: ${state.modePrefix || "default"}`;
 }
 
+function currentConfigReport() {
+	return inspectProjectConfig({
+		projectId: currentProjectId(),
+		projectPath: currentCwd,
+		allowedRoots: config.allowedRoots,
+		agentProfiles: agentRouter.profiles,
+		activeProfileId: agentRouter.activeProfile().id,
+		workspaceMode: config.agentWorkspaceMode,
+		workspaceRoot: config.agentWorkspaceRoot,
+		piArgs: config.piArgs,
+	});
+}
+
 bot.command("help", async (ctx) => {
 	if (!(await guard(ctx))) return;
-	await ctx.reply(
-		`Comandos:\n/projects - listar proyectos guardados\n/addproject <id> <ruta> - agregar proyecto\n/useproject <id> - cambiar proyecto activo\n/where - ver proyecto activo\n/trabajos - elegir trabajo reciente\n/ver T<n> - ver preview del trabajo\n/nametrabajo T<n> <nombre> - nombrar trabajo\n/resume T<n> - retomar trabajo listado\n/last - retomar último trabajo del proyecto activo\n/status - ver estado RPC\n/dashboard - panel operativo\n/server status|run|restart|off - controlar RPC activo\n/review - revisar cambios\n/fix_tests - arreglar tests\n/audit - auditar repo\n/safe_push - checklist seguro antes de push\n/task bug|feature|refactor|docs - plantilla de tarea\n/queue - ver cola\n/queue_clear - limpiar cola\n/doctor - diagnosticar configuración local\n/agents - elegir agente/modelo\n/testlab [profundidad] - tests en agentes lab\n/testlab1 - explicar por qué agente 1 no usa lab\n/testlab2 [profundidad] - tests en agente 2\n/testlab3 [profundidad] - tests en agente 3\n/gentest_model_lab - elegir agente lab y profundidad\n/triagereports - evaluar reportes lab\n/reports - listar reportes lab\n/report <id> - ver/decidir reporte lab\n/syncreports - guardar decisiones aprobadas en Engram\n/resumen [n] - resumen del proyecto o trabajo\n/mem <query> - buscar contexto en Engram vía Pi\n/mode interactive|auto|clear - ajustar orquestación\n/cancel - cancelar tarea actual\n\nDespués de /trabajos usá T1, T2...; en otros menús seguí la instrucción visible.`,
-	);
+	await replyLong(ctx, formatHelpText());
+});
+
+bot.command("comandos", async (ctx) => {
+	if (!(await guard(ctx))) return;
+	await replyLong(ctx, formatCommandCatalog());
 });
 
 bot.command("status", async (ctx) => {
@@ -663,6 +686,30 @@ bot.command("agents", async (ctx) => {
 		ctx,
 		`Agentes/modelos del proyecto activo:\n\n${formatAgentProfiles(agentRouter)}\n\nDetección local:\n${formatAgents(await detectAgents(config))}\n\nRespondé con número o id para elegir agente.`,
 	);
+});
+
+bot.command("config", async (ctx) => {
+	if (!(await guard(ctx))) return;
+	const arg = commandArg(ctx.message?.text ?? "").toLowerCase();
+	if (!arg) {
+		await replyLong(ctx, formatConfigOverview(currentConfigReport()));
+		return;
+	}
+	if (arg === "doctor") {
+		await replyLong(ctx, formatConfigDoctor(currentConfigReport()));
+		return;
+	}
+	if (arg === "init_assets") {
+		if (!isAllowedCwd(currentCwd, config.allowedRoots)) {
+			await ctx.reply(
+				"No puedo inicializar assets: el proyecto activo está fuera de ALLOWED_ROOTS.",
+			);
+			return;
+		}
+		await replyLong(ctx, formatInitAssetsResult(initProjectAssets(currentCwd)));
+		return;
+	}
+	await ctx.reply("Uso: /config | /config doctor | /config init_assets");
 });
 
 bot.command("doctor", async (ctx) => {
