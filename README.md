@@ -76,6 +76,10 @@ corepack pnpm dev
 /fix_tests
 /audit
 /safe_push
+/task bug el botón no responde
+/task feature nuevo panel
+/task refactor limpiar index
+/task docs README
 /agents
 /useproject
 /trabajos
@@ -106,6 +110,19 @@ Estos comandos lanzan prompts operativos prearmados contra el orquestador activo
 - `/fix_tests`: corre tests, identifica fallas y aplica fixes mínimos.
 - `/audit`: revisa preparación de repo público, secretos, artefactos y calidad.
 - `/safe_push`: ejecuta un checklist local de modo guardián: estado git, rutas sensibles ignoradas, posibles secretos en archivos versionados y remoto configurado. No commitea ni pushea.
+
+### Plantillas de tarea
+
+`/task` arma un prompt operativo con disciplina según el tipo de trabajo:
+
+```text
+/task bug <síntoma o error>
+/task feature <objetivo de producto>
+/task refactor <área a mejorar>
+/task docs <documento o tema>
+```
+
+Si falta el tipo o no es válido, el bot muestra ayuda breve.
 
 ### `/server status|run|restart|off`
 

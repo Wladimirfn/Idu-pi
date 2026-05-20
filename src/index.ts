@@ -32,6 +32,11 @@ import {
 } from "./quick-commands.js";
 import { buildSafePushReport } from "./safe-push.js";
 import {
+	buildTaskPrompt,
+	formatTaskTemplateHelp,
+	parseTaskTemplateCommand,
+} from "./task-templates.js";
+import {
 	getSessionName,
 	loadSessionNames,
 	saveSessionNames,
@@ -519,7 +524,7 @@ function formatServerStatus(): string {
 bot.command("help", async (ctx) => {
 	if (!(await guard(ctx))) return;
 	await ctx.reply(
-		`Comandos:\n/projects - listar proyectos guardados\n/addproject <id> <ruta> - agregar proyecto\n/useproject <id> - cambiar proyecto activo\n/where - ver proyecto activo\n/trabajos - elegir trabajo reciente\n/ver T<n> - ver preview del trabajo\n/nametrabajo T<n> <nombre> - nombrar trabajo\n/resume T<n> - retomar trabajo listado\n/last - retomar último trabajo del proyecto activo\n/status - ver estado RPC\n/dashboard - panel operativo\n/server status|run|restart|off - controlar RPC activo\n/review - revisar cambios\n/fix_tests - arreglar tests\n/audit - auditar repo\n/safe_push - checklist seguro antes de push\n/doctor - diagnosticar configuración local\n/agents - elegir agente/modelo\n/testlab [profundidad] - tests en agentes lab\n/testlab1 - explicar por qué agente 1 no usa lab\n/testlab2 [profundidad] - tests en agente 2\n/testlab3 [profundidad] - tests en agente 3\n/gentest_model_lab - elegir agente lab y profundidad\n/triagereports - evaluar reportes lab\n/reports - listar reportes lab\n/report <id> - ver/decidir reporte lab\n/syncreports - guardar decisiones aprobadas en Engram\n/resumen [n] - resumen del proyecto o trabajo\n/mem <query> - buscar contexto en Engram vía Pi\n/mode interactive|auto|clear - ajustar orquestación\n/cancel - cancelar tarea actual\n\nDespués de /trabajos usá T1, T2...; en otros menús seguí la instrucción visible.`,
+		`Comandos:\n/projects - listar proyectos guardados\n/addproject <id> <ruta> - agregar proyecto\n/useproject <id> - cambiar proyecto activo\n/where - ver proyecto activo\n/trabajos - elegir trabajo reciente\n/ver T<n> - ver preview del trabajo\n/nametrabajo T<n> <nombre> - nombrar trabajo\n/resume T<n> - retomar trabajo listado\n/last - retomar último trabajo del proyecto activo\n/status - ver estado RPC\n/dashboard - panel operativo\n/server status|run|restart|off - controlar RPC activo\n/review - revisar cambios\n/fix_tests - arreglar tests\n/audit - auditar repo\n/safe_push - checklist seguro antes de push\n/task bug|feature|refactor|docs - plantilla de tarea\n/doctor - diagnosticar configuración local\n/agents - elegir agente/modelo\n/testlab [profundidad] - tests en agentes lab\n/testlab1 - explicar por qué agente 1 no usa lab\n/testlab2 [profundidad] - tests en agente 2\n/testlab3 [profundidad] - tests en agente 3\n/gentest_model_lab - elegir agente lab y profundidad\n/triagereports - evaluar reportes lab\n/reports - listar reportes lab\n/report <id> - ver/decidir reporte lab\n/syncreports - guardar decisiones aprobadas en Engram\n/resumen [n] - resumen del proyecto o trabajo\n/mem <query> - buscar contexto en Engram vía Pi\n/mode interactive|auto|clear - ajustar orquestación\n/cancel - cancelar tarea actual\n\nDespués de /trabajos usá T1, T2...; en otros menús seguí la instrucción visible.`,
 	);
 });
 
@@ -548,6 +553,21 @@ bot.command("safe_push", async (ctx) => {
 	if (!(await guard(ctx))) return;
 	const report = buildSafePushReport({ cwd: currentCwd });
 	await replyLong(ctx, report.text);
+});
+
+bot.command("task", async (ctx) => {
+	if (!(await guard(ctx))) return;
+	const parsed = parseTaskTemplateCommand(ctx.message?.text ?? "");
+	if (!parsed) {
+		await ctx.reply(formatTaskTemplateHelp());
+		return;
+	}
+	const prompt = buildTaskPrompt(parsed.kind, parsed.details);
+	if (!prompt) {
+		await ctx.reply(formatTaskTemplateHelp());
+		return;
+	}
+	await runPrompt(ctx, prompt);
 });
 
 bot.command("server", async (ctx) => {
