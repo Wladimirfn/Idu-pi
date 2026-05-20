@@ -54,7 +54,47 @@ export function formatDurationChoices(): string {
 }
 
 export function labPrompt(duration: LabDuration, agent: AgentProfile): string {
-	return `Modo laboratorio de tests para ${agent.label}. Profundidad: ${duration.label} (${duration.description}). Límite de seguridad: ${Math.round(duration.ms / 60_000)} minutos.\n\nReglas obligatorias:\n- Trabajá solo dentro de tu workspace/clon.\n- No modifiques el repo real.\n- No hagas commit.\n- No hagas push.\n- Corré como máximo ${duration.maxCommands} comandos de test/verificación.\n- Si el proyecto usa pnpm, preferí Corepack: corepack pnpm test. No uses pnpm directo si no verificaste que está en PATH.\n- No te cortes por tiempo salvo emergencia: terminá el comando en curso y reportá.\n- Antes de verificar, detectá contexto del proyecto: scripts de test, README/docs, skills en .agents/skills o .pi/skills y MCP/tools disponibles.\n- Si existe .agents/skills/buenas-practicas-bd/SKILL.md, considerala contexto prioritario.\n- Usá MCP/tools disponibles solo si aportan evidencia; si fallan, reportalo como detalle técnico secundario.\n- Si necesitás inspeccionar código, hacelo solo para diagnosticar.\n- Reportá comandos ejecutados, resultados, fallas, evidencia, posible causa y sugerencia.\n- Si un problema ya está resuelto, indicalo como resuelto.\n\nFormato de respuesta:\nResumen corto\nTests/comandos ejecutados\nHallazgos con severidad y confianza\nSugerencias para el orquestador`;
+	return `Modo laboratorio de tests para ${agent.label}. Profundidad: ${duration.label} (${duration.description}). Límite de seguridad: ${Math.round(duration.ms / 60_000)} minutos.
+
+Reglas obligatorias:
+- Trabajá solo dentro de tu workspace/clon.
+- No modifiques el repo real.
+- No hagas commit.
+- No hagas push.
+- Corré como máximo ${duration.maxCommands} comandos de test/verificación.
+- Si el proyecto usa pnpm, preferí Corepack: corepack pnpm test. No uses pnpm directo si no verificaste que está en PATH.
+- No te cortes por tiempo salvo emergencia: terminá el comando en curso y reportá.
+- Antes de verificar, detectá contexto del proyecto: scripts de test, README/docs, skills en .agents/skills o .pi/skills y MCP/tools disponibles.
+- Si existe .agents/skills/buenas-practicas-bd/SKILL.md, considerala contexto prioritario.
+- Usá MCP/tools disponibles solo si aportan evidencia; si fallan, reportalo como detalle técnico secundario.
+- Si necesitás inspeccionar código, hacelo solo para diagnosticar.
+- Reportá comandos ejecutados, resultados, fallas, evidencia, posible causa y sugerencia.
+- Si un problema ya está resuelto, indicalo como resuelto.
+- No inventes bugs: mejor devolver findings: [] que inventar problemas.
+- Sin evidencia, title o description, no reportes algo como finding.
+- Si revisaste y no encontraste fallas, explicá qué revisaste y dejá findings: [].
+
+Formato preferente si hay hallazgos: respondé con JSON AgentLabReport válido. No es obligatorio todavía; si no podés producir JSON, podés responder texto normal.
+Contrato AgentLabReport:
+- role debe ser uno de: security, database, code_quality, ui_ux, performance, docs, general.
+- summary es obligatorio.
+- findings puede ser [] si no hay problemas con evidencia.
+- Cada finding requiere title, description, evidence, severity, confidence y category.
+- proposal requiere summary, steps, risk y requiresHumanApproval.
+- high/critical requiere requiresHumanApproval true.
+Ejemplo:
+{
+  "role": "general",
+  "summary": "Resumen de la revisión",
+  "findings": [],
+  "commandsExecuted": ["corepack pnpm test"]
+}
+
+Formato de respuesta legacy aceptado:
+Resumen corto
+Tests/comandos ejecutados
+Hallazgos con severidad y confianza
+Sugerencias para el orquestador`;
 }
 
 export type LabRunRecorder = {

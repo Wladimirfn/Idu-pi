@@ -37,3 +37,24 @@ test("labPrompt includes lab safety constraints", () => {
 	assert.match(prompt, /máximo 3 comandos/);
 	assert.match(prompt, /corepack pnpm test/);
 });
+
+test("labPrompt requests optional AgentLabReport JSON", () => {
+	const prompt = labPrompt(
+		{
+			label: "quick",
+			ms: 300_000,
+			maxCommands: 1,
+			description: "1 verificación corta",
+		},
+		{ id: "spark", label: "Spark", provider: "pi", piArgs: [] },
+	);
+
+	assert.match(prompt, /AgentLabReport/);
+	assert.match(prompt, /evidence/);
+	assert.match(prompt, /findings.*\[\]/is);
+	assert.match(prompt, /high\/critical.*requiresHumanApproval.*true/is);
+	assert.match(prompt, /"commandsExecuted": \[\s*"corepack pnpm test"\s*\]/s);
+	assert.doesNotMatch(prompt, /"command": "corepack pnpm test"/);
+	assert.match(prompt, /No hagas commit/);
+	assert.match(prompt, /No hagas push/);
+});
