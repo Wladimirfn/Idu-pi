@@ -59,6 +59,7 @@ import {
 	parseUiCallbackData,
 	parseUiRequestAnswer,
 } from "./telegram-ui.js";
+import { TaskQueue } from "./task-queue.js";
 
 const config = loadConfig();
 const bot = new Bot(config.telegramBotToken);
@@ -77,6 +78,8 @@ const agentRouter = new AgentRouter({
 	workspaceMode: config.agentWorkspaceMode,
 });
 const labReportStore = new LabReportStore(config.agentWorkspaceRoot);
+const taskQueue = new TaskQueue();
+let taskQueueGeneration = 0;
 let pendingLabRequest: { profileIndexes: number[] } | null = null;
 let pendingUiRequest: PiRpcUiRequest | null = null;
 let pendingUiToken: string | null = null;
@@ -435,12 +438,35 @@ async function handleTestLabCommand(
 	await runLabForProfiles(ctx, profileIndexes, duration);
 }
 
-async function runPrompt(ctx: Context, prompt: string): Promise<void> {
+async function drainTaskQueue(
+	ctx: Context,
+	generation: number,
+): Promise<void> {
+	while (taskQueue.size && generation === taskQueueGeneration) {
+		const queuedPrompt = taskQueue.dequeue();
+		if (!queuedPrompt) return;
+		await ctx.reply(`Ejecutando tarea en cola. Restantes después de esta: ${taskQueue.size}.`);
+		await runPrompt(ctx, queuedPrompt, { fromQueue: true });
+	}
+	if (generation !== taskQueueGeneration) {
+		await ctx.reply("Cola detenida por cancelación.");
+	}
+}
+
+async function runPrompt(
+	ctx: Context,
+	prompt: string,
+	options: { fromQueue?: boolean } = {},
+): Promise<void> {
 	const runtime = agentRouter.activeRuntime();
 	if (runtime.session.busy) {
-		await ctx.reply(
-			"Ya hay una tarea Pi corriendo en el agente activo. Usá /cancel o esperá a que termine.",
-		);
+		if (taskQueue.enqueue(prompt)) {
+			await ctx.reply(
+				`Ya hay una tarea Pi corriendo. Guardé tu mensaje en cola como Q${taskQueue.size}. Usá /queue para verla.`,
+			);
+		} else {
+			await ctx.reply("La tarea está vacía; no la agregué a la cola.");
+		}
 		return;
 	}
 
@@ -490,6 +516,11 @@ async function runPrompt(ctx: Context, prompt: string): Promise<void> {
 		if (pendingAction === "extension-ui") pendingAction = null;
 		const prefix = result.ok ? "✅ Pi terminó" : "⚠️ Pi terminó con error";
 		await replyLong(ctx, `${prefix}\n\n${result.output}`);
+		if (!options.fromQueue && taskQueue.size) {
+			await drainTaskQueue(ctx, taskQueueGeneration);
+		} else if (options.fromQueue && taskQueue.size) {
+			await drainTaskQueue(ctx, taskQueueGeneration);
+		}
 	} catch (error) {
 		pendingUiRequest = null;
 		pendingUiToken = null;
@@ -524,7 +555,7 @@ function formatServerStatus(): string {
 bot.command("help", async (ctx) => {
 	if (!(await guard(ctx))) return;
 	await ctx.reply(
-		`Comandos:\n/projects - listar proyectos guardados\n/addproject <id> <ruta> - agregar proyecto\n/useproject <id> - cambiar proyecto activo\n/where - ver proyecto activo\n/trabajos - elegir trabajo reciente\n/ver T<n> - ver preview del trabajo\n/nametrabajo T<n> <nombre> - nombrar trabajo\n/resume T<n> - retomar trabajo listado\n/last - retomar último trabajo del proyecto activo\n/status - ver estado RPC\n/dashboard - panel operativo\n/server status|run|restart|off - controlar RPC activo\n/review - revisar cambios\n/fix_tests - arreglar tests\n/audit - auditar repo\n/safe_push - checklist seguro antes de push\n/task bug|feature|refactor|docs - plantilla de tarea\n/doctor - diagnosticar configuración local\n/agents - elegir agente/modelo\n/testlab [profundidad] - tests en agentes lab\n/testlab1 - explicar por qué agente 1 no usa lab\n/testlab2 [profundidad] - tests en agente 2\n/testlab3 [profundidad] - tests en agente 3\n/gentest_model_lab - elegir agente lab y profundidad\n/triagereports - evaluar reportes lab\n/reports - listar reportes lab\n/report <id> - ver/decidir reporte lab\n/syncreports - guardar decisiones aprobadas en Engram\n/resumen [n] - resumen del proyecto o trabajo\n/mem <query> - buscar contexto en Engram vía Pi\n/mode interactive|auto|clear - ajustar orquestación\n/cancel - cancelar tarea actual\n\nDespués de /trabajos usá T1, T2...; en otros menús seguí la instrucción visible.`,
+		`Comandos:\n/projects - listar proyectos guardados\n/addproject <id> <ruta> - agregar proyecto\n/useproject <id> - cambiar proyecto activo\n/where - ver proyecto activo\n/trabajos - elegir trabajo reciente\n/ver T<n> - ver preview del trabajo\n/nametrabajo T<n> <nombre> - nombrar trabajo\n/resume T<n> - retomar trabajo listado\n/last - retomar último trabajo del proyecto activo\n/status - ver estado RPC\n/dashboard - panel operativo\n/server status|run|restart|off - controlar RPC activo\n/review - revisar cambios\n/fix_tests - arreglar tests\n/audit - auditar repo\n/safe_push - checklist seguro antes de push\n/task bug|feature|refactor|docs - plantilla de tarea\n/queue - ver cola\n/queue_clear - limpiar cola\n/doctor - diagnosticar configuración local\n/agents - elegir agente/modelo\n/testlab [profundidad] - tests en agentes lab\n/testlab1 - explicar por qué agente 1 no usa lab\n/testlab2 [profundidad] - tests en agente 2\n/testlab3 [profundidad] - tests en agente 3\n/gentest_model_lab - elegir agente lab y profundidad\n/triagereports - evaluar reportes lab\n/reports - listar reportes lab\n/report <id> - ver/decidir reporte lab\n/syncreports - guardar decisiones aprobadas en Engram\n/resumen [n] - resumen del proyecto o trabajo\n/mem <query> - buscar contexto en Engram vía Pi\n/mode interactive|auto|clear - ajustar orquestación\n/cancel - cancelar tarea actual\n\nDespués de /trabajos usá T1, T2...; en otros menús seguí la instrucción visible.`,
 	);
 });
 
@@ -988,6 +1019,17 @@ bot.command("mem", async (ctx) => {
 	);
 });
 
+bot.command("queue", async (ctx) => {
+	if (!(await guard(ctx))) return;
+	await ctx.reply(taskQueue.formatStatus());
+});
+
+bot.command("queue_clear", async (ctx) => {
+	if (!(await guard(ctx))) return;
+	const count = taskQueue.clear();
+	await ctx.reply(`Cola limpiada: ${count} tarea(s).`);
+});
+
 bot.command("mode", async (ctx) => {
 	if (!(await guard(ctx))) return;
 	const arg = commandArg(ctx.message?.text ?? "").toLowerCase();
@@ -1021,6 +1063,8 @@ bot.command("cancel", async (ctx) => {
 	pendingLabRequest = null;
 	pendingUiRequest = null;
 	pendingUiToken = null;
+	taskQueue.clear();
+	taskQueueGeneration++;
 	const cancelledActive = agentRouter.cancelActive();
 	const cancelledLabs = agentRouter.cancelProfiles(
 		agentRouter.labProfiles().map((profile) => profile.id),

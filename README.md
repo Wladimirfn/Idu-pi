@@ -80,6 +80,8 @@ corepack pnpm dev
 /task feature nuevo panel
 /task refactor limpiar index
 /task docs README
+/queue
+/queue_clear
 /agents
 /useproject
 /trabajos
@@ -123,6 +125,17 @@ Estos comandos lanzan prompts operativos prearmados contra el orquestador activo
 ```
 
 Si falta el tipo o no es válido, el bot muestra ayuda breve.
+
+### Cola de tareas
+
+Si mandás mensajes mientras Pi está ocupado, Idu-pi los guarda en una cola FIFO y los ejecuta cuando termina el turno actual.
+
+```text
+/queue       # ver cola actual
+/queue_clear # limpiar cola
+```
+
+`/cancel` también limpia la cola.
 
 ### `/server status|run|restart|off`
 
