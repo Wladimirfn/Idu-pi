@@ -344,12 +344,24 @@ export class AgentRouter {
 	}
 }
 
+export function profileModelLabel(profile: AgentProfile): string {
+	const modelFlagIndex = profile.piArgs.findIndex((arg) => arg === "--model");
+	if (modelFlagIndex >= 0 && profile.piArgs[modelFlagIndex + 1]) {
+		return profile.piArgs[modelFlagIndex + 1];
+	}
+	const modelEqualsArg = profile.piArgs.find((arg) =>
+		arg.startsWith("--model="),
+	);
+	if (modelEqualsArg) return modelEqualsArg.slice("--model=".length);
+	return "Pi default";
+}
+
 export function formatAgentProfiles(router: AgentRouter): string {
 	const active = router.activeProfile();
 	return router.profiles
 		.map(
 			(profile, index) =>
-				`${index + 1}. ${profile.label}${profile.id === active.id ? " ✅" : ""}\n   id: ${profile.id}\n   provider: ${profile.provider}`,
+				`${index + 1}. ${profile.label}${profile.id === active.id ? " ✅" : ""}\n   id: ${profile.id}\n   provider: ${profile.provider}\n   model: ${profileModelLabel(profile)}`,
 		)
 		.join("\n\n");
 }
