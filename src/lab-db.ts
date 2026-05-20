@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import type { LabRunRecord } from "./lab-reports.js";
 
 export type FindingSeverity = "critical" | "high" | "medium" | "low" | "info";
 export type FindingConfidence = "high" | "medium" | "low";
@@ -30,12 +31,7 @@ export type BugFindingInput = {
 export type BugFinding = Required<
 	Pick<
 		BugFindingInput,
-		| "id"
-		| "projectId"
-		| "title"
-		| "description"
-		| "severity"
-		| "confidence"
+		"id" | "projectId" | "title" | "description" | "severity" | "confidence"
 	>
 > & {
 	status: FindingStatus;
@@ -154,6 +150,18 @@ function sqlString(value: string | undefined): string {
 	return `'${value.replace(/'/gu, "''")}'`;
 }
 
+function sqlOptionalString(value: string | undefined): string {
+	if (value === undefined) return "NULL";
+	return `'${value.replace(/'/gu, "''")}'`;
+}
+
+function sqlInteger(value: number, fieldName: string): string {
+	if (!Number.isSafeInteger(value)) {
+		throw new TypeError(`${fieldName} must be a safe integer`);
+	}
+	return value.toString();
+}
+
 function runSql(dbPath: string, sql: string): string {
 	return execFileSync("sqlite3", ["-json", dbPath, sql], {
 		encoding: "utf8",
@@ -170,6 +178,47 @@ export function initLabDb(dbPath: string): InitLabDbResult {
 
 export function formatInitLabDbResult(result: InitLabDbResult): string {
 	return `Lab DB\n${result.dbPath}\n\nEstado: ${result.created ? "creada" : "existente/actualizada"}`;
+}
+
+export function recordLabRun(dbPath: string, record: LabRunRecord): void {
+	initLabDb(dbPath);
+	const sql = `
+INSERT INTO lab_runs (
+  id, project_id, project_path, agent_id, agent_label, workspace,
+  duration_label, duration_ms, status, summary, raw_output, error,
+  started_at, finished_at
+) VALUES (
+  ${sqlString(record.id)},
+  ${sqlString(record.projectId)},
+  ${sqlString(record.projectPath)},
+  ${sqlString(record.agentId)},
+  ${sqlString(record.agentLabel)},
+  ${sqlString(record.workspace)},
+  ${sqlString(record.durationLabel)},
+  ${sqlInteger(record.durationMs, "durationMs")},
+  ${sqlString(record.status)},
+  ${sqlString(record.summary)},
+  ${sqlOptionalString(record.rawOutput)},
+  ${sqlOptionalString(record.error)},
+  ${sqlString(record.startedAt)},
+  ${sqlString(record.finishedAt)}
+)
+ON CONFLICT(id) DO UPDATE SET
+  project_id = excluded.project_id,
+  project_path = excluded.project_path,
+  agent_id = excluded.agent_id,
+  agent_label = excluded.agent_label,
+  workspace = excluded.workspace,
+  duration_label = excluded.duration_label,
+  duration_ms = excluded.duration_ms,
+  status = excluded.status,
+  summary = excluded.summary,
+  raw_output = excluded.raw_output,
+  error = excluded.error,
+  started_at = excluded.started_at,
+  finished_at = excluded.finished_at;
+`;
+	runSql(dbPath, sql);
 }
 
 export function recordBugFinding(dbPath: string, input: BugFindingInput): void {
@@ -213,7 +262,10 @@ ON CONFLICT(id) DO UPDATE SET
 	);
 }
 
-export function listOpenFindings(dbPath: string, projectId: string): BugFinding[] {
+export function listOpenFindings(
+	dbPath: string,
+	projectId: string,
+): BugFinding[] {
 	initLabDb(dbPath);
 	const output = runSql(
 		dbPath,
