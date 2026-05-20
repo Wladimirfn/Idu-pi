@@ -30,6 +30,7 @@ import {
 	buildDashboardText,
 	buildQuickCommandPrompt,
 } from "./quick-commands.js";
+import { buildSafePushReport } from "./safe-push.js";
 import {
 	getSessionName,
 	loadSessionNames,
@@ -458,7 +459,10 @@ async function runPrompt(ctx: Context, prompt: string): Promise<void> {
 				pendingUiToken = String(++pendingUiCounter);
 				pendingAction = "extension-ui";
 				void ctx.reply(formatUiRequestForTelegram(event.request), {
-					reply_markup: inlineKeyboardForUiRequest(event.request, pendingUiToken),
+					reply_markup: inlineKeyboardForUiRequest(
+						event.request,
+						pendingUiToken,
+					),
 				});
 				return;
 			}
@@ -529,7 +533,7 @@ bot.command("dashboard", async (ctx) => {
 	await ctx.reply(buildDashboardText(dashboardState()));
 });
 
-bot.command(["review", "fix_tests", "audit", "safe_push"], async (ctx) => {
+bot.command(["review", "fix_tests", "audit"], async (ctx) => {
 	if (!(await guard(ctx))) return;
 	const command = ctx.message?.text.split(/\s+/u)[0]?.replace(/^\//u, "") ?? "";
 	const prompt = buildQuickCommandPrompt(command);
@@ -538,6 +542,12 @@ bot.command(["review", "fix_tests", "audit", "safe_push"], async (ctx) => {
 		return;
 	}
 	await runPrompt(ctx, prompt);
+});
+
+bot.command("safe_push", async (ctx) => {
+	if (!(await guard(ctx))) return;
+	const report = buildSafePushReport({ cwd: currentCwd });
+	await replyLong(ctx, report.text);
 });
 
 bot.command("server", async (ctx) => {
@@ -1016,7 +1026,9 @@ async function sendPendingUiResponse(
 	if (!pendingUiRequest) {
 		pendingAction = null;
 		pendingUiToken = null;
-		await ctx.reply("No hay decisión pendiente. Mandá tu próximo mensaje normal.");
+		await ctx.reply(
+			"No hay decisión pendiente. Mandá tu próximo mensaje normal.",
+		);
 		return true;
 	}
 	const response = parseUiRequestAnswer(pendingUiRequest, text);
@@ -1030,7 +1042,9 @@ async function sendPendingUiResponse(
 	}
 	const sent = agentRouter.answerActiveUiRequest(response);
 	if (!sent) {
-		await ctx.reply("No pude enviar la decisión porque el servidor Pi no está activo.");
+		await ctx.reply(
+			"No pude enviar la decisión porque el servidor Pi no está activo.",
+		);
 		return true;
 	}
 	pendingUiRequest = null;

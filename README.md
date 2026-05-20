@@ -105,7 +105,7 @@ Estos comandos lanzan prompts operativos prearmados contra el orquestador activo
 - `/review`: revisa cambios actuales sin commitear ni pushear.
 - `/fix_tests`: corre tests, identifica fallas y aplica fixes mínimos.
 - `/audit`: revisa preparación de repo público, secretos, artefactos y calidad.
-- `/safe_push`: checklist seguro antes de commit/push; pide confirmación antes de acciones irreversibles.
+- `/safe_push`: ejecuta un checklist local de modo guardián: estado git, rutas sensibles ignoradas, posibles secretos en archivos versionados y remoto configurado. No commitea ni pushea.
 
 ### `/server status|run|restart|off`
 
