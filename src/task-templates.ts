@@ -1,6 +1,11 @@
 export type TaskTemplateKind = "bug" | "feature" | "refactor" | "docs";
 
-const taskKinds = new Set<TaskTemplateKind>(["bug", "feature", "refactor", "docs"]);
+const taskKinds = new Set<TaskTemplateKind>([
+	"bug",
+	"feature",
+	"refactor",
+	"docs",
+]);
 
 export function parseTaskTemplateCommand(
 	text: string,
@@ -9,7 +14,10 @@ export function parseTaskTemplateCommand(
 	if (!match) return undefined;
 	const rawKind = (match[1] ?? "").toLowerCase();
 	if (!taskKinds.has(rawKind as TaskTemplateKind)) return undefined;
-	return { kind: rawKind as TaskTemplateKind, details: (match[2] ?? "").trim() };
+	return {
+		kind: rawKind as TaskTemplateKind,
+		details: (match[2] ?? "").trim(),
+	};
 }
 
 export function formatTaskTemplateHelp(): string {
@@ -24,8 +32,13 @@ Ejemplo:
 /task bug el botón de decisión no responde en Telegram`;
 }
 
-export function buildTaskPrompt(kind: string, details: string): string | undefined {
-	const scope = details.trim() || "No details provided; ask concise clarifying questions before implementation.";
+export function buildTaskPrompt(
+	kind: string,
+	details: string,
+): string | undefined {
+	const scope =
+		details.trim() ||
+		"No details provided; ask concise clarifying questions before implementation.";
 	switch (kind) {
 		case "bug":
 			return `Bug task. Symptom/context: ${scope}
