@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,8 +8,13 @@ import {
 	formatConfigDoctor,
 	formatConfigOverview,
 	formatInitAssetsResult,
+	formatInitWorkspaceResult,
+	formatSkillsSyncResult,
 	initProjectAssets,
+	initWorkspaceRoot,
+	NECESSARY_PROJECT_SKILLS,
 	inspectProjectConfig,
+	syncNecessarySkills,
 } from "../src/config-wizard.js";
 
 const tempRoots: string[] = [];
@@ -45,15 +50,17 @@ test("inspectProjectConfig reports missing project-local assets", () => {
 	assert.equal(report.assets.skills.exists, false);
 	assert.equal(report.assets.registry.exists, false);
 	assert.equal(report.assets.mcp.exists, false);
-	assert.equal(report.recommendedNext, "/config init_assets");
+	assert.equal(report.recommendedNext, "/config init_workspace");
 	assert.ok(
 		report.warnings.some((warning) => warning.includes("No hay perfiles lab")),
 	);
 });
 
-test("inspectProjectConfig reports existing project-local assets", () => {
+test("inspectProjectConfig reports existing project-local assets and workspace state", () => {
 	const projectPath = tempDir();
+	const workspaceRoot = join(projectPath, ".workspaces");
 	initProjectAssets(projectPath);
+	initWorkspaceRoot(workspaceRoot);
 
 	const report = inspectProjectConfig({
 		projectId: "demo",
@@ -65,7 +72,7 @@ test("inspectProjectConfig reports existing project-local assets", () => {
 		],
 		activeProfileId: "codex",
 		workspaceMode: "clone",
-		workspaceRoot: join(projectPath, ".workspaces"),
+		workspaceRoot,
 		piArgs: [],
 		isGitRepo: true,
 	});
@@ -73,7 +80,11 @@ test("inspectProjectConfig reports existing project-local assets", () => {
 	assert.equal(report.assets.skills.exists, true);
 	assert.equal(report.assets.registry.exists, true);
 	assert.equal(report.assets.mcp.exists, true);
-	assert.equal(report.recommendedNext, "/config doctor");
+	assert.equal(report.workspace.root.exists, true);
+	assert.equal(report.workspace.reports.exists, true);
+	assert.equal(report.workspace.workspaces.exists, true);
+	assert.equal(report.labAgentCount, 1);
+	assert.equal(report.recommendedNext, "/config skills_sync");
 });
 
 test("initProjectAssets creates missing assets without overwriting existing files", () => {
@@ -97,6 +108,53 @@ test("initProjectAssets creates missing assets without overwriting existing file
 	assert.equal(existsSync(join(projectPath, ".mcp", "config.json")), true);
 });
 
+test("initWorkspaceRoot creates reports and workspaces directories", () => {
+	const workspaceRoot = join(tempDir(), "bridge-agents");
+
+	const result = initWorkspaceRoot(workspaceRoot);
+
+	assert.equal(existsSync(join(workspaceRoot, "reports")), true);
+	assert.equal(existsSync(join(workspaceRoot, "workspaces")), true);
+	assert.ok(result.created.includes("reports"));
+	assert.match(formatInitWorkspaceResult(result), /Workspace root/);
+});
+
+test("syncNecessarySkills copies only necessary skills and writes a simple index", () => {
+	const projectPath = tempDir();
+	const sourceSkillsDir = join(tempDir(), "source-skills");
+	for (const skill of NECESSARY_PROJECT_SKILLS) {
+		const skillDir = join(sourceSkillsDir, skill);
+		mkdirSync(skillDir, { recursive: true });
+		writeFileSync(join(skillDir, "SKILL.md"), `# ${skill}\n`, "utf8");
+	}
+	mkdirSync(join(sourceSkillsDir, "rcm-flujos-operativos"), { recursive: true });
+	writeFileSync(
+		join(sourceSkillsDir, "rcm-flujos-operativos", "SKILL.md"),
+		"# domain\n",
+		"utf8",
+	);
+
+	const result = syncNecessarySkills(sourceSkillsDir, projectPath);
+
+	assert.deepEqual(result.missing, []);
+	assert.equal(result.copied.length, NECESSARY_PROJECT_SKILLS.length);
+	assert.equal(
+		existsSync(join(projectPath, ".agents", "skills", "bug-hunter", "SKILL.md")),
+		true,
+	);
+	assert.equal(
+		existsSync(
+			join(projectPath, ".agents", "skills", "rcm-flujos-operativos"),
+		),
+		false,
+	);
+	assert.match(
+		readFileSync(join(projectPath, ".agents", "skills", "INDEX.md"), "utf8"),
+		/bug-hunter/,
+	);
+	assert.match(formatSkillsSyncResult(result), /Skills sincronizadas/);
+});
+
 test("formatConfigOverview and formatConfigDoctor hide secrets and show next steps", () => {
 	const projectPath = tempDir();
 	const report = inspectProjectConfig({
@@ -115,7 +173,7 @@ test("formatConfigOverview and formatConfigDoctor hide secrets and show next ste
 
 	assert.match(
 		formatConfigOverview(report),
-		/Siguiente recomendado:\n\/config init_assets/,
+		/Siguiente recomendado:\n\/config init_workspace/,
 	);
 	assert.match(formatConfigDoctor(report), /Project-local assets/);
 	assert.doesNotMatch(

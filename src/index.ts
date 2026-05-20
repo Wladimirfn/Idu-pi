@@ -1,6 +1,6 @@
 import { Bot, type Context } from "grammy";
 import { homedir } from "node:os";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import {
 	AgentRouter,
 	formatAgentProfiles,
@@ -13,8 +13,12 @@ import {
 	formatConfigDoctor,
 	formatConfigOverview,
 	formatInitAssetsResult,
+	formatInitWorkspaceResult,
+	formatSkillsSyncResult,
 	initProjectAssets,
+	initWorkspaceRoot,
 	inspectProjectConfig,
+	syncNecessarySkills,
 } from "./config-wizard.js";
 import { detectAgents, formatAgents, formatDoctor } from "./doctor.js";
 import {
@@ -611,6 +615,13 @@ function formatServerStatus(): string {
 	return `Estado agente activo: ${state.busy ? "ocupado" : "libre"}\nRPC agente activo: ${state.rpcRunning ? "iniciado" : "en espera"}\nPID bridge: ${state.bridgePid}\nProyecto: ${state.projectLabel}\nAgente: ${state.agentLabel} (${state.agentId})\nProyecto target: ${state.currentCwd}\nWorkspace: ${state.workspace}\nModo workspace: ${state.workspaceKind}\nModo agente activo: ${state.modePrefix || "default"}`;
 }
 
+function sourceSkillsDir(): string | undefined {
+	const sourceProject = registry.projects.find(
+		(project) => project.id === "sistema_de_mantencion",
+	);
+	return sourceProject ? join(sourceProject.path, ".agents", "skills") : undefined;
+}
+
 function currentConfigReport() {
 	return inspectProjectConfig({
 		projectId: currentProjectId(),
@@ -747,6 +758,13 @@ bot.command("config", async (ctx) => {
 		await replyLong(ctx, formatConfigDoctor(currentConfigReport()));
 		return;
 	}
+	if (arg === "init_workspace") {
+		await replyLong(
+			ctx,
+			formatInitWorkspaceResult(initWorkspaceRoot(config.agentWorkspaceRoot)),
+		);
+		return;
+	}
 	if (arg === "init_assets") {
 		if (!isAllowedCwd(currentCwd, config.allowedRoots)) {
 			await ctx.reply(
@@ -757,7 +775,20 @@ bot.command("config", async (ctx) => {
 		await replyLong(ctx, formatInitAssetsResult(initProjectAssets(currentCwd)));
 		return;
 	}
-	await ctx.reply("Uso: /config | /config doctor | /config init_assets");
+	if (arg === "skills_sync") {
+		const source = sourceSkillsDir();
+		if (!source) {
+			await ctx.reply(
+				"No encontré el proyecto fuente sistema_de_mantencion para sincronizar skills.",
+			);
+			return;
+		}
+		await replyLong(ctx, formatSkillsSyncResult(syncNecessarySkills(source, currentCwd)));
+		return;
+	}
+	await ctx.reply(
+		"Uso: /config | /config doctor | /config init_workspace | /config init_assets | /config skills_sync",
+	);
 });
 
 bot.command("doctor", async (ctx) => {

@@ -6,6 +6,7 @@ Last updated: 2026-05-20
 
 ## Sources scanned
 
+- .agents\skills
 - C:\Users\elmas\.pi\agent\skills
 - C:\Users\elmas\.agents\skills
 - C:\Users\elmas\.config\opencode\skills
@@ -31,14 +32,14 @@ Last updated: 2026-05-20
 | `api-endpoint-builder` | — | user | `C:\Users\elmas\.agents\skills\api-endpoint-builder\SKILL.md` |
 | `brainstorming` | You MUST use this before any creative work - creating features, building components, adding functionality, or modifying behavior. Explores user intent, requirements and design before implementation. | user | `C:\Users\elmas\.agents\skills\brainstorming\SKILL.md` |
 | `branch-pr` | Create Gentle AI pull requests with issue-first checks. Trigger: creating, opening, or preparing PRs for review. | user | `C:\Users\elmas\.config\opencode\skills\branch-pr\SKILL.md` |
-| `bug-hunter` | — | user | `C:\Users\elmas\.agents\skills\bug-hunter\SKILL.md` |
+| `bug-hunter` | — | project | `C:\Users\elmas\pi-telegram-bridge\.agents\skills\bug-hunter\SKILL.md` |
 | `caveman` | — | user | `C:\Users\elmas\.agents\skills\caveman\SKILL.md` |
 | `caveman-commit` | — | user | `C:\Users\elmas\.agents\skills\caveman-commit\SKILL.md` |
 | `caveman-compress` | — | user | `C:\Users\elmas\.agents\skills\caveman-compress\SKILL.md` |
 | `caveman-help` | — | user | `C:\Users\elmas\.agents\skills\caveman-help\SKILL.md` |
 | `caveman-review` | — | user | `C:\Users\elmas\.agents\skills\caveman-review\SKILL.md` |
 | `chained-pr` | Trigger: PRs over 400 lines, stacked PRs, review slices. Split oversized changes into chained PRs that protect review focus. | user | `C:\Users\elmas\.config\opencode\skills\chained-pr\SKILL.md` |
-| `codebase-audit-pre-push` | — | user | `C:\Users\elmas\.agents\skills\codebase-audit-pre-push\SKILL.md` |
+| `codebase-audit-pre-push` | — | project | `C:\Users\elmas\pi-telegram-bridge\.agents\skills\codebase-audit-pre-push\SKILL.md` |
 | `cognitive-doc-design` | Design docs that reduce cognitive load. Trigger: writing guides, READMEs, RFCs, onboarding, architecture, or review-facing docs. | user | `C:\Users\elmas\.config\opencode\skills\cognitive-doc-design\SKILL.md` |
 | `comment-writer` | Write warm, direct collaboration comments. Trigger: PR feedback, issue replies, reviews, Slack messages, or GitHub comments. | user | `C:\Users\elmas\.config\opencode\skills\comment-writer\SKILL.md` |
 | `find-skills` | Helps users discover and install agent skills when they ask questions like "how do I do X", "find a skill for X", "is there a skill that can...", or express interest in extending capabilities. This skill should be used when the user is looking for functionality that might exist as an installable skill. | user | `C:\Users\elmas\.agents\skills\find-skills\SKILL.md` |
@@ -55,22 +56,22 @@ Last updated: 2026-05-20
 | `imagegen` | — | user | `C:\Users\elmas\.codex\skills\.system\imagegen\SKILL.md` |
 | `interface-design` | — | user | `C:\Users\elmas\.agents\skills\interface-design\SKILL.md` |
 | `issue-creation` | Create Gentle AI issues with issue-first checks. Trigger: creating GitHub issues, bug reports, or feature requests. | user | `C:\Users\elmas\.config\opencode\skills\issue-creation\SKILL.md` |
-| `jq` | — | user | `C:\Users\elmas\.agents\skills\jq\SKILL.md` |
+| `jq` | — | project | `C:\Users\elmas\pi-telegram-bridge\.agents\skills\jq\SKILL.md` |
 | `judgment-day` | Trigger: judgment day, dual review, adversarial review, juzgar. Run blind dual review, fix confirmed issues, then re-judge. | user | `C:\Users\elmas\.config\opencode\skills\judgment-day\SKILL.md` |
 | `openai-docs` | — | user | `C:\Users\elmas\.codex\skills\.system\openai-docs\SKILL.md` |
-| `performance-optimizer` | — | user | `C:\Users\elmas\.agents\skills\performance-optimizer\SKILL.md` |
+| `performance-optimizer` | — | project | `C:\Users\elmas\pi-telegram-bridge\.agents\skills\performance-optimizer\SKILL.md` |
 | `plugin-creator` | — | user | `C:\Users\elmas\.codex\skills\.system\plugin-creator\SKILL.md` |
 | `python-pptx-generator` | — | user | `C:\Users\elmas\.agents\skills\python-pptx-generator\SKILL.md` |
 | `rayden-code` | — | user | `C:\Users\elmas\.agents\skills\rayden-code\SKILL.md` |
 | `rcm-flujo-mantenimiento-operativo` | Skill para entender, explicar y guiar el flujo operativo real de órdenes de trabajo (OT) en mantenimiento RCM, considerando Bitácora, Planificador, Inventario, Compras, Backlog y ejecución. | user | `C:\Users\elmas\.config\opencode\skills\rcm-flujo-mantenimiento-operativo\SKILL.md` |
-| `skill-check` | — | user | `C:\Users\elmas\.agents\skills\skill-check\SKILL.md` |
+| `skill-check` | — | project | `C:\Users\elmas\pi-telegram-bridge\.agents\skills\skill-check\SKILL.md` |
 | `skill-creator` | Trigger: new skills, agent instructions, documenting AI usage patterns. Create LLM-first skills with valid frontmatter. | user | `C:\Users\elmas\.config\opencode\skills\skill-creator\SKILL.md` |
 | `skill-installer` | — | user | `C:\Users\elmas\.codex\skills\.system\skill-installer\SKILL.md` |
 | `subagent-driven-development` | Use when executing implementation plans with independent tasks in the current session | user | `C:\Users\elmas\.agents\skills\subagent-driven-development\SKILL.md` |
 | `supabase` | — | user | `C:\Users\elmas\.agents\skills\supabase\SKILL.md` |
 | `supabase-postgres-best-practices` | — | user | `C:\Users\elmas\.agents\skills\supabase-postgres-best-practices\SKILL.md` |
 | `systematic-debugging` | Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes | user | `C:\Users\elmas\.agents\skills\systematic-debugging\SKILL.md` |
-| `technical-change-tracker` | — | user | `C:\Users\elmas\.agents\skills\technical-change-tracker\SKILL.md` |
+| `technical-change-tracker` | — | project | `C:\Users\elmas\pi-telegram-bridge\.agents\skills\technical-change-tracker\SKILL.md` |
 | `test-driven-development` | Use when implementing any feature or bugfix, before writing implementation code | user | `C:\Users\elmas\.agents\skills\test-driven-development\SKILL.md` |
 | `tmux` | — | user | `C:\Users\elmas\.agents\skills\tmux\SKILL.md` |
 | `verification-before-completion` | Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always | user | `C:\Users\elmas\.agents\skills\verification-before-completion\SKILL.md` |

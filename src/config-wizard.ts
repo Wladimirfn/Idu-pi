@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import type { AgentProfile, AgentWorkspaceMode } from "./config.js";
 import { isAllowedCwd } from "./config.js";
@@ -20,11 +20,21 @@ export type ConfigWizardReport = {
 	workspaceRoot: string;
 	activeProfileId: string;
 	agentProfiles: AgentProfile[];
+	labAgentCount: number;
 	piArgs: string[];
 	assets: {
 		skills: AssetStatus;
 		registry: AssetStatus;
 		mcp: AssetStatus;
+	};
+	workspace: {
+		root: AssetStatus;
+		reports: AssetStatus;
+		workspaces: AssetStatus;
+	};
+	necessarySkills: {
+		present: string[];
+		missing: string[];
 	};
 	warnings: string[];
 	recommendedNext: string;
@@ -48,8 +58,33 @@ export type InitAssetsResult = {
 	existing: string[];
 };
 
+export type InitWorkspaceResult = {
+	workspaceRoot: string;
+	created: string[];
+	existing: string[];
+};
+
+export type SkillsSyncResult = {
+	projectPath: string;
+	sourceSkillsDir: string;
+	copied: string[];
+	existing: string[];
+	missing: string[];
+	indexPath: string;
+};
+
+export const NECESSARY_PROJECT_SKILLS = [
+	"bug-hunter",
+	"codebase-audit-pre-push",
+	"performance-optimizer",
+	"skill-check",
+	"technical-change-tracker",
+	"jq",
+] as const;
+
 const SKILLS_DIR = ".agents/skills";
 const SKILLS_KEEP = ".agents/skills/.gitkeep";
+const SKILL_INDEX = ".agents/skills/INDEX.md";
 const REGISTRY_FILE = ".atl/skill-registry.md";
 const MCP_CONFIG = ".mcp/config.json";
 
@@ -108,6 +143,42 @@ function createFileIfMissing(
 	result.created.push(relativePath);
 }
 
+function ensureDirectory(
+	root: string,
+	relativePath: string,
+	result: InitWorkspaceResult,
+): void {
+	const path = join(root, relativePath);
+	if (existsSync(path)) {
+		result.existing.push(relativePath);
+		return;
+	}
+	mkdirSync(path, { recursive: true });
+	result.created.push(relativePath);
+}
+
+function presentNecessarySkills(projectPath: string): string[] {
+	return NECESSARY_PROJECT_SKILLS.filter((skill) =>
+		existsSync(join(projectPath, SKILLS_DIR, skill, "SKILL.md")),
+	);
+}
+
+function writeLocalSkillIndex(projectPath: string): string {
+	const skillsRoot = join(projectPath, SKILLS_DIR);
+	mkdirSync(skillsRoot, { recursive: true });
+	const entries = existsSync(skillsRoot)
+		? readdirSync(skillsRoot, { withFileTypes: true })
+				.filter((entry) => entry.isDirectory())
+				.map((entry) => entry.name)
+				.filter((name) => existsSync(join(skillsRoot, name, "SKILL.md")))
+				.sort()
+		: [];
+	const content = `# Project Skill Index\n\nRead this index first, then open only the matching SKILL.md.\n\n| Skill | Path |\n| --- | --- |\n${entries.map((name) => `| ${name} | .agents/skills/${name}/SKILL.md |`).join("\n")}\n`;
+	const indexPath = join(projectPath, SKILL_INDEX);
+	writeFileSync(indexPath, content, "utf8");
+	return indexPath;
+}
+
 function safeRelative(projectPath: string, path: string): string {
 	return relative(projectPath, path).replace(/\\/gu, "/");
 }
@@ -120,6 +191,15 @@ export function inspectProjectConfig(
 		registry: asset(options.projectPath, "Skill registry", REGISTRY_FILE),
 		mcp: asset(options.projectPath, "MCP config", MCP_CONFIG),
 	};
+	const workspace = {
+		root: asset(options.workspaceRoot, "Workspace root", "."),
+		reports: asset(options.workspaceRoot, "Reports", "reports"),
+		workspaces: asset(options.workspaceRoot, "Agent workspaces", "workspaces"),
+	};
+	const presentSkills = presentNecessarySkills(options.projectPath);
+	const missingSkills = NECESSARY_PROJECT_SKILLS.filter(
+		(skill) => !presentSkills.includes(skill),
+	);
 	const allowed = isAllowedCwd(options.projectPath, options.allowedRoots);
 	const isGitRepo = options.isGitRepo ?? detectGitRepo(options.projectPath);
 	const warnings: string[] = [];
@@ -131,6 +211,16 @@ export function inspectProjectConfig(
 	if (options.workspaceMode !== "clone") {
 		warnings.push(
 			"AGENT_WORKSPACE_MODE no está en clone; los laboratorios no quedan aislados.",
+		);
+	}
+	if (!workspace.root.exists || !workspace.reports.exists || !workspace.workspaces.exists) {
+		warnings.push(
+			"Falta inicializar AGENT_WORKSPACE_ROOT con reports/ y workspaces/.",
+		);
+	}
+	if (missingSkills.length) {
+		warnings.push(
+			`Faltan skills project-local necesarias: ${missingSkills.join(", ")}.`,
 		);
 	}
 	if (options.agentProfiles.length < 2) {
@@ -150,9 +240,15 @@ export function inspectProjectConfig(
 
 	const missingAsset =
 		!assets.skills.exists || !assets.registry.exists || !assets.mcp.exists;
-	const recommendedNext = missingAsset
-		? "/config init_assets"
-		: "/config doctor";
+	const missingWorkspace =
+		!workspace.root.exists || !workspace.reports.exists || !workspace.workspaces.exists;
+	const recommendedNext = missingWorkspace
+		? "/config init_workspace"
+		: missingAsset
+			? "/config init_assets"
+			: missingSkills.length
+				? "/config skills_sync"
+				: "/config doctor";
 
 	return {
 		projectId: options.projectId,
@@ -163,8 +259,14 @@ export function inspectProjectConfig(
 		workspaceRoot: options.workspaceRoot,
 		activeProfileId: options.activeProfileId,
 		agentProfiles: options.agentProfiles,
+		labAgentCount: Math.max(0, options.agentProfiles.length - 1),
 		piArgs: options.piArgs,
 		assets,
+		workspace,
+		necessarySkills: {
+			present: presentSkills,
+			missing: missingSkills,
+		},
 		warnings,
 		recommendedNext,
 	};
@@ -179,6 +281,50 @@ export function initProjectAssets(projectPath: string): InitAssetsResult {
 	return result;
 }
 
+export function initWorkspaceRoot(workspaceRoot: string): InitWorkspaceResult {
+	const result: InitWorkspaceResult = {
+		workspaceRoot,
+		created: [],
+		existing: [],
+	};
+	mkdirSync(workspaceRoot, { recursive: true });
+	ensureDirectory(workspaceRoot, "reports", result);
+	ensureDirectory(workspaceRoot, "workspaces", result);
+	return result;
+}
+
+export function syncNecessarySkills(
+	sourceSkillsDir: string,
+	projectPath: string,
+): SkillsSyncResult {
+	const result: SkillsSyncResult = {
+		projectPath,
+		sourceSkillsDir,
+		copied: [],
+		existing: [],
+		missing: [],
+		indexPath: join(projectPath, SKILL_INDEX),
+	};
+	mkdirSync(join(projectPath, SKILLS_DIR), { recursive: true });
+	for (const skill of NECESSARY_PROJECT_SKILLS) {
+		const source = join(sourceSkillsDir, skill);
+		const sourceSkill = join(source, "SKILL.md");
+		const destination = join(projectPath, SKILLS_DIR, skill);
+		if (!existsSync(sourceSkill)) {
+			result.missing.push(skill);
+			continue;
+		}
+		if (existsSync(destination)) {
+			result.existing.push(skill);
+			continue;
+		}
+		cpSync(source, destination, { recursive: true });
+		result.copied.push(skill);
+	}
+	result.indexPath = writeLocalSkillIndex(projectPath);
+	return result;
+}
+
 export function formatConfigOverview(report: ConfigWizardReport): string {
 	return `Configuración Idu-pi
 
@@ -190,11 +336,18 @@ ${marker(report.workspaceMode === "clone")} Workspace mode: ${report.workspaceMo
 Agentes
 ${marker(report.agentProfiles.length > 1)} Perfiles configurados: ${report.agentProfiles.length}
 ✅ Agente activo: ${report.activeProfileId}
+✅ Agentes lab: ${report.labAgentCount}
+
+Workspace root
+${marker(report.workspace.root.exists)} ${report.workspaceRoot}
+${marker(report.workspace.reports.exists)} reports/
+${marker(report.workspace.workspaces.exists)} workspaces/
 
 Project-local assets
 ${marker(report.assets.skills.exists)} ${report.assets.skills.relativePath}
 ${marker(report.assets.registry.exists)} ${report.assets.registry.relativePath}
 ${marker(report.assets.mcp.exists)} ${report.assets.mcp.relativePath}
+${marker(!report.necessarySkills.missing.length)} Skills necesarias: ${report.necessarySkills.present.length}/${NECESSARY_PROJECT_SKILLS.length}
 
 ${report.warnings.length ? `Advertencias:\n${report.warnings.map((warning) => `- ${warning}`).join("\n")}\n\n` : ""}Siguiente recomendado:
 ${report.recommendedNext}`;
@@ -212,6 +365,9 @@ Proyecto
 Workspaces
 - mode: ${report.workspaceMode}
 - root: ${report.workspaceRoot}
+- root existe: ${report.workspace.root.exists ? "sí" : "no"}
+- reports existe: ${report.workspace.reports.exists ? "sí" : "no"}
+- workspaces existe: ${report.workspace.workspaces.exists ? "sí" : "no"}
 
 Agentes
 ${report.agentProfiles.map((profile, index) => `- ${index + 1}. ${profile.label} (${profile.id})${profile.id === report.activeProfileId ? " activo" : ""}`).join("\n")}
@@ -221,6 +377,10 @@ Project-local assets
 - ${report.assets.registry.label}: ${report.assets.registry.exists ? "existe" : "falta"} (${safeRelative(report.projectPath, report.assets.registry.path)})
 - ${report.assets.mcp.label}: ${report.assets.mcp.exists ? "existe" : "falta"} (${safeRelative(report.projectPath, report.assets.mcp.path)})
 
+Skills necesarias
+- presentes: ${report.necessarySkills.present.length ? report.necessarySkills.present.join(", ") : "ninguna"}
+- faltantes: ${report.necessarySkills.missing.length ? report.necessarySkills.missing.join(", ") : "ninguna"}
+
 Pi flags relevantes
 - skill registry/lens desactivado: ${report.piArgs.some((arg) => arg === "--no-skill-registry" || arg === "--no-lens") ? "sí" : "no"}
 
@@ -229,6 +389,29 @@ ${report.warnings.length ? report.warnings.map((warning) => `- ${warning}`).join
 
 Siguiente recomendado:
 ${report.recommendedNext}`;
+}
+
+export function formatInitWorkspaceResult(result: InitWorkspaceResult): string {
+	const created = result.created.length
+		? result.created.map((path) => `- ${path}`).join("\n")
+		: "- ninguno";
+	const existing = result.existing.length
+		? result.existing.map((path) => `- ${path}`).join("\n")
+		: "- ninguno";
+	return `Workspace root\n${result.workspaceRoot}\n\nCreados:\n${created}\n\nYa existían:\n${existing}`;
+}
+
+export function formatSkillsSyncResult(result: SkillsSyncResult): string {
+	const copied = result.copied.length
+		? result.copied.map((skill) => `- ${skill}`).join("\n")
+		: "- ninguna";
+	const existing = result.existing.length
+		? result.existing.map((skill) => `- ${skill}`).join("\n")
+		: "- ninguna";
+	const missing = result.missing.length
+		? result.missing.map((skill) => `- ${skill}`).join("\n")
+		: "- ninguna";
+	return `Skills sincronizadas\n\nOrigen:\n${result.sourceSkillsDir}\n\nCopiadas:\n${copied}\n\nYa existían:\n${existing}\n\nFaltantes en origen:\n${missing}\n\nÍndice actualizado:\n${result.indexPath}`;
 }
 
 export function formatInitAssetsResult(result: InitAssetsResult): string {

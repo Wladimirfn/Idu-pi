@@ -145,8 +145,12 @@ Si falta el tipo o no es válido, el bot muestra ayuda breve.
 ```text
 /config
 /config doctor
+/config init_workspace
 /config init_assets
+/config skills_sync
 ```
+
+`/config init_workspace` verifica/crea `reports/` y `workspaces/` bajo `AGENT_WORKSPACE_ROOT`.
 
 `/config init_assets` crea estructura project-local mínima para skills y MCP:
 
@@ -155,6 +159,8 @@ Si falta el tipo o no es válido, el bot muestra ayuda breve.
 .atl/skill-registry.md
 .mcp/config.json
 ```
+
+`/config skills_sync` copia solo las skills necesarias para este bridge desde el proyecto fuente registrado `sistema_de_mantencion` y actualiza `.agents/skills/INDEX.md`.
 
 No ejecuta MCP, no copia secretos, no commitea y no pushea.
 
