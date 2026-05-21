@@ -300,7 +300,7 @@ export const TELEGRAM_COMMANDS: TelegramCommandEntry[] = [
 
 export const CLI_COMMANDS: LocalCommandEntry[] = [
 	{ label: "Instalar dependencias", command: "corepack pnpm install" },
-	{ label: "Setup inicial", command: "corepack pnpm setup" },
+	{ label: "Setup inicial", command: "corepack pnpm run setup" },
 	{ label: "Desarrollo", command: "corepack pnpm dev" },
 	{ label: "Iniciar build existente", command: "corepack pnpm start" },
 	{ label: "Servicio bridge", command: "corepack pnpm serve" },

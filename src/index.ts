@@ -86,6 +86,12 @@ import {
 } from "./quick-commands.js";
 import { buildSafePushReport } from "./safe-push.js";
 import {
+	LEGACY_SESSION_COMMANDS,
+	PATH_SESSION_COMMANDS,
+	QUICK_PROMPT_COMMANDS,
+	WORK_SESSION_COMMANDS,
+} from "./telegram-command-registry.js";
+import {
 	buildTaskPrompt,
 	formatTaskTemplateHelp,
 	parseTaskTemplateCommand,
@@ -641,7 +647,7 @@ bot.command("dashboard", async (ctx) => {
 	await ctx.reply(buildDashboardText(dashboardState()));
 });
 
-bot.command(["review", "fix_tests", "audit"], async (ctx) => {
+bot.command(QUICK_PROMPT_COMMANDS, async (ctx) => {
 	if (!(await guard(ctx))) return;
 	const command = ctx.message?.text.split(/\s+/u)[0]?.replace(/^\//u, "") ?? "";
 	const prompt = buildQuickCommandPrompt(command);
@@ -1184,7 +1190,7 @@ bot.command("useproject", async (ctx) => {
 	}
 });
 
-bot.command(["trabajos", "work"], async (ctx) => {
+bot.command(WORK_SESSION_COMMANDS, async (ctx) => {
 	if (!(await guard(ctx))) return;
 	const arg = commandArg(ctx.message?.text ?? "").toLowerCase();
 	const includeAuxiliary = arg === "all";
@@ -1270,7 +1276,7 @@ bot.command("last", async (ctx) => {
 	await resumeSessionPick(ctx, pick);
 });
 
-bot.command(["cwd", "new"], async (ctx) => {
+bot.command(PATH_SESSION_COMMANDS, async (ctx) => {
 	if (!(await guard(ctx))) return;
 	const arg = commandArg(ctx.message?.text ?? "");
 	if (!arg) {
@@ -1408,7 +1414,7 @@ bot.command("cancel", async (ctx) => {
 	);
 });
 
-bot.command(["sessions", "use", "approve", "reject"], async (ctx) => {
+bot.command(LEGACY_SESSION_COMMANDS, async (ctx) => {
 	if (!(await guard(ctx))) return;
 	await ctx.reply(
 		"Este comando queda para la próxima iteración. Esta versión mantiene una sesión RPC por CWD.",

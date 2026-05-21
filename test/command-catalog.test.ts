@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import {
 	formatBotFatherCommands,
@@ -7,6 +8,7 @@ import {
 	telegramCommandsForApi,
 	TELEGRAM_COMMANDS,
 } from "../src/command-catalog.js";
+import { PUBLIC_TELEGRAM_HANDLER_COMMANDS } from "../src/telegram-command-registry.js";
 
 test("formatHelpText includes primary Telegram commands", () => {
 	const text = formatHelpText();
@@ -38,6 +40,7 @@ test("formatCommandCatalog includes argument examples and local command surfaces
 	assert.match(text, /\/task bug <detalle>/);
 	assert.match(text, /\/queue_detail/);
 	assert.match(text, /CLI pnpm/);
+	assert.match(text, /corepack pnpm run setup/);
 	assert.match(text, /corepack pnpm test/);
 	assert.match(text, /Batch directos/);
 	assert.match(text, /start-pi-telegram-bridge\.bat/);
@@ -68,6 +71,40 @@ test("formatBotFatherCommands emits valid command-description lines", () => {
 test("telegram command catalog has unique commands", () => {
 	const commands = TELEGRAM_COMMANDS.map((entry) => entry.command);
 	assert.equal(new Set(commands).size, commands.length);
+});
+
+test("telegram command catalog matches registered handlers", () => {
+	const catalogCommands = TELEGRAM_COMMANDS.map(
+		(entry) => entry.command,
+	).sort();
+	const registryCommands = [...PUBLIC_TELEGRAM_HANDLER_COMMANDS].sort();
+	const source = readFileSync("src/index.ts", "utf8");
+	const registeredCommands = new Set<string>();
+	const registryGroups: Record<string, readonly string[]> = {
+		QUICK_PROMPT_COMMANDS: ["review", "fix_tests", "audit"],
+		WORK_SESSION_COMMANDS: ["trabajos", "work"],
+		PATH_SESSION_COMMANDS: ["cwd", "new"],
+		LEGACY_SESSION_COMMANDS: ["sessions", "use", "approve", "reject"],
+	};
+
+	for (const match of source.matchAll(/bot\.command\(([^,]+),/gu)) {
+		const commandExpression = match[1]?.trim();
+		if (!commandExpression) continue;
+		const literal = /^"([a-z0-9_]+)"$/u.exec(commandExpression);
+		if (literal) {
+			registeredCommands.add(literal[1]);
+			continue;
+		}
+		const group = registryGroups[commandExpression];
+		assert.ok(
+			group,
+			`Unrecognized bot.command expression: ${commandExpression}`,
+		);
+		for (const command of group) registeredCommands.add(command);
+	}
+
+	assert.deepEqual(registryCommands, catalogCommands);
+	assert.deepEqual([...registeredCommands].sort(), catalogCommands);
 });
 
 test("telegramCommandsForApi creates setMyCommands payload from catalog", () => {
