@@ -12,9 +12,11 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 import {
 	formatProjectFlowDraftResult,
+	formatProjectFlowDraftReview,
 	formatProjectFlowSuggestions,
 	formatProjectMapScan,
 	scanProjectMap,
+	reviewProjectFlowsDraft,
 	saveProjectFlowsDraft,
 	suggestProjectFlowsFromScan,
 	type ProjectMapScanResult,
@@ -678,4 +680,206 @@ test("formatProjectFlowDraftResult shows draft path and review warning", () => {
 	assert.match(text, /project-flows-draft-/u);
 	assert.match(text, /revisalo antes de copiarlo/u);
 	assert.match(text, /No modifiqué config\/project-flows\.json/u);
+});
+
+test("reviewProjectFlowsDraft reviews valid draft", () => {
+	const projectPath = tempProject();
+	const reportsPath = join(tempProject(), "reports");
+	writeFixture(projectPath);
+	const flows = mappedFlows();
+	flows.uiElements = [];
+	const draft = saveProjectFlowsDraft(projectPath, flows, reportsPath);
+
+	const review = reviewProjectFlowsDraft(
+		draft.path,
+		mappedFlows(),
+		reportsPath,
+	);
+
+	assert.equal(review.valid, true);
+	assert.equal(review.path, draft.path);
+});
+
+test("reviewProjectFlowsDraft latest takes newest draft", () => {
+	const projectPath = tempProject();
+	const reportsPath = join(tempProject(), "reports");
+	writeFixture(projectPath);
+	const oldDraft = saveProjectFlowsDraft(
+		projectPath,
+		mappedFlows(),
+		reportsPath,
+		new Date("2026-01-02T03:04:05Z"),
+	);
+	const latestDraft = saveProjectFlowsDraft(
+		projectPath,
+		mappedFlows(),
+		reportsPath,
+		new Date("2026-01-02T03:04:06Z"),
+	);
+
+	const review = reviewProjectFlowsDraft("latest", mappedFlows(), reportsPath);
+
+	assert.equal(review.path, latestDraft.path);
+	assert.notEqual(review.path, oldDraft.path);
+});
+
+test("reviewProjectFlowsDraft detects invalid draft", () => {
+	const reportsPath = join(tempProject(), "reports");
+	mkdirSync(reportsPath, { recursive: true });
+	const invalidPath = join(reportsPath, "project-flows-draft-invalid.json");
+	writeFileSync(invalidPath, JSON.stringify({ warning: "bad" }), "utf8");
+
+	const review = reviewProjectFlowsDraft(
+		invalidPath,
+		mappedFlows(),
+		reportsPath,
+	);
+	const text = formatProjectFlowDraftReview(review);
+
+	assert.equal(review.valid, false);
+	assert.match(text, /Draft inválido/u);
+	assert.match(text, /generatedAt/u);
+});
+
+test("reviewProjectFlowsDraft requires projectPath", () => {
+	const reportsPath = join(tempProject(), "reports");
+	mkdirSync(reportsPath, { recursive: true });
+	const invalidPath = join(
+		reportsPath,
+		"project-flows-draft-no-project-path.json",
+	);
+	writeFileSync(
+		invalidPath,
+		JSON.stringify({
+			generatedAt: "2026-01-02T03:04:05.000Z",
+			warning: "Borrador sugerido, no es fuente de verdad",
+			suggestedScreens: [],
+			suggestedUiElements: [],
+			suggestedDataStores: [],
+			suggestedFlows: [],
+		}),
+		"utf8",
+	);
+
+	const review = reviewProjectFlowsDraft(
+		invalidPath,
+		mappedFlows(),
+		reportsPath,
+	);
+
+	assert.equal(review.valid, false);
+	assert.match(review.errors.join("\n"), /projectPath/u);
+});
+
+test("reviewProjectFlowsDraft latest returns invalid review when no draft exists", () => {
+	const reportsPath = join(tempProject(), "reports");
+	mkdirSync(reportsPath, { recursive: true });
+
+	const review = reviewProjectFlowsDraft("latest", mappedFlows(), reportsPath);
+
+	assert.equal(review.valid, false);
+	assert.match(review.errors.join("\n"), /No encontré borradores/u);
+});
+
+test("reviewProjectFlowsDraft detects new screens", () => {
+	const projectPath = tempProject();
+	const reportsPath = join(tempProject(), "reports");
+	writeFixture(projectPath);
+	writeFileSync(join(projectPath, "reports.html"), "<h1>Reports</h1>", "utf8");
+	const draft = saveProjectFlowsDraft(projectPath, mappedFlows(), reportsPath);
+
+	const review = reviewProjectFlowsDraft(
+		draft.path,
+		mappedFlows(),
+		reportsPath,
+	);
+
+	assert.ok(review.newScreens.some((screen) => screen.path === "reports.html"));
+});
+
+test("reviewProjectFlowsDraft detects new uiElements", () => {
+	const projectPath = tempProject();
+	const reportsPath = join(tempProject(), "reports");
+	writeFixture(projectPath);
+	const flows = mappedFlows();
+	flows.uiElements = [];
+	const draft = saveProjectFlowsDraft(projectPath, flows, reportsPath);
+
+	const review = reviewProjectFlowsDraft(draft.path, flows, reportsPath);
+
+	assert.ok(
+		review.newUiElements.some((element) => element.id === "create-machine"),
+	);
+});
+
+test("reviewProjectFlowsDraft detects new dataStores", () => {
+	const projectPath = tempProject();
+	const reportsPath = join(tempProject(), "reports");
+	writeFixture(projectPath);
+	const flows = mappedFlows();
+	flows.dataStores = [];
+	const draft = saveProjectFlowsDraft(projectPath, flows, reportsPath);
+
+	const review = reviewProjectFlowsDraft(draft.path, flows, reportsPath);
+
+	assert.ok(
+		review.newDataStores.some((store) => store.type === "localStorage"),
+	);
+});
+
+test("reviewProjectFlowsDraft detects new flows", () => {
+	const projectPath = tempProject();
+	const reportsPath = join(tempProject(), "reports");
+	writeFixture(projectPath);
+	const flows = mappedFlows();
+	flows.flows = [];
+	const draft = saveProjectFlowsDraft(projectPath, flows, reportsPath);
+
+	const review = reviewProjectFlowsDraft(draft.path, flows, reportsPath);
+
+	assert.ok(review.newFlows.some((flow) => flow.trigger === "createMachine"));
+});
+
+test("reviewProjectFlowsDraft detects duplicates with current flows", () => {
+	const reportsPath = join(tempProject(), "reports");
+	mkdirSync(reportsPath, { recursive: true });
+	const draftPath = join(
+		reportsPath,
+		"project-flows-draft-20260102-030405.json",
+	);
+	writeFileSync(
+		draftPath,
+		JSON.stringify({
+			generatedAt: "2026-01-02T03:04:05.000Z",
+			projectPath: "demo",
+			warning: "Borrador sugerido, no es fuente de verdad",
+			suggestedScreens: [],
+			suggestedUiElements: [
+				{ id: "create-machine", type: "button", expectedAction: "x" },
+			],
+			suggestedDataStores: [],
+			suggestedFlows: [],
+		}),
+		"utf8",
+	);
+
+	const review = reviewProjectFlowsDraft(draftPath, mappedFlows(), reportsPath);
+
+	assert.match(review.duplicates.join("\n"), /uiElement.*create-machine/u);
+});
+
+test("reviewProjectFlowsDraft does not write files", () => {
+	const projectPath = tempProject();
+	const reportsPath = join(tempProject(), "reports");
+	writeFixture(projectPath);
+	const draft = saveProjectFlowsDraft(projectPath, mappedFlows(), reportsPath);
+	const before = readFileSync(draft.path, "utf8");
+
+	reviewProjectFlowsDraft(draft.path, mappedFlows(), reportsPath);
+
+	assert.equal(readFileSync(draft.path, "utf8"), before);
+	assert.equal(
+		existsSync(join(projectPath, "config", "project-flows.json")),
+		false,
+	);
 });

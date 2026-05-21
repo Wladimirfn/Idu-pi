@@ -36,8 +36,10 @@ import {
 } from "./lab.js";
 import {
 	formatProjectFlowDraftResult,
+	formatProjectFlowDraftReview,
 	formatProjectFlowSuggestions,
 	formatProjectMapScan,
+	reviewProjectFlowsDraft,
 	saveProjectFlowsDraft,
 	scanProjectMap,
 	suggestProjectFlowsFromScan,
@@ -680,7 +682,9 @@ bot.command("agents", async (ctx) => {
 
 bot.command("config", async (ctx) => {
 	if (!(await guard(ctx))) return;
-	const arg = commandArg(ctx.message?.text ?? "").toLowerCase();
+	const rawArg = commandArg(ctx.message?.text ?? "");
+	const [subcommand = "", ...restArgs] = rawArg.split(/\s+/u).filter(Boolean);
+	const arg = subcommand.toLowerCase();
 	if (!arg) {
 		await replyLong(ctx, formatConfigOverview(currentConfigReport()));
 		return;
@@ -783,6 +787,25 @@ bot.command("config", async (ctx) => {
 		);
 		return;
 	}
+	if (arg === "review_project_flows_draft") {
+		if (!isAllowedCwd(currentCwd, config.allowedRoots)) {
+			await ctx.reply(
+				"No puedo revisar borrador project-flows: el proyecto activo está fuera de ALLOWED_ROOTS.",
+			);
+			return;
+		}
+		await replyLong(
+			ctx,
+			formatProjectFlowDraftReview(
+				reviewProjectFlowsDraft(
+					restArgs.join(" ") || "latest",
+					loadProjectFlows(currentCwd),
+					join(config.agentWorkspaceRoot, "reports"),
+				),
+			),
+		);
+		return;
+	}
 	if (arg === "db_init") {
 		await replyLong(ctx, formatInitLabDbResult(initLabDb(labDbPath())));
 		return;
@@ -810,7 +833,7 @@ bot.command("config", async (ctx) => {
 		return;
 	}
 	await ctx.reply(
-		"Uso: /config | /config doctor | /config init_workspace | /config init_assets | /config init_project_config | /config inspect_project_map | /config scan_project_map | /config suggest_project_flows | /config draft_project_flows | /config skills_sync | /config db_init | /config sync_commands",
+		"Uso: /config | /config doctor | /config init_workspace | /config init_assets | /config init_project_config | /config inspect_project_map | /config scan_project_map | /config suggest_project_flows | /config draft_project_flows | /config review_project_flows_draft [latest|ruta] | /config skills_sync | /config db_init | /config sync_commands",
 	);
 });
 

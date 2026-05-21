@@ -63,6 +63,28 @@ export type ProjectFlowDraftResult = {
 	suggestions: ProjectFlowSuggestions;
 };
 
+export type ProjectFlowDraftReview = {
+	path: string;
+	valid: boolean;
+	errors: string[];
+	newScreens: ProjectScreen[];
+	newUiElements: ProjectUiElement[];
+	newDataStores: ProjectDataStore[];
+	newFlows: ProjectFlow[];
+	duplicates: string[];
+	conflicts: string[];
+};
+
+type ProjectFlowDraftFile = {
+	generatedAt: string;
+	projectPath: string;
+	warning: string;
+	suggestedScreens: ProjectScreen[];
+	suggestedUiElements: ProjectUiElement[];
+	suggestedDataStores: ProjectDataStore[];
+	suggestedFlows: ProjectFlow[];
+};
+
 export type ProjectMapScanResult = {
 	projectPath: string;
 	mapSource: "default" | "project-local";
@@ -316,6 +338,138 @@ ${JSON.stringify(
 Solo lectura: No escribí archivos, no modifiqué project-flows, no usé IA, no ejecuté código del proyecto.`;
 }
 
+export function reviewProjectFlowsDraft(
+	draftPathOrLatest: string,
+	flows: ProjectFlows,
+	reportsPath: string,
+): ProjectFlowDraftReview {
+	const errors: string[] = [];
+	let path = draftPathOrLatest;
+	try {
+		path =
+			draftPathOrLatest === "latest"
+				? latestDraftPath(reportsPath)
+				: draftPathOrLatest;
+	} catch (error) {
+		errors.push(error instanceof Error ? error.message : String(error));
+	}
+	let draft: ProjectFlowDraftFile | undefined;
+	try {
+		draft = JSON.parse(readFileSync(path, "utf8")) as ProjectFlowDraftFile;
+	} catch (error) {
+		errors.push(
+			`No pude leer draft: ${error instanceof Error ? error.message : String(error)}`,
+		);
+	}
+	if (draft) errors.push(...validateDraftFile(draft));
+	const existingScreens = new Set(
+		flows.screens.map((screen) => normalizePath(screen.path)),
+	);
+	const existingUi = new Set(flows.uiElements.map((element) => element.id));
+	const existingStores = new Set(
+		flows.dataStores.flatMap((store) => [store.id, store.type]),
+	);
+	const existingFlows = new Set(flows.flows.map((flow) => flow.trigger));
+	const duplicates: string[] = [];
+	const conflicts: string[] = [];
+	const suggestedScreens = Array.isArray(draft?.suggestedScreens)
+		? draft.suggestedScreens
+		: [];
+	const suggestedUiElements = Array.isArray(draft?.suggestedUiElements)
+		? draft.suggestedUiElements
+		: [];
+	const suggestedDataStores = Array.isArray(draft?.suggestedDataStores)
+		? draft.suggestedDataStores
+		: [];
+	const suggestedFlows = Array.isArray(draft?.suggestedFlows)
+		? draft.suggestedFlows
+		: [];
+	const newScreens = suggestedScreens.filter(
+		(screen) => !existingScreens.has(normalizePath(screen.path)),
+	);
+	const newUiElements =
+		suggestedUiElements.filter((element) => {
+			if (existingUi.has(element.id)) {
+				duplicates.push(`uiElement duplicado: ${element.id}`);
+				return false;
+			}
+			return true;
+		}) ?? [];
+	const newDataStores =
+		suggestedDataStores.filter((store) => {
+			if (existingStores.has(store.id) || existingStores.has(store.type)) {
+				duplicates.push(`dataStore duplicado: ${store.id}`);
+				return false;
+			}
+			return true;
+		}) ?? [];
+	const newFlows =
+		suggestedFlows.filter((flow) => {
+			if (existingFlows.has(flow.trigger)) {
+				duplicates.push(`flow duplicado: ${flow.trigger}`);
+				return false;
+			}
+			return true;
+		}) ?? [];
+	for (const screen of suggestedScreens) {
+		const existing = flows.screens.find(
+			(current) =>
+				current.id === screen.id &&
+				normalizePath(current.path) !== normalizePath(screen.path),
+		);
+		if (existing) conflicts.push(`screen conflictivo: ${screen.id}`);
+	}
+	return {
+		path,
+		valid: errors.length === 0,
+		errors,
+		newScreens,
+		newUiElements,
+		newDataStores,
+		newFlows,
+		duplicates,
+		conflicts,
+	};
+}
+
+export function formatProjectFlowDraftReview(
+	review: ProjectFlowDraftReview,
+): string {
+	if (!review.valid) {
+		return `Draft inválido
+
+Ruta:
+${review.path}
+
+Errores:
+${review.errors.map((error) => `- ${error}`).join("\n")}
+
+No modifiqué config/project-flows.json, no escribí archivos, no usé IA, no ejecuté código del proyecto.`;
+	}
+	return `Revisión de borrador project-flows
+
+Ruta:
+${review.path}
+
+Este borrador aún no es fuente de verdad. Revisa antes de copiarlo o aprobarlo.
+
+Resumen:
+- screens nuevas sugeridas: ${review.newScreens.length}
+- uiElements nuevos sugeridos: ${review.newUiElements.length}
+- dataStores nuevos sugeridos: ${review.newDataStores.length}
+- flows nuevos sugeridos: ${review.newFlows.length}
+- posibles duplicados: ${review.duplicates.length}
+- posibles conflictos: ${review.conflicts.length}
+
+Duplicados:
+${review.duplicates.length ? review.duplicates.map((item) => `- ${item}`).join("\n") : "- ninguno"}
+
+Conflictos:
+${review.conflicts.length ? review.conflicts.map((item) => `- ${item}`).join("\n") : "- ninguno"}
+
+No modifiqué config/project-flows.json, no escribí archivos, no usé IA, no ejecuté código del proyecto.`;
+}
+
 export function saveProjectFlowsDraft(
 	projectPath: string,
 	flows: ProjectFlows,
@@ -362,6 +516,34 @@ Contenido:
 Esto es un borrador sugerido, no es fuente de verdad: revisalo antes de copiarlo a config/project-flows.json.
 
 No modifiqué config/project-flows.json, no usé IA, no ejecuté código del proyecto.`;
+}
+
+function validateDraftFile(value: Partial<ProjectFlowDraftFile>): string[] {
+	const errors: string[] = [];
+	if (typeof value.generatedAt !== "string")
+		errors.push("generatedAt es obligatorio");
+	if (typeof value.projectPath !== "string")
+		errors.push("projectPath es obligatorio");
+	if (typeof value.warning !== "string") errors.push("warning es obligatorio");
+	if (!Array.isArray(value.suggestedScreens))
+		errors.push("suggestedScreens es obligatorio");
+	if (!Array.isArray(value.suggestedUiElements))
+		errors.push("suggestedUiElements es obligatorio");
+	if (!Array.isArray(value.suggestedDataStores))
+		errors.push("suggestedDataStores es obligatorio");
+	if (!Array.isArray(value.suggestedFlows))
+		errors.push("suggestedFlows es obligatorio");
+	return errors;
+}
+
+function latestDraftPath(reportsPath: string): string {
+	const candidates = readdirSync(reportsPath)
+		.filter((file) => /^project-flows-draft-.*\.json$/u.test(file))
+		.sort();
+	const latest = candidates.at(-1);
+	if (!latest)
+		throw new Error(`No encontré borradores project-flows en ${reportsPath}`);
+	return join(reportsPath, latest);
 }
 
 function uniqueDraftPath(reportsPath: string, now: Date): string {
