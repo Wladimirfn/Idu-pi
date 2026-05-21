@@ -34,6 +34,8 @@ import {
 	parseLabDuration,
 	type LabDuration,
 } from "./lab.js";
+import { formatProjectMapScan, scanProjectMap } from "./project-map-scanner.js";
+import { loadProjectFlows } from "./project-flows.js";
 import {
 	formatLabRunResultLines,
 	labProfilesForIndexes,
@@ -725,6 +727,21 @@ bot.command("config", async (ctx) => {
 		);
 		return;
 	}
+	if (arg === "scan_project_map") {
+		if (!isAllowedCwd(currentCwd, config.allowedRoots)) {
+			await ctx.reply(
+				"No puedo escanear mapa: el proyecto activo está fuera de ALLOWED_ROOTS.",
+			);
+			return;
+		}
+		await replyLong(
+			ctx,
+			formatProjectMapScan(
+				scanProjectMap(currentCwd, loadProjectFlows(currentCwd)),
+			),
+		);
+		return;
+	}
 	if (arg === "db_init") {
 		await replyLong(ctx, formatInitLabDbResult(initLabDb(labDbPath())));
 		return;
@@ -752,7 +769,7 @@ bot.command("config", async (ctx) => {
 		return;
 	}
 	await ctx.reply(
-		"Uso: /config | /config doctor | /config init_workspace | /config init_assets | /config init_project_config | /config inspect_project_map | /config skills_sync | /config db_init | /config sync_commands",
+		"Uso: /config | /config doctor | /config init_workspace | /config init_assets | /config init_project_config | /config inspect_project_map | /config scan_project_map | /config skills_sync | /config db_init | /config sync_commands",
 	);
 });
 
