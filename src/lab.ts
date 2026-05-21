@@ -3,6 +3,10 @@ import type { AgentRouter } from "./agent-router.js";
 import type { BugFindingInput, ProposalInput } from "./lab-db.js";
 import { parseLabFindingsFromOutput } from "./lab-finding-parser.js";
 import {
+	loadLabProjectContext,
+	type LabProjectContext,
+} from "./lab-context.js";
+import {
 	createLabFindingRuleValidator,
 	validateParsedLabFindingForPersistence,
 	type LabFindingRuleValidator,
@@ -58,8 +62,15 @@ export function formatDurationChoices(): string {
 	).join("\n");
 }
 
-export function labPrompt(duration: LabDuration, agent: AgentProfile): string {
-	return `Modo laboratorio de tests para ${agent.label}. Profundidad: ${duration.label} (${duration.description}). Límite de seguridad: ${Math.round(duration.ms / 60_000)} minutos.
+export function labPrompt(
+	duration: LabDuration,
+	agent: AgentProfile,
+	projectContext?: LabProjectContext,
+): string {
+	const contextBlock = projectContext
+		? `\n\nContexto del proyecto real:\n${projectContext.text}`
+		: "";
+	return `Modo laboratorio de tests para ${agent.label}. Profundidad: ${duration.label} (${duration.description}). Límite de seguridad: ${Math.round(duration.ms / 60_000)} minutos.${contextBlock}
 
 Reglas obligatorias:
 - Trabajá solo dentro de tu workspace/clon.
@@ -247,8 +258,11 @@ export async function runTestLab(options: {
 	}
 
 	try {
+		const projectContext = loadLabProjectContext(options.projectPath);
 		const result = await Promise.race([
-			runtime.session.prompt(labPrompt(options.duration, options.profile)),
+			runtime.session.prompt(
+				labPrompt(options.duration, options.profile, projectContext),
+			),
 			new Promise<never>((_, reject) =>
 				setTimeout(
 					() => reject(new Error("LAB_TIMEOUT")),
