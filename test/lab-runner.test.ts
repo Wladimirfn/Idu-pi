@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -43,6 +43,21 @@ class FakeLabRunRecorder {
 class FailingLabRunRecorder {
 	recordLabRun(): void {
 		throw new Error("sqlite unavailable");
+	}
+}
+
+class JsonlOrderRecorder extends FakeLabRunRecorder {
+	jsonlPresentDuringRecord = false;
+	constructor(private workspaceRoot: string) {
+		super();
+	}
+
+	recordLabRun(record: LabRunRecord): void {
+		this.jsonlPresentDuringRecord = readFileSync(
+			join(this.workspaceRoot, "reports", "lab-runs.jsonl"),
+			"utf8",
+		).includes(`"id":"${record.id}"`);
+		super.recordLabRun(record);
 	}
 }
 
@@ -152,7 +167,7 @@ test("runTestLab records parsed finding after secondary lab run copy", async () 
 					title: "Build fails",
 					description: "Build exits with TypeScript errors.",
 					evidence: "corepack pnpm build exited with code 2",
-					severity: "high",
+					severity: "medium",
 					confidence: "medium",
 					proposal: {
 						proposalType: "fix",
@@ -184,6 +199,251 @@ test("runTestLab records parsed finding after secondary lab run copy", async () 
 		labRunRecorder.findings[0].proposal?.summary,
 		"Export the missing type.",
 	);
+});
+
+test("runTestLab allows valid finding registration after rule validation", async () => {
+	const session = new FakeSession(
+		"C:/w/spark",
+		false,
+		JSON.stringify({
+			role: "general",
+			summary: "Machine issue.",
+			findings: [
+				{
+					title: "Machine dashboard fails",
+					description: "The machines module shows stale data.",
+					evidence: "corepack pnpm test failed on machines dashboard test",
+					severity: "medium",
+					confidence: "high",
+					category: "code_quality",
+					proposal: {
+						summary: "Fix machines dashboard refresh.",
+						steps: ["Update machines dashboard data read"],
+						risk: "Low.",
+						requiresHumanApproval: false,
+					},
+				},
+			],
+		}),
+	);
+	const store = new LabReportStore(tempDir());
+	const labRunRecorder = new FakeLabRunRecorder();
+	const router = routerWithSession(session);
+	const profile = router.labProfiles()[0];
+
+	await runTestLab({
+		router,
+		profile,
+		duration: quickDepth,
+		projectId: "p",
+		projectPath: "C:/p",
+		store,
+		labRunRecorder,
+	});
+
+	assert.equal(labRunRecorder.findings.length, 1);
+	assert.equal(
+		labRunRecorder.findings[0].proposal?.summary,
+		"Fix machines dashboard refresh.",
+	);
+});
+
+test("runTestLab allows finding registration when rule validation warns", async () => {
+	const session = new FakeSession(
+		"C:/w/spark",
+		false,
+		JSON.stringify({
+			role: "general",
+			summary: "Billing issue.",
+			findings: [
+				{
+					title: "Billing module fails",
+					description: "The billing module shows stale data.",
+					evidence: "corepack pnpm test failed on billing dashboard test",
+					severity: "medium",
+					confidence: "high",
+					category: "code_quality",
+					proposal: {
+						summary: "Investigate billing module refresh.",
+						steps: ["Inspect billing module"],
+						risk: "Medium.",
+						requiresHumanApproval: false,
+					},
+				},
+			],
+		}),
+	);
+	const store = new LabReportStore(tempDir());
+	const labRunRecorder = new FakeLabRunRecorder();
+	const router = routerWithSession(session);
+	const profile = router.labProfiles()[0];
+
+	await runTestLab({
+		router,
+		profile,
+		duration: quickDepth,
+		projectId: "p",
+		projectPath: "C:/p",
+		store,
+		labRunRecorder,
+	});
+
+	assert.equal(labRunRecorder.findings.length, 1);
+	assert.equal(
+		labRunRecorder.findings[0].finding.title,
+		"Billing module fails",
+	);
+});
+
+test("runTestLab blocks dangerous proposal when rule validation fails critically", async () => {
+	const session = new FakeSession(
+		"C:/w/spark",
+		false,
+		JSON.stringify({
+			findings: [
+				{
+					title: "Critical store change",
+					description: "operations-db needs a dangerous migration.",
+					evidence: "corepack pnpm test failed on persistence migration",
+					severity: "critical",
+					confidence: "high",
+					proposal: {
+						summary: "Change operations-db persistence format.",
+						details: "Migrate operations-db records",
+						risk: "Critical.",
+						requiresHumanApproval: false,
+					},
+				},
+			],
+		}),
+	);
+	const store = new LabReportStore(tempDir());
+	const labRunRecorder = new FakeLabRunRecorder();
+	const router = routerWithSession(session);
+	const profile = router.labProfiles()[0];
+
+	const record = await runTestLab({
+		router,
+		profile,
+		duration: quickDepth,
+		projectId: "p",
+		projectPath: "C:/p",
+		store,
+		labRunRecorder,
+	});
+
+	assert.equal(record.status, "completed");
+	assert.equal(labRunRecorder.findings.length, 1);
+	assert.equal(labRunRecorder.findings[0].proposal, undefined);
+});
+
+test("runTestLab keeps registering findings when blueprint or flows fail to load", async () => {
+	for (const configName of ["project-blueprint.json", "project-flows.json"]) {
+		const projectPath = tempDir();
+		mkdirSync(join(projectPath, "config"), { recursive: true });
+		writeFileSync(join(projectPath, "config", configName), "{ invalid");
+		const session = new FakeSession(
+			"C:/w/spark",
+			false,
+			JSON.stringify({
+				findings: [
+					{
+						title: "Build fails",
+						description: "Build exits with TypeScript errors.",
+						evidence: "corepack pnpm build exited with code 2",
+						severity: "medium",
+						confidence: "medium",
+						proposal: { summary: "Export the missing type." },
+					},
+				],
+			}),
+		);
+		const store = new LabReportStore(tempDir());
+		const labRunRecorder = new FakeLabRunRecorder();
+		const router = routerWithSession(session);
+		const profile = router.labProfiles()[0];
+
+		const record = await runTestLab({
+			router,
+			profile,
+			duration: quickDepth,
+			projectId: "p",
+			projectPath,
+			store,
+			labRunRecorder,
+		});
+
+		assert.equal(record.status, "completed");
+		assert.equal(labRunRecorder.findings.length, 1);
+		assert.equal(
+			labRunRecorder.findings[0].proposal?.summary,
+			"Export the missing type.",
+		);
+	}
+});
+
+test("runTestLab keeps registering findings when rule validation throws", async () => {
+	const session = new FakeSession(
+		"C:/w/spark",
+		false,
+		JSON.stringify({
+			findings: [
+				{
+					title: "Build fails",
+					description: "Build exits with TypeScript errors.",
+					evidence: "corepack pnpm build exited with code 2",
+					severity: "medium",
+					confidence: "medium",
+					proposal: { summary: "Export the missing type." },
+				},
+			],
+		}),
+	);
+	const store = new LabReportStore(tempDir());
+	const labRunRecorder = new FakeLabRunRecorder();
+	const router = routerWithSession(session);
+	const profile = router.labProfiles()[0];
+
+	const record = await runTestLab({
+		router,
+		profile,
+		duration: quickDepth,
+		projectId: "p",
+		projectPath: "C:/p",
+		store,
+		labRunRecorder,
+		ruleValidator: () => {
+			throw new Error("validator unavailable");
+		},
+	});
+
+	assert.equal(record.status, "completed");
+	assert.equal(labRunRecorder.findings.length, 1);
+	assert.equal(
+		labRunRecorder.findings[0].proposal?.summary,
+		"Export the missing type.",
+	);
+});
+
+test("runTestLab writes JSONL before secondary rule validation and SQLite", async () => {
+	const session = new FakeSession("C:/w/spark");
+	const workspaceRoot = tempDir();
+	const store = new LabReportStore(workspaceRoot);
+	const labRunRecorder = new JsonlOrderRecorder(workspaceRoot);
+	const router = routerWithSession(session);
+	const profile = router.labProfiles()[0];
+
+	await runTestLab({
+		router,
+		profile,
+		duration: quickDepth,
+		projectId: "p",
+		projectPath: "C:/p",
+		store,
+		labRunRecorder,
+	});
+
+	assert.equal(labRunRecorder.jsonlPresentDuringRecord, true);
 });
 
 test("runTestLab ignores SQLite failure and preserves JSONL and visible result", async () => {

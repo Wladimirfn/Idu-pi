@@ -37,6 +37,8 @@ export type ParsedLabProposal = {
 	summary: string;
 	details?: string;
 	priority?: number;
+	risk?: string;
+	requiresHumanApproval?: boolean;
 };
 
 export type ParsedLabFinding = BugFindingInput & {
@@ -174,6 +176,8 @@ function proposalFromAgentLab(proposal: AgentLabProposal): ParsedLabProposal {
 	return {
 		summary: proposal.summary,
 		details: proposal.steps.join("\n"),
+		risk: proposal.risk,
+		requiresHumanApproval: proposal.requiresHumanApproval,
 	};
 }
 
@@ -226,6 +230,10 @@ function normalizeProposal(
 		summary,
 		details: stringValue(proposal.details),
 		priority: numberValue(proposal.priority),
+		risk: stringValue(proposal.risk),
+		requiresHumanApproval: booleanValue(
+			proposal.requiresHumanApproval ?? proposal.requires_human_approval,
+		),
 	};
 }
 
@@ -292,6 +300,10 @@ function numberValue(value: unknown): number | undefined {
 	return typeof value === "number" && Number.isSafeInteger(value)
 		? value
 		: undefined;
+}
+
+function booleanValue(value: unknown): boolean | undefined {
+	return typeof value === "boolean" ? value : undefined;
 }
 
 function severityValue(value: unknown): FindingSeverity {

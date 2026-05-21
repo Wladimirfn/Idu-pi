@@ -3,6 +3,11 @@ import type { AgentRouter } from "./agent-router.js";
 import type { BugFindingInput, ProposalInput } from "./lab-db.js";
 import { parseLabFindingsFromOutput } from "./lab-finding-parser.js";
 import {
+	createLabFindingRuleValidator,
+	validateParsedLabFindingForPersistence,
+	type LabFindingRuleValidator,
+} from "./lab-rule-validation.js";
+import {
 	type LabReportStore,
 	summarizeOutput,
 	type LabRunRecord,
@@ -118,28 +123,56 @@ function persistLabRun(options: {
 	store: LabReportStore;
 	labRunRecorder?: LabRunRecorder;
 	record: LabRunRecord;
+	projectPath: string;
+	ruleValidator?: LabFindingRuleValidator;
 }): void {
 	options.store.append(options.record);
 	try {
 		options.labRunRecorder?.recordLabRun(options.record);
+		const validator = resolveRuleValidator(options);
 		for (const finding of parseLabFindings(options.record)) {
-			const { proposal, ...bugFinding } = finding;
+			const decision = safeValidateFinding(finding, validator);
+			const { proposal, ...bugFinding } = decision.finding;
 			options.labRunRecorder?.recordFindingWithProposal?.({
 				finding: bugFinding,
-				proposal: proposal
-					? {
-							id: `${finding.id}-proposal`,
-							proposalType: proposal.proposalType ?? "investigation",
-							summary: proposal.summary,
-							details: proposal.details,
-							priority: proposal.priority,
-							createdByAgentId: options.record.agentId,
-						}
-					: undefined,
+				proposal:
+					proposal && decision.proposalAllowed
+						? {
+								id: `${finding.id}-proposal`,
+								proposalType: proposal.proposalType ?? "investigation",
+								summary: proposal.summary,
+								details: proposal.details,
+								priority: proposal.priority,
+								createdByAgentId: options.record.agentId,
+							}
+						: undefined,
 			});
 		}
 	} catch {
-		// SQLite/parser persistence is secondary; JSONL remains the source of truth.
+		// SQLite/parser/rule validation persistence is secondary; JSONL remains the source of truth.
+	}
+}
+
+function resolveRuleValidator(options: {
+	projectPath: string;
+	ruleValidator?: LabFindingRuleValidator;
+}): LabFindingRuleValidator | undefined {
+	if (options.ruleValidator) return options.ruleValidator;
+	try {
+		return createLabFindingRuleValidator(options.projectPath);
+	} catch {
+		return undefined;
+	}
+}
+
+function safeValidateFinding(
+	finding: ReturnType<typeof parseLabFindings>[number],
+	validator: LabFindingRuleValidator | undefined,
+) {
+	try {
+		return validateParsedLabFindingForPersistence(finding, validator);
+	} catch {
+		return validateParsedLabFindingForPersistence(finding, undefined);
 	}
 }
 
@@ -151,6 +184,7 @@ export async function runTestLab(options: {
 	projectPath: string;
 	store: LabReportStore;
 	labRunRecorder?: LabRunRecorder;
+	ruleValidator?: LabFindingRuleValidator;
 }): Promise<LabRunRecord> {
 	const runtime = options.router.runtimeForProfile(options.profile.id);
 	const startedAt = new Date().toISOString();
@@ -178,6 +212,8 @@ export async function runTestLab(options: {
 			store: options.store,
 			labRunRecorder: options.labRunRecorder,
 			record,
+			projectPath: options.projectPath,
+			ruleValidator: options.ruleValidator,
 		});
 		return record;
 	}
@@ -204,6 +240,8 @@ export async function runTestLab(options: {
 			store: options.store,
 			labRunRecorder: options.labRunRecorder,
 			record,
+			projectPath: options.projectPath,
+			ruleValidator: options.ruleValidator,
 		});
 		return record;
 	}
@@ -240,6 +278,8 @@ export async function runTestLab(options: {
 			store: options.store,
 			labRunRecorder: options.labRunRecorder,
 			record,
+			projectPath: options.projectPath,
+			ruleValidator: options.ruleValidator,
 		});
 		return record;
 	} catch (error) {
@@ -269,6 +309,8 @@ export async function runTestLab(options: {
 			store: options.store,
 			labRunRecorder: options.labRunRecorder,
 			record,
+			projectPath: options.projectPath,
+			ruleValidator: options.ruleValidator,
 		});
 		return record;
 	}
