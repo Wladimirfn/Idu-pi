@@ -1,6 +1,15 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { extname, join, relative, sep } from "node:path";
-import type { ProjectFlows } from "./project-flows.js";
+import type {
+	DataStoreType,
+	FlowStepType,
+	ProjectDataStore,
+	ProjectFlow,
+	ProjectFlows,
+	ProjectScreen,
+	ProjectUiElement,
+	UiElementType,
+} from "./project-flows.js";
 
 export type ProjectMapScanSeverity = "warning" | "info";
 
@@ -30,6 +39,15 @@ export type DetectedStorage = {
 		| "api";
 	value: string;
 	file: string;
+};
+
+export type ProjectFlowSuggestions = {
+	projectPath: string;
+	limited: boolean;
+	screens: ProjectScreen[];
+	uiElements: ProjectUiElement[];
+	dataStores: ProjectDataStore[];
+	flows: ProjectFlow[];
 };
 
 export type ProjectMapScanResult = {
@@ -152,6 +170,185 @@ Top 10 hallazgos:
 ${topFindings.length ? topFindings.map((finding, index) => `${index + 1}. [${finding.severity}] ${finding.message}`).join("\n") : "- ninguno"}${hiddenFindings ? `\n- +${hiddenFindings} más` : ""}
 
 Solo lectura: no escribí archivos, no generé project-flows, no usé IA, no ejecuté código del proyecto.`;
+}
+
+export function suggestProjectFlowsFromScan(
+	projectPath: string,
+	flows: ProjectFlows,
+): ProjectFlowSuggestions {
+	const scan = scanProjectMap(projectPath, flows);
+	const mappedScreenPaths = new Set(
+		flows.screens.map((screen) => normalizePath(screen.path)),
+	);
+	const mappedUi = new Set<string>();
+	for (const element of flows.uiElements) {
+		mappedUi.add(element.id);
+		if (element.selector) mappedUi.add(element.selector);
+		if (element.label) mappedUi.add(element.label.toLocaleLowerCase());
+	}
+	const mappedStores = new Set<string>();
+	for (const store of flows.dataStores) {
+		mappedStores.add(store.id);
+		mappedStores.add(store.type);
+	}
+	const existingFlowTriggers = new Set(flows.flows.map((flow) => flow.trigger));
+	const moduleId = flows.modules[0]?.id ?? "main";
+	const uiElements = uniqueBy(
+		scan.detected.uiElements
+			.filter((element) => {
+				const keys = detectedElementKey(element);
+				return keys.length > 0 && !keys.some((key) => mappedUi.has(key));
+			})
+			.map((element) => ({
+				id: element.id ?? slugFromPath(`${element.file}-${element.type}`),
+				type: uiElementType(element.type),
+				selector: element.selector,
+				label: element.label,
+				expectedAction: element.dataAction ?? "Revisar acción detectada",
+			})),
+		(element) => element.id,
+	);
+	const dataStores = uniqueBy(
+		scan.detected.dataStores
+			.filter(
+				(store) =>
+					!mappedStores.has(store.type) && !mappedStores.has(store.value),
+			)
+			.map((store) => ({
+				id: slugFromPath(store.value),
+				type: dataStoreType(store.type),
+				tables: [],
+				ownerModule: moduleId,
+			})),
+		(store) => `${store.type}:${store.id}`,
+	);
+	const candidateFlows = uniqueBy(
+		scan.detected.uiElements
+			.filter(
+				(element) =>
+					element.type === "button" &&
+					element.selector &&
+					element.dataAction &&
+					!existingFlowTriggers.has(element.dataAction),
+			)
+			.map((element) => ({
+				id: `${slugFromPath(element.dataAction!)}-flow`,
+				name: element.label ?? element.dataAction!,
+				module: moduleId,
+				trigger: element.dataAction!,
+				steps: [
+					{
+						order: 1,
+						type: "ui_action" as FlowStepType,
+						from: element.selector!,
+						to: element.dataAction!,
+						description: "Candidato detectado desde onclick/data-action",
+					},
+				],
+				expectedResult: "Revisar resultado esperado",
+				testTargets: [],
+			})),
+		(flow) => flow.trigger,
+	);
+	return {
+		projectPath,
+		limited: false,
+		screens: scan.detected.htmlFiles
+			.filter((file) => !mappedScreenPaths.has(file))
+			.map((file) => ({
+				id: slugFromPath(file),
+				path: file,
+				module: moduleId,
+				purpose: "Revisar pantalla detectada por scan_project_map",
+				uiElements: uniqueBy(
+					scan.detected.uiElements.filter(
+						(element) => element.file === file && element.id,
+					),
+					(element) => element.id!,
+				).map((element) => element.id!),
+			})),
+		uiElements,
+		dataStores,
+		flows: candidateFlows,
+	};
+}
+
+export function formatProjectFlowSuggestions(
+	suggestions: ProjectFlowSuggestions,
+): string {
+	const limit = 10;
+	const limited = limitArray(suggestions.uiElements, limit);
+	return `suggest_project_flows — borrador sugerido
+
+Esto es un borrador sugerido. Revísalo antes de pegarlo en config/project-flows.json.
+
+Resumen:
+- screens sugeridas: ${suggestions.screens.length}
+- uiElements sugeridos: ${suggestions.uiElements.length}
+- dataStores sugeridos: ${suggestions.dataStores.length}
+- flows candidatos: ${suggestions.flows.length}
+
+JSON parcial sugerido (Top 10 por sección):
+${JSON.stringify(
+	{
+		screens: limitArray(suggestions.screens, limit).items,
+		uiElements: limited.items,
+		dataStores: limitArray(suggestions.dataStores, limit).items,
+		flows: limitArray(suggestions.flows, limit).items,
+	},
+	null,
+	2,
+)}${limited.hidden ? `\n\n+${limited.hidden} más uiElements. Si la sugerencia es grande, conviene editar manualmente.` : ""}
+
+Solo lectura: No escribí archivos, no modifiqué project-flows, no usé IA, no ejecuté código del proyecto.`;
+}
+
+function uniqueBy<T>(items: T[], keyFor: (item: T) => string): T[] {
+	const seen = new Set<string>();
+	const unique: T[] = [];
+	for (const item of items) {
+		const key = keyFor(item);
+		if (seen.has(key)) continue;
+		seen.add(key);
+		unique.push(item);
+	}
+	return unique;
+}
+
+function limitArray<T>(
+	items: T[],
+	limit: number,
+): { items: T[]; hidden: number } {
+	return {
+		items: items.slice(0, limit),
+		hidden: Math.max(items.length - limit, 0),
+	};
+}
+
+function detectedElementKey(element: DetectedUiElement): string[] {
+	return [
+		element.id,
+		element.selector,
+		element.label?.toLocaleLowerCase(),
+	].filter((value): value is string => !!value);
+}
+
+function uiElementType(type: DetectedUiElementType): UiElementType {
+	return type;
+}
+
+function dataStoreType(type: DetectedStorage["type"]): DataStoreType {
+	return type === "sessionStorage" ? "localStorage" : type;
+}
+
+function slugFromPath(value: string): string {
+	return (
+		value
+			.replace(/\.[^.]+$/u, "")
+			.replace(/[^a-z0-9]+/giu, "-")
+			.replace(/^-|-$/gu, "")
+			.toLowerCase() || "detected"
+	);
 }
 
 function countMessages(

@@ -10,8 +10,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
 import {
+	formatProjectFlowSuggestions,
 	formatProjectMapScan,
 	scanProjectMap,
+	suggestProjectFlowsFromScan,
 	type ProjectMapScanResult,
 } from "../src/project-map-scanner.js";
 import type { ProjectFlows } from "../src/project-flows.js";
@@ -416,4 +418,173 @@ test("formatProjectMapScan keeps main warning categories", () => {
 		/Actualiza config\/project-flows\.json antes de pedir cambios grandes a la IA/u,
 	);
 	assert.match(text, /Los AgentLabs pueden revisar estos puntos/u);
+});
+
+test("suggestProjectFlowsFromScan suggests missing screen", () => {
+	const projectPath = tempProject();
+	writeFixture(projectPath);
+	writeFileSync(join(projectPath, "reports.html"), "<h1>Reports</h1>", "utf8");
+
+	const suggestions = suggestProjectFlowsFromScan(projectPath, mappedFlows());
+
+	assert.ok(
+		suggestions.screens.some((screen) => screen.path === "reports.html"),
+	);
+});
+
+test("suggestProjectFlowsFromScan suggests missing uiElement", () => {
+	const projectPath = tempProject();
+	writeFixture(projectPath);
+	const flows = mappedFlows();
+	flows.uiElements = flows.uiElements.filter(
+		(element) => element.id !== "create-machine",
+	);
+
+	const suggestions = suggestProjectFlowsFromScan(projectPath, flows);
+
+	assert.ok(
+		suggestions.uiElements.some((element) => element.id === "create-machine"),
+	);
+});
+
+test("suggestProjectFlowsFromScan suggests missing dataStore", () => {
+	const projectPath = tempProject();
+	writeFixture(projectPath);
+	const flows = mappedFlows();
+	flows.dataStores = [];
+
+	const suggestions = suggestProjectFlowsFromScan(projectPath, flows);
+
+	assert.ok(
+		suggestions.dataStores.some((store) => store.type === "localStorage"),
+	);
+});
+
+test("suggestProjectFlowsFromScan suggests simple flow from onclick", () => {
+	const projectPath = tempProject();
+	writeFixture(projectPath);
+	const flows = mappedFlows();
+	flows.flows = [];
+
+	const suggestions = suggestProjectFlowsFromScan(projectPath, flows);
+
+	assert.ok(
+		suggestions.flows.some(
+			(flow) =>
+				flow.trigger === "createMachine" &&
+				flow.steps[0].from === "#create-machine",
+		),
+	);
+});
+
+test("suggestProjectFlowsFromScan does not suggest duplicates already mapped", () => {
+	const projectPath = tempProject();
+	writeFixture(projectPath);
+
+	const suggestions = suggestProjectFlowsFromScan(projectPath, mappedFlows());
+
+	assert.equal(
+		suggestions.uiElements.some((element) => element.id === "create-machine"),
+		false,
+	);
+});
+
+test("suggestProjectFlowsFromScan does not suggest element when selector is mapped", () => {
+	const projectPath = tempProject();
+	writeFileSync(
+		join(projectPath, "index.html"),
+		'<button id="different-id">Create machine</button>',
+		"utf8",
+	);
+	const flows = mappedFlows();
+	flows.uiElements = [
+		{
+			id: "mapped-by-selector",
+			type: "button",
+			selector: "#different-id",
+			expectedAction: "mapped",
+		},
+	];
+
+	const suggestions = suggestProjectFlowsFromScan(projectPath, flows);
+
+	assert.equal(
+		suggestions.uiElements.some(
+			(element) => element.selector === "#different-id",
+		),
+		false,
+	);
+});
+
+test("suggestProjectFlowsFromScan deduplicates candidate uiElements and flows", () => {
+	const projectPath = tempProject();
+	writeFixture(projectPath);
+	const flows = mappedFlows();
+	flows.uiElements = flows.uiElements.filter(
+		(element) => element.id !== "create-machine",
+	);
+	flows.flows = [];
+
+	const suggestions = suggestProjectFlowsFromScan(projectPath, flows);
+
+	assert.equal(
+		suggestions.uiElements.filter((element) => element.id === "create-machine")
+			.length,
+		1,
+	);
+	assert.equal(
+		suggestions.flows.filter((flow) => flow.trigger === "createMachine").length,
+		1,
+	);
+});
+
+test("formatProjectFlowSuggestions limits output", () => {
+	const projectPath = tempProject();
+	writeFixture(projectPath);
+	const suggestions = suggestProjectFlowsFromScan(projectPath, mappedFlows());
+	suggestions.uiElements = Array.from({ length: 12 }, (_, index) => ({
+		id: `button-${index + 1}`,
+		type: "button" as const,
+		selector: `#button-${index + 1}`,
+		label: `Button ${index + 1}`,
+		expectedAction: "Revisar acción detectada",
+	}));
+
+	const text = formatProjectFlowSuggestions(suggestions);
+
+	assert.match(text, /Top 10/u);
+	assert.match(text, /button-10/u);
+	assert.doesNotMatch(text, /button-11/u);
+	assert.match(text, /\+2 más/u);
+});
+
+test("suggestProjectFlowsFromScan does not write files", () => {
+	const projectPath = tempProject();
+	writeFixture(projectPath);
+	const before = readFileSync(join(projectPath, "index.html"), "utf8");
+
+	suggestProjectFlowsFromScan(projectPath, mappedFlows());
+
+	assert.equal(readFileSync(join(projectPath, "index.html"), "utf8"), before);
+	assert.equal(
+		existsSync(join(projectPath, "config", "project-flows.json")),
+		false,
+	);
+});
+
+test("formatProjectFlowSuggestions includes human review warning", () => {
+	const projectPath = tempProject();
+	writeFixture(projectPath);
+
+	const text = formatProjectFlowSuggestions(
+		suggestProjectFlowsFromScan(projectPath, mappedFlows()),
+	);
+
+	assert.match(text, /Esto es un borrador sugerido/u);
+	assert.match(
+		text,
+		/Revísalo antes de pegarlo en config\/project-flows\.json/u,
+	);
+	assert.match(text, /No escribí archivos/u);
+	assert.match(text, /no usé IA/u);
 });
