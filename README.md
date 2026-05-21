@@ -141,12 +141,45 @@ config/project-blueprint.json
 config/project-flows.json
 ```
 
+### Project blueprint y project flows
+
+`/config init_project_config` crea dos archivos project-local cuando faltan:
+
+| Archivo                         | Rol                                                                                                |
+| ------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `config/project-blueprint.json` | Define objetivo del proyecto, reglas maestras y jerarquía humano/orquestador/AgentLabs/subagentes. |
+| `config/project-flows.json`     | Define módulos, pantallas, UI elements, dataStores, flows y moduleConnections del proyecto real.   |
+
+`project-flows es el mapa funcional del proyecto real, no el mapa interno de Idu-pi.`
+
+Flujo seguro recomendado:
+
+```text
+scan → suggest → draft → review → apply con backup
+```
+
+| Etapa   | Comando                                            | Garantía                                                                       |
+| ------- | -------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Scan    | `/config scan_project_map`                         | Lee archivos estáticos; no ejecuta código del proyecto.                        |
+| Suggest | `/config suggest_project_flows`                    | No escribe archivos ni usa IA.                                                 |
+| Draft   | `/config draft_project_flows`                      | Escribe solo en `AGENT_WORKSPACE_ROOT/reports/`.                               |
+| Review  | `/config review_project_flows_draft [latest/ruta]` | No escribe archivos; compara draft vs mapa actual.                             |
+| Apply   | `/config apply_project_flows_draft <ruta>`         | Requiere ruta explícita, rechaza `latest`, crea backup y fusiona solo aditivo. |
+
+Los AgentLabs reciben contexto resumido de `project-blueprint`, `project-flows` y el scan estático. El `rule-validator` funciona como validador interno del Orquestador; no reemplaza al AgentLab ni a la aprobación humana.
+
+Guía completa: [`docs/project-map-workflow.md`](docs/project-map-workflow.md).
+
 Reglas de seguridad:
 
 - No ejecuta MCP automáticamente.
 - No copia secretos.
 - No commitea ni pushea.
 - `skills_sync` copia solo skills necesarias/generalistas, no todo el proyecto fuente.
+- `suggest_project_flows` no escribe archivos.
+- `draft_project_flows` escribe solo bajo `AGENT_WORKSPACE_ROOT/reports/`.
+- `review_project_flows_draft` no escribe archivos.
+- `apply_project_flows_draft` requiere ruta explícita, rechaza `latest`, crea backup, valida antes/después y no borra ni sobrescribe IDs existentes.
 
 ## Agentes y modelos
 
