@@ -37,6 +37,12 @@ export const TELEGRAM_COMMANDS: TelegramCommandEntry[] = [
 		help: "/dashboard - panel operativo",
 	},
 	{
+		command: "idu",
+		description: "Ver conexión Idu-pi del proyecto",
+		help: "/idu - diagnosticar conexión y comprensión del proyecto activo",
+		usage: ["/idu"],
+	},
+	{
 		command: "server",
 		description: "Controlar sesión Pi RPC",
 		help: "/server status|run|restart|off - controlar sesión Pi RPC activa",
@@ -79,6 +85,12 @@ export const TELEGRAM_COMMANDS: TelegramCommandEntry[] = [
 		help: "/queue - ver cola",
 	},
 	{
+		command: "queue_detail",
+		description: "Ver cola estructurada",
+		help: "/queue_detail - ver cola estructurada",
+		usage: ["/queue_detail"],
+	},
+	{
 		command: "queue_clear",
 		description: "Limpiar cola de tareas",
 		help: "/queue_clear - limpiar cola",
@@ -86,7 +98,7 @@ export const TELEGRAM_COMMANDS: TelegramCommandEntry[] = [
 	{
 		command: "config",
 		description: "Configuración guiada del proyecto",
-		help: "/config [doctor|init_workspace|init_assets|init_project_config|inspect_project_map|scan_project_map|suggest_project_flows|draft_project_flows|review_project_flows_draft|apply_project_flows_draft|skills_sync|db_init|sync_commands] - configuración guiada del bridge/proyecto",
+		help: "/config [doctor|init_workspace|init_assets|init_project_config|inspect_project_map|scan_project_map|suggest_project_flows|draft_project_flows|review_project_flows_draft|apply_project_flows_draft|ai_draft_project_blueprint|ai_draft_project_flows|review_ai_blueprint_draft|review_ai_flows_draft|skills_sync|db_init|sync_commands] - configuración guiada del bridge/proyecto",
 		usage: [
 			"/config",
 			"/config doctor",
@@ -99,6 +111,10 @@ export const TELEGRAM_COMMANDS: TelegramCommandEntry[] = [
 			"/config draft_project_flows",
 			"/config review_project_flows_draft",
 			"/config apply_project_flows_draft <ruta>",
+			"/config ai_draft_project_blueprint",
+			"/config ai_draft_project_flows",
+			"/config review_ai_blueprint_draft latest",
+			"/config review_ai_flows_draft latest",
 			"/config skills_sync",
 			"/config db_init",
 			"/config sync_commands",
@@ -290,7 +306,7 @@ export const TELEGRAM_COMMANDS: TelegramCommandEntry[] = [
 
 export const CLI_COMMANDS: LocalCommandEntry[] = [
 	{ label: "Instalar dependencias", command: "corepack pnpm install" },
-	{ label: "Setup inicial", command: "corepack pnpm setup" },
+	{ label: "Setup inicial", command: "corepack pnpm run setup" },
 	{ label: "Desarrollo", command: "corepack pnpm dev" },
 	{ label: "Iniciar build existente", command: "corepack pnpm start" },
 	{ label: "Servicio bridge", command: "corepack pnpm serve" },

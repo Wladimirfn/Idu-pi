@@ -1,4 +1,5 @@
 import { Bot, type Context } from "grammy";
+import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import {
@@ -30,6 +31,14 @@ import {
 } from "./config-wizard.js";
 import { detectAgents, formatAgents, formatDoctor } from "./doctor.js";
 import {
+	createAiProjectBlueprintDraft,
+	createAiProjectFlowsDraft,
+	formatAiProjectDraftResult,
+	formatAiProjectDraftReview,
+	reviewAiProjectBlueprintDraft,
+	reviewAiProjectFlowsDraft,
+} from "./project-ai-drafts.js";
+import {
 	formatDurationChoices,
 	parseLabDuration,
 	type LabDuration,
@@ -46,6 +55,10 @@ import {
 	scanProjectMap,
 	suggestProjectFlowsFromScan,
 } from "./project-map-scanner.js";
+import {
+	formatProjectConnectionReport,
+	inspectProjectConnection,
+} from "./project-connection.js";
 import { loadProjectFlows } from "./project-flows.js";
 import {
 	formatLabRunResultLines,
@@ -77,6 +90,12 @@ import {
 } from "./quick-commands.js";
 import { buildSafePushReport } from "./safe-push.js";
 import {
+	LEGACY_SESSION_COMMANDS,
+	PATH_SESSION_COMMANDS,
+	QUICK_PROMPT_COMMANDS,
+	WORK_SESSION_COMMANDS,
+} from "./telegram-command-registry.js";
+import {
 	buildTaskPrompt,
 	formatTaskTemplateHelp,
 	parseTaskTemplateCommand,
@@ -105,6 +124,12 @@ import {
 	parseUiRequestAnswer,
 } from "./telegram-ui.js";
 import { TaskQueue } from "./task-queue.js";
+import {
+	analyzeStructuredTaskSignal,
+	formatStructuredTaskQueueDetail,
+	StructuredTaskQueue,
+	structuredTaskInputForText,
+} from "./structured-task-queue.js";
 
 const config = loadConfig();
 const bot = new Bot(config.telegramBotToken);
@@ -125,6 +150,9 @@ const agentRouter = new AgentRouter({
 const labReportStore = new LabReportStore(config.agentWorkspaceRoot);
 const labDbRepository = new LabDbRepository(labDbPath());
 const taskQueue = new TaskQueue();
+const structuredTaskQueue = new StructuredTaskQueue({
+	workspaceRoot: config.agentWorkspaceRoot,
+});
 let taskQueueGeneration = 0;
 let activePromptInFlight = false;
 let pendingLabRequest: { profileIndexes: number[] } | null = null;
@@ -417,6 +445,12 @@ async function drainTaskQueue(ctx: Context, generation: number): Promise<void> {
 	}
 }
 
+async function generateAiProjectDraft(prompt: string): Promise<string> {
+	const result = await agentRouter.prompt(prompt);
+	if (!result.ok) throw new Error(result.output);
+	return result.output;
+}
+
 async function runPrompt(
 	ctx: Context,
 	prompt: string,
@@ -440,6 +474,33 @@ async function runPrompt(
 			return;
 		}
 		if (taskQueue.enqueue(prompt)) {
+			const projectId = currentProjectId();
+			const signal = analyzeStructuredTaskSignal(prompt);
+			try {
+				structuredTaskQueue.enqueueTask(
+					structuredTaskInputForText(prompt, {
+						source: "telegram",
+						projectId,
+						analyzer: () => signal,
+					}),
+				);
+			} catch {
+				// La cola estructurada es secundaria; /queue legacy sigue siendo fuente visible.
+			}
+			try {
+				labDbRepository.recordUserSignal({
+					id: randomUUID(),
+					projectId,
+					source: "telegram-queue",
+					rawText: prompt,
+					detectedEmotion: signal.emotion,
+					urgency: signal.urgency,
+					confidence: signal.confidence,
+					matchedKeywords: signal.matchedKeywords,
+				});
+			} catch {
+				// SQLite es complementario; no debe romper Telegram ni la cola legacy.
+			}
 			await ctx.reply(
 				`Ya hay una tarea Pi corriendo. Guardé tu mensaje en cola como Q${taskQueue.size}. Usá /queue para verla.`,
 			);
@@ -590,7 +651,18 @@ bot.command("dashboard", async (ctx) => {
 	await ctx.reply(buildDashboardText(dashboardState()));
 });
 
-bot.command(["review", "fix_tests", "audit"], async (ctx) => {
+bot.command("idu", async (ctx) => {
+	if (!(await guard(ctx))) return;
+	const report = inspectProjectConnection({
+		registry,
+		defaultCwd: config.defaultCwd,
+		allowedRoots: config.allowedRoots,
+		workspaceRoot: config.agentWorkspaceRoot,
+	});
+	await replyLong(ctx, formatProjectConnectionReport(report));
+});
+
+bot.command(QUICK_PROMPT_COMMANDS, async (ctx) => {
 	if (!(await guard(ctx))) return;
 	const command = ctx.message?.text.split(/\s+/u)[0]?.replace(/^\//u, "") ?? "";
 	const prompt = buildQuickCommandPrompt(command);
@@ -823,6 +895,82 @@ bot.command("config", async (ctx) => {
 		);
 		return;
 	}
+	if (arg === "ai_draft_project_blueprint") {
+		if (!isAllowedCwd(currentCwd, config.allowedRoots)) {
+			await ctx.reply(
+				"No puedo generar borrador IA de blueprint: el proyecto activo está fuera de ALLOWED_ROOTS.",
+			);
+			return;
+		}
+		await replyLong(
+			ctx,
+			formatAiProjectDraftResult(
+				await createAiProjectBlueprintDraft({
+					projectPath: currentCwd,
+					reportsDir: join(config.agentWorkspaceRoot, "reports"),
+					generate: generateAiProjectDraft,
+				}),
+			),
+		);
+		return;
+	}
+	if (arg === "ai_draft_project_flows") {
+		if (!isAllowedCwd(currentCwd, config.allowedRoots)) {
+			await ctx.reply(
+				"No puedo generar borrador IA de project-flows: el proyecto activo está fuera de ALLOWED_ROOTS.",
+			);
+			return;
+		}
+		await replyLong(
+			ctx,
+			formatAiProjectDraftResult(
+				await createAiProjectFlowsDraft({
+					projectPath: currentCwd,
+					reportsDir: join(config.agentWorkspaceRoot, "reports"),
+					generate: generateAiProjectDraft,
+				}),
+			),
+		);
+		return;
+	}
+	if (arg === "review_ai_blueprint_draft") {
+		if (!isAllowedCwd(currentCwd, config.allowedRoots)) {
+			await ctx.reply(
+				"No puedo revisar borrador IA de blueprint: el proyecto activo está fuera de ALLOWED_ROOTS.",
+			);
+			return;
+		}
+		await replyLong(
+			ctx,
+			formatAiProjectDraftReview(
+				reviewAiProjectBlueprintDraft(
+					restArgs.join(" ") || "latest",
+					currentCwd,
+					join(config.agentWorkspaceRoot, "reports"),
+				),
+			),
+		);
+		return;
+	}
+	if (arg === "review_ai_flows_draft") {
+		if (!isAllowedCwd(currentCwd, config.allowedRoots)) {
+			await ctx.reply(
+				"No puedo revisar borrador IA de project-flows: el proyecto activo está fuera de ALLOWED_ROOTS.",
+			);
+			return;
+		}
+		await replyLong(
+			ctx,
+			formatAiProjectDraftReview(
+				reviewAiProjectFlowsDraft(
+					restArgs.join(" ") || "latest",
+					currentCwd,
+					join(config.agentWorkspaceRoot, "reports"),
+				),
+			),
+		);
+		return;
+	}
 	if (arg === "db_init") {
 		await replyLong(ctx, formatInitLabDbResult(initLabDb(labDbPath())));
 		return;
@@ -850,7 +998,7 @@ bot.command("config", async (ctx) => {
 		return;
 	}
 	await ctx.reply(
-		"Uso: /config | /config doctor | /config init_workspace | /config init_assets | /config init_project_config | /config inspect_project_map | /config scan_project_map | /config suggest_project_flows | /config draft_project_flows | /config review_project_flows_draft [latest|ruta] | /config apply_project_flows_draft <ruta> | /config skills_sync | /config db_init | /config sync_commands",
+		"Uso: /config | /config doctor | /config init_workspace | /config init_assets | /config init_project_config | /config inspect_project_map | /config scan_project_map | /config suggest_project_flows | /config draft_project_flows | /config review_project_flows_draft [latest|ruta] | /config apply_project_flows_draft <ruta> | /config ai_draft_project_blueprint | /config ai_draft_project_flows | /config review_ai_blueprint_draft [latest|ruta] | /config review_ai_flows_draft [latest|ruta] | /config skills_sync | /config db_init | /config sync_commands",
 	);
 });
 
@@ -1057,7 +1205,7 @@ bot.command("useproject", async (ctx) => {
 	}
 });
 
-bot.command(["trabajos", "work"], async (ctx) => {
+bot.command(WORK_SESSION_COMMANDS, async (ctx) => {
 	if (!(await guard(ctx))) return;
 	const arg = commandArg(ctx.message?.text ?? "").toLowerCase();
 	const includeAuxiliary = arg === "all";
@@ -1143,7 +1291,7 @@ bot.command("last", async (ctx) => {
 	await resumeSessionPick(ctx, pick);
 });
 
-bot.command(["cwd", "new"], async (ctx) => {
+bot.command(PATH_SESSION_COMMANDS, async (ctx) => {
 	if (!(await guard(ctx))) return;
 	const arg = commandArg(ctx.message?.text ?? "");
 	if (!arg) {
@@ -1221,6 +1369,14 @@ bot.command("queue", async (ctx) => {
 	await ctx.reply(taskQueue.formatStatus());
 });
 
+bot.command("queue_detail", async (ctx) => {
+	if (!(await guard(ctx))) return;
+	await replyLong(
+		ctx,
+		formatStructuredTaskQueueDetail(structuredTaskQueue.listTasks()),
+	);
+});
+
 bot.command("queue_clear", async (ctx) => {
 	if (!(await guard(ctx))) return;
 	const count = taskQueue.clear();
@@ -1273,7 +1429,7 @@ bot.command("cancel", async (ctx) => {
 	);
 });
 
-bot.command(["sessions", "use", "approve", "reject"], async (ctx) => {
+bot.command(LEGACY_SESSION_COMMANDS, async (ctx) => {
 	if (!(await guard(ctx))) return;
 	await ctx.reply(
 		"Este comando queda para la próxima iteración. Esta versión mantiene una sesión RPC por CWD.",
