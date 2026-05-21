@@ -430,3 +430,7 @@ corepack pnpm clean
 ## Documentación
 
 Este README sigue una estructura de baja carga cognitiva: camino rápido primero, detalles después, tablas para reconocimiento rápido y comandos copiables. Para futuras mejoras de documentación, usá la skill `cognitive-doc-design`.
+
+Guías adicionales:
+
+- `docs/lab-agent-best-practices.md` — reglas operativas para agentes lab Codex/Spark.
