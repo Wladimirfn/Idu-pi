@@ -92,7 +92,7 @@ export const TELEGRAM_COMMANDS: TelegramCommandEntry[] = [
 	{
 		command: "config",
 		description: "Configuración guiada del proyecto",
-		help: "/config [doctor|init_workspace|init_assets|init_project_config|inspect_project_map|scan_project_map|suggest_project_flows|draft_project_flows|review_project_flows_draft|apply_project_flows_draft|ai_draft_project_blueprint|ai_draft_project_flows|skills_sync|db_init|sync_commands] - configuración guiada del bridge/proyecto",
+		help: "/config [doctor|init_workspace|init_assets|init_project_config|inspect_project_map|scan_project_map|suggest_project_flows|draft_project_flows|review_project_flows_draft|apply_project_flows_draft|ai_draft_project_blueprint|ai_draft_project_flows|review_ai_blueprint_draft|review_ai_flows_draft|skills_sync|db_init|sync_commands] - configuración guiada del bridge/proyecto",
 		usage: [
 			"/config",
 			"/config doctor",
@@ -107,6 +107,8 @@ export const TELEGRAM_COMMANDS: TelegramCommandEntry[] = [
 			"/config apply_project_flows_draft <ruta>",
 			"/config ai_draft_project_blueprint",
 			"/config ai_draft_project_flows",
+			"/config review_ai_blueprint_draft latest",
+			"/config review_ai_flows_draft latest",
 			"/config skills_sync",
 			"/config db_init",
 			"/config sync_commands",
