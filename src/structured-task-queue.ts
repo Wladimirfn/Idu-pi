@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { analyzeUserSignal } from "./user-signal.js";
 
 export type StructuredTaskStatus = "pending" | "running" | "done" | "failed";
 
@@ -29,6 +30,8 @@ export type StructuredTaskQueueOptions = {
 	filePath?: string;
 	now?: () => Date;
 };
+
+export type UserSignalAnalyzer = typeof analyzeUserSignal;
 
 export class StructuredTaskQueue {
 	private tasks: StructuredTask[];
@@ -145,6 +148,46 @@ export class StructuredTaskQueue {
 				(this.tasks.length ? "\n" : ""),
 		);
 	}
+}
+
+export function structuredTaskCategory(text: string): string {
+	const normalized = text.trim().toLowerCase();
+	if (normalized.startsWith("/task bug")) return "bug";
+	if (normalized.startsWith("/task feature")) return "feature";
+	if (normalized.startsWith("/task refactor")) return "refactor";
+	if (normalized.startsWith("/task docs")) return "docs";
+	return "general";
+}
+
+export function structuredTaskPriority(
+	text: string,
+	analyzer: UserSignalAnalyzer = analyzeUserSignal,
+): number {
+	try {
+		const signal = analyzer(text);
+		return signal.urgency >= 1 && signal.urgency <= 5 ? signal.urgency : 3;
+	} catch {
+		return 3;
+	}
+}
+
+export function formatStructuredTaskQueueDetail(
+	tasks: StructuredTask[],
+): string {
+	if (!tasks.length) return "Cola estructurada vacía.";
+	return `Cola estructurada (${tasks.length}):\n\n${tasks
+		.map(
+			(task) =>
+				`${task.id.slice(0, 12)} | ${task.status} | P${task.priority} | ${task.category} | ${task.createdAt}\n${summarizeTaskText(task.text)}`,
+		)
+		.join("\n\n")}`;
+}
+
+function summarizeTaskText(text: string): string {
+	const normalized = text.replace(/\s+/gu, " ").trim();
+	return normalized.length > 120
+		? `${normalized.slice(0, 117)}...`
+		: normalized;
 }
 
 function defaultFilePath(

@@ -105,6 +105,12 @@ import {
 	parseUiRequestAnswer,
 } from "./telegram-ui.js";
 import { TaskQueue } from "./task-queue.js";
+import {
+	formatStructuredTaskQueueDetail,
+	StructuredTaskQueue,
+	structuredTaskCategory,
+	structuredTaskPriority,
+} from "./structured-task-queue.js";
 
 const config = loadConfig();
 const bot = new Bot(config.telegramBotToken);
@@ -125,6 +131,9 @@ const agentRouter = new AgentRouter({
 const labReportStore = new LabReportStore(config.agentWorkspaceRoot);
 const labDbRepository = new LabDbRepository(labDbPath());
 const taskQueue = new TaskQueue();
+const structuredTaskQueue = new StructuredTaskQueue({
+	workspaceRoot: config.agentWorkspaceRoot,
+});
 let taskQueueGeneration = 0;
 let activePromptInFlight = false;
 let pendingLabRequest: { profileIndexes: number[] } | null = null;
@@ -440,6 +449,17 @@ async function runPrompt(
 			return;
 		}
 		if (taskQueue.enqueue(prompt)) {
+			try {
+				structuredTaskQueue.enqueueTask({
+					text: prompt,
+					category: structuredTaskCategory(prompt),
+					priority: structuredTaskPriority(prompt),
+					source: "telegram",
+					projectId: currentProjectId(),
+				});
+			} catch {
+				// La cola estructurada es secundaria; /queue legacy sigue siendo fuente visible.
+			}
 			await ctx.reply(
 				`Ya hay una tarea Pi corriendo. Guardé tu mensaje en cola como Q${taskQueue.size}. Usá /queue para verla.`,
 			);
@@ -1219,6 +1239,14 @@ bot.command("mem", async (ctx) => {
 bot.command("queue", async (ctx) => {
 	if (!(await guard(ctx))) return;
 	await ctx.reply(taskQueue.formatStatus());
+});
+
+bot.command("queue_detail", async (ctx) => {
+	if (!(await guard(ctx))) return;
+	await replyLong(
+		ctx,
+		formatStructuredTaskQueueDetail(structuredTaskQueue.listTasks()),
+	);
 });
 
 bot.command("queue_clear", async (ctx) => {

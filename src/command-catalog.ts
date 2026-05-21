@@ -79,6 +79,12 @@ export const TELEGRAM_COMMANDS: TelegramCommandEntry[] = [
 		help: "/queue - ver cola",
 	},
 	{
+		command: "queue_detail",
+		description: "Ver cola estructurada",
+		help: "/queue_detail - ver cola estructurada",
+		usage: ["/queue_detail"],
+	},
+	{
 		command: "queue_clear",
 		description: "Limpiar cola de tareas",
 		help: "/queue_clear - limpiar cola",

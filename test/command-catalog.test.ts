@@ -32,6 +32,7 @@ test("formatCommandCatalog includes argument examples and local command surfaces
 	assert.match(text, /\/config apply_project_flows_draft/);
 	assert.match(text, /\/server restart/);
 	assert.match(text, /\/task bug <detalle>/);
+	assert.match(text, /\/queue_detail/);
 	assert.match(text, /CLI pnpm/);
 	assert.match(text, /corepack pnpm test/);
 	assert.match(text, /Batch directos/);
@@ -73,6 +74,7 @@ test("telegramCommandsForApi creates setMyCommands payload from catalog", () => 
 		description: TELEGRAM_COMMANDS[0].description,
 	});
 	assert.ok(commands.some((entry) => entry.command === "config"));
+	assert.ok(commands.some((entry) => entry.command === "queue_detail"));
 	assert.equal(commands.length, TELEGRAM_COMMANDS.length);
 	for (const entry of commands) {
 		assert.match(entry.command, /^[a-z0-9_]{1,32}$/u);
