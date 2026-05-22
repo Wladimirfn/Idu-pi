@@ -9,6 +9,7 @@ export const PUBLIC_TELEGRAM_HANDLER_COMMANDS = [
 	"status",
 	"dashboard",
 	"idu",
+	"preflight",
 	...QUICK_PROMPT_COMMANDS,
 	"safe_push",
 	"task",

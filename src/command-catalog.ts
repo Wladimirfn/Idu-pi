@@ -43,6 +43,12 @@ export const TELEGRAM_COMMANDS: TelegramCommandEntry[] = [
 		usage: ["/idu"],
 	},
 	{
+		command: "preflight",
+		description: "Analizar riesgo antes de cambios",
+		help: "/preflight <solicitud> - analizar riesgo, contexto faltante y siguiente acción",
+		usage: ["/preflight <solicitud>"],
+	},
+	{
 		command: "server",
 		description: "Controlar sesión Pi RPC",
 		help: "/server status|run|restart|off - controlar sesión Pi RPC activa",
