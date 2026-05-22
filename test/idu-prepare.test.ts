@@ -480,8 +480,10 @@ test("formatIduPrepareResult includes alignment statuses and differences", () =>
 	});
 	const text = formatIduPrepareResult(result);
 
-	assert.match(text, /configStatus final:\nproject_local_valid/u);
-	assert.match(text, /alignmentStatus final:\naligned/u);
+	assert.doesNotMatch(text, /Estado inicial:\nready/u);
+	assert.match(text, /Estado inicial de conexión:\nready/u);
+	assert.match(text, /Estado inicial de configuración:\nproject-local válido/u);
+	assert.match(text, /Estado inicial de alineación:\naligned/u);
 	assert.match(text, /readiness final:\naligned_ready/u);
 	assert.match(text, /dataStores sugeridos: 0/u);
 });
@@ -519,4 +521,62 @@ test("formatIduPrepareResult includes project risk actions and no AgentLab execu
 	assert.match(text, /postflight: riesgo high/u);
 	assert.match(text, /lab_review_plan: preparado/u);
 	assert.match(text, /No ejecuté AgentLabs/u);
+});
+
+test("formatIduPrepareResult does not show ambiguous ready initial status", () => {
+	const result = runIduPrepare({
+		projectId: "demo",
+		projectPath: "/tmp/demo",
+		reportsPath: mkdtempSync(join(tmpdir(), "idu-prepare-")),
+		inspectConnection: () => connection({ status: "ready" }),
+		initProjectConfig: () => {
+			throw new Error("should not init");
+		},
+		inspectProjectMap: () => ({ issues: [] }),
+		loadProjectFlows: () => flows(),
+		scanProjectMap: () => ({ findings: [] }),
+		suggestProjectFlows: () => ({
+			screens: [],
+			uiElements: [],
+			dataStores: [],
+			flows: [],
+		}),
+		draftProjectFlows: () => ({ path: "/tmp/reports/draft.json" }),
+		reviewProjectFlowsDraft: () => ({ valid: true, errors: [] }),
+		postflight: () => postflight("low"),
+		createStructuredTask: () => ({ id: "task-1" }),
+	});
+	const text = formatIduPrepareResult(result);
+
+	assert.doesNotMatch(text, /^Estado inicial:\nready$/mu);
+});
+
+test("formatIduPrepareResult separates initial connection and alignment status", () => {
+	const result = runIduPrepare({
+		projectId: "demo",
+		projectPath: "/tmp/demo",
+		reportsPath: mkdtempSync(join(tmpdir(), "idu-prepare-")),
+		inspectConnection: () => connection({ status: "ready" }),
+		initProjectConfig: () => {
+			throw new Error("should not init");
+		},
+		inspectProjectMap: () => ({ issues: [] }),
+		loadProjectFlows: () => flows(),
+		scanProjectMap: () => ({ findings: [] }),
+		suggestProjectFlows: () => ({
+			screens: [{ name: "Login" }],
+			uiElements: [],
+			dataStores: [],
+			flows: [],
+		}),
+		draftProjectFlows: () => ({ path: "/tmp/reports/draft.json" }),
+		reviewProjectFlowsDraft: () => ({ valid: true, errors: [] }),
+		postflight: () => postflight("low"),
+		createStructuredTask: () => ({ id: "task-1" }),
+	});
+	const text = formatIduPrepareResult(result);
+
+	assert.match(text, /Estado inicial de conexión:\nready/u);
+	assert.match(text, /Estado inicial de configuración:\nproject-local válido/u);
+	assert.match(text, /Estado inicial de alineación:\nneeds_review/u);
 });

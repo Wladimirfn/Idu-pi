@@ -65,6 +65,14 @@ import {
 	type IduPrepareResult,
 } from "./idu-prepare.js";
 import { formatIduProjectDashboard } from "./idu-project-dashboard.js";
+import {
+	activateIduSession,
+	configureIduSessionStore,
+	deactivateIduSession,
+	formatIduSessionStatus,
+	getIduSessionStatus,
+	shouldUseAutomaticGuardrails,
+} from "./idu-session.js";
 import { buildLabReviewPlan, formatLabReviewPlan } from "./lab-review-plan.js";
 import { loadProjectBlueprint } from "./project-blueprint.js";
 import { inspectProjectConnection } from "./project-connection.js";
@@ -153,6 +161,7 @@ import {
 } from "./structured-task-queue.js";
 
 const config = loadConfig();
+configureIduSessionStore({ workspaceRoot: config.agentWorkspaceRoot });
 const bot = new Bot(config.telegramBotToken);
 const registry = loadRegistry(config.defaultCwd, config.allowedRoots);
 let sessionNames = loadSessionNames();
@@ -605,6 +614,8 @@ async function guardTaskPrompt(
 		enqueueLegacyOnBlock?: boolean;
 	},
 ): Promise<boolean> {
+	if (!shouldUseAutomaticGuardrails(currentProjectId())) return true;
+
 	const existingTask = structuredTaskQueue.findByText(prompt);
 	if (existingTask?.guardStatus === "approved") return true;
 	if (existingTask?.guardStatus === "needs_confirmation") return false;
@@ -876,13 +887,38 @@ bot.command("dashboard", async (ctx) => {
 
 bot.command("idu", async (ctx) => {
 	if (!(await guard(ctx))) return;
+	const projectId = currentProjectId();
+	activateIduSession(projectId);
 	const report = inspectProjectConnection({
 		registry,
 		defaultCwd: config.defaultCwd,
 		allowedRoots: config.allowedRoots,
 		workspaceRoot: config.agentWorkspaceRoot,
 	});
-	await replyLong(ctx, iduProjectDashboardText(report));
+	await replyLong(
+		ctx,
+		[
+			"Guardrails automáticos activados para el proyecto activo.",
+			"",
+			iduProjectDashboardText(report),
+		].join("\n"),
+	);
+});
+
+bot.command("idu_off", async (ctx) => {
+	if (!(await guard(ctx))) return;
+	await replyLong(
+		ctx,
+		formatIduSessionStatus(deactivateIduSession(currentProjectId())),
+	);
+});
+
+bot.command("idu_status", async (ctx) => {
+	if (!(await guard(ctx))) return;
+	await replyLong(
+		ctx,
+		formatIduSessionStatus(getIduSessionStatus(currentProjectId())),
+	);
 });
 
 bot.command("idu_prepare", async (ctx) => {

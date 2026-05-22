@@ -310,13 +310,13 @@ export function formatIduPrepareResult(result: IduPrepareResult): string {
 		"Ruta:",
 		result.projectPath,
 		"",
-		"Estado inicial:",
+		"Estado inicial de conexión:",
 		result.initialStatus,
 		"",
-		"configStatus final:",
-		result.configStatus,
+		"Estado inicial de configuración:",
+		configStatusLabel(result.configStatus),
 		"",
-		"alignmentStatus final:",
+		"Estado inicial de alineación:",
 		result.alignmentStatus,
 		"",
 		"readiness final:",
@@ -356,6 +356,19 @@ export function formatIduPrepareResult(result: IduPrepareResult): string {
 		"Nota segura:",
 		"No ejecuté AgentLabs, no apliqué project-flows, no usé IA y no ejecuté código del proyecto.",
 	].join("\n");
+}
+
+function configStatusLabel(status: ProjectConfigStatus): string {
+	switch (status) {
+		case "missing":
+			return "faltante";
+		case "default":
+			return "default";
+		case "project_local_valid":
+			return "project-local válido";
+		case "invalid":
+			return "inválido";
+	}
 }
 
 function emptyDifferences(): ProjectAlignmentDiffCounts {
