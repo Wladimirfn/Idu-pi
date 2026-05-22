@@ -11,6 +11,7 @@ export const PUBLIC_TELEGRAM_HANDLER_COMMANDS = [
 	"idu",
 	"preflight",
 	"advisory",
+	"postflight",
 	...QUICK_PROMPT_COMMANDS,
 	"safe_push",
 	"task",

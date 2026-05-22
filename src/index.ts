@@ -69,6 +69,11 @@ import {
 	formatProjectPreflightReport,
 	type ProjectPreflightReport,
 } from "./project-preflight.js";
+import {
+	analyzeProjectPostflight,
+	formatProjectPostflightReport,
+	readProjectPostflightGitState,
+} from "./project-postflight.js";
 import { loadProjectFlows } from "./project-flows.js";
 import {
 	formatLabRunResultLines,
@@ -712,6 +717,38 @@ bot.command("advisory", async (ctx) => {
 	const request = commandArg(ctx.message?.text ?? "");
 	const report = buildPreflightReport(request);
 	await replyLong(ctx, formatProjectAdvisory(buildProjectAdvisory(report)));
+});
+
+bot.command("postflight", async (ctx) => {
+	if (!(await guard(ctx))) return;
+	const connection = inspectProjectConnection({
+		registry,
+		defaultCwd: config.defaultCwd,
+		allowedRoots: config.allowedRoots,
+		workspaceRoot: config.agentWorkspaceRoot,
+	});
+	const projectPath = connection.projectPath ?? currentCwd;
+	const flows =
+		connection.projectPath &&
+		connection.flows?.source === "project-local" &&
+		connection.flows.valid
+			? loadProjectFlows(connection.projectPath)
+			: undefined;
+	const gitState = readProjectPostflightGitState(projectPath);
+	const report = analyzeProjectPostflight({
+		projectPath,
+		connectionReport: connection,
+		projectFlows: flows,
+		changedFiles: gitState.changedFiles,
+		diffSummary: gitState.diffSummary,
+	});
+	await replyLong(
+		ctx,
+		formatProjectPostflightReport({
+			...report,
+			warnings: [...gitState.warnings, ...report.warnings],
+		}),
+	);
 });
 
 bot.command(QUICK_PROMPT_COMMANDS, async (ctx) => {

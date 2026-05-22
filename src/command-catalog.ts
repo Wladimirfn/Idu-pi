@@ -55,6 +55,12 @@ export const TELEGRAM_COMMANDS: TelegramCommandEntry[] = [
 		usage: ["/advisory <solicitud>"],
 	},
 	{
+		command: "postflight",
+		description: "Revisar impacto de cambios locales",
+		help: "/postflight - analizar cambios locales e impacto en flujos, DB y orquestación",
+		usage: ["/postflight"],
+	},
+	{
 		command: "server",
 		description: "Controlar sesión Pi RPC",
 		help: "/server status|run|restart|off - controlar sesión Pi RPC activa",
