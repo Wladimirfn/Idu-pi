@@ -9,6 +9,7 @@ export const PUBLIC_TELEGRAM_HANDLER_COMMANDS = [
 	"status",
 	"dashboard",
 	"idu",
+	"idu_prepare",
 	"preflight",
 	"advisory",
 	"postflight",

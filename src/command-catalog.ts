@@ -43,6 +43,12 @@ export const TELEGRAM_COMMANDS: TelegramCommandEntry[] = [
 		usage: ["/idu"],
 	},
 	{
+		command: "idu_prepare",
+		description: "Preparar proyecto con Idu-pi",
+		help: "/idu_prepare - ejecutar preparación segura del proyecto sin aplicar flows ni AgentLabs",
+		usage: ["/idu_prepare"],
+	},
+	{
 		command: "preflight",
 		description: "Analizar riesgo antes de cambios",
 		help: "/preflight <solicitud> - analizar riesgo, contexto faltante y siguiente acción",

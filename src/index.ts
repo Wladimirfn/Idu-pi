@@ -59,6 +59,7 @@ import {
 	buildProjectAdvisory,
 	formatProjectAdvisory,
 } from "./project-advisory.js";
+import { formatIduPrepareResult, runIduPrepare } from "./idu-prepare.js";
 import { buildLabReviewPlan, formatLabReviewPlan } from "./lab-review-plan.js";
 import { loadProjectBlueprint } from "./project-blueprint.js";
 import {
@@ -365,6 +366,30 @@ function buildPreflightReport(request: string): ProjectPreflightReport {
 		projectId: connection.projectId,
 		projectPath: connection.projectPath,
 	});
+}
+
+function iduConnectionActionText(
+	report: ReturnType<typeof inspectProjectConnection>,
+): string {
+	if (report.status === "ready") {
+		return ["", "Acción principal:", "Listo para operar."].join("\n");
+	}
+	if (
+		report.status === "needs_understanding" ||
+		report.status === "connected"
+	) {
+		return ["", "Acción principal:", "Preparar proyecto: /idu_prepare"].join(
+			"\n",
+		);
+	}
+	if (report.status === "broken_connection") {
+		return [
+			"",
+			"Acción principal:",
+			"No preparo todavía: corregí la conexión antes de preparar.",
+		].join("\n");
+	}
+	return "";
 }
 
 function buildPostflightReport(): ProjectPostflightReport {
@@ -830,7 +855,47 @@ bot.command("idu", async (ctx) => {
 		allowedRoots: config.allowedRoots,
 		workspaceRoot: config.agentWorkspaceRoot,
 	});
-	await replyLong(ctx, formatProjectConnectionReport(report));
+	await replyLong(
+		ctx,
+		`${formatProjectConnectionReport(report)}${iduConnectionActionText(report)}`,
+	);
+});
+
+bot.command("idu_prepare", async (ctx) => {
+	if (!(await guard(ctx))) return;
+	const activeProject = getActiveProject(registry);
+	const projectId = activeProject?.id ?? currentProjectId();
+	const projectPath = activeProject?.path ?? currentCwd;
+	const reportsPath = join(config.agentWorkspaceRoot, "reports");
+	const result = runIduPrepare({
+		projectId,
+		projectPath,
+		reportsPath,
+		inspectConnection: () =>
+			inspectProjectConnection({
+				registry,
+				defaultCwd: config.defaultCwd,
+				allowedRoots: config.allowedRoots,
+				workspaceRoot: config.agentWorkspaceRoot,
+			}),
+		initProjectConfig: () => initProjectConfig(projectPath, projectId),
+		inspectProjectMap: () =>
+			inspectProjectMap(projectPath, {
+				activeProjectId: projectId,
+				activeProjectName: activeProject?.name,
+			}),
+		loadProjectFlows: () => loadProjectFlows(projectPath),
+		scanProjectMap: (flows) => scanProjectMap(projectPath, flows),
+		suggestProjectFlows: (flows) =>
+			suggestProjectFlowsFromScan(projectPath, flows),
+		draftProjectFlows: (flows) =>
+			saveProjectFlowsDraft(projectPath, flows, reportsPath),
+		reviewProjectFlowsDraft: (draftPathOrLatest, flows) =>
+			reviewProjectFlowsDraft(draftPathOrLatest, flows, reportsPath),
+		postflight: () => buildPostflightReport(),
+		createStructuredTask: (input) => structuredTaskQueue.enqueueTask(input),
+	});
+	await replyLong(ctx, formatIduPrepareResult(result));
 });
 
 bot.command("preflight", async (ctx) => {
