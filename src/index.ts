@@ -55,10 +55,15 @@ import {
 	scanProjectMap,
 	suggestProjectFlowsFromScan,
 } from "./project-map-scanner.js";
+import { loadProjectBlueprint } from "./project-blueprint.js";
 import {
 	formatProjectConnectionReport,
 	inspectProjectConnection,
 } from "./project-connection.js";
+import {
+	analyzeProjectPreflight,
+	formatProjectPreflightReport,
+} from "./project-preflight.js";
 import { loadProjectFlows } from "./project-flows.js";
 import {
 	formatLabRunResultLines,
@@ -660,6 +665,37 @@ bot.command("idu", async (ctx) => {
 		workspaceRoot: config.agentWorkspaceRoot,
 	});
 	await replyLong(ctx, formatProjectConnectionReport(report));
+});
+
+bot.command("preflight", async (ctx) => {
+	if (!(await guard(ctx))) return;
+	const request = commandArg(ctx.message?.text ?? "");
+	const connection = inspectProjectConnection({
+		registry,
+		defaultCwd: config.defaultCwd,
+		allowedRoots: config.allowedRoots,
+		workspaceRoot: config.agentWorkspaceRoot,
+	});
+	const blueprint =
+		connection.projectPath &&
+		connection.blueprint?.source === "project-local" &&
+		connection.blueprint.valid
+			? loadProjectBlueprint(connection.projectPath)
+			: undefined;
+	const flows =
+		connection.projectPath &&
+		connection.flows?.source === "project-local" &&
+		connection.flows.valid
+			? loadProjectFlows(connection.projectPath)
+			: undefined;
+	const report = analyzeProjectPreflight(request, {
+		connection,
+		blueprint,
+		flows,
+		projectId: connection.projectId,
+		projectPath: connection.projectPath,
+	});
+	await replyLong(ctx, formatProjectPreflightReport(report));
 });
 
 bot.command(QUICK_PROMPT_COMMANDS, async (ctx) => {
