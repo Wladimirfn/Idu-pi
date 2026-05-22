@@ -1,4 +1,5 @@
 import { Bot, type Context } from "grammy";
+import { existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
@@ -87,6 +88,11 @@ import {
 	formatProjectCoreDiff,
 	rejectProjectCore,
 } from "./project-core-confirmation.js";
+import {
+	deriveConstitutionFromProjectCore,
+	loadProjectConstitution,
+} from "./project-constitution.js";
+import { loadProjectCore } from "./project-core.js";
 import {
 	formatProjectCoreResearchDraft,
 	formatProjectCoreResearchReview,
@@ -390,10 +396,12 @@ function buildPreflightReport(request: string): ProjectPreflightReport {
 		connection.flows.valid
 			? loadProjectFlows(connection.projectPath)
 			: undefined;
+	const constitution = loadConfirmedProjectConstitution(connection.projectPath);
 	return analyzeProjectPreflight(request, {
 		connection,
 		blueprint,
 		flows,
+		constitution,
 		projectId: connection.projectId,
 		projectPath: connection.projectPath,
 	});
@@ -462,10 +470,12 @@ function buildPostflightReport(): ProjectPostflightReport {
 			? loadProjectFlows(connection.projectPath)
 			: undefined;
 	const gitState = readProjectPostflightGitState(projectPath);
+	const constitution = loadConfirmedProjectConstitution(connection.projectPath);
 	const report = analyzeProjectPostflight({
 		projectPath,
 		connectionReport: connection,
 		projectFlows: flows,
+		constitution,
 		changedFiles: gitState.changedFiles,
 		diffSummary: gitState.diffSummary,
 	});
@@ -473,6 +483,26 @@ function buildPostflightReport(): ProjectPostflightReport {
 		...report,
 		warnings: [...gitState.warnings, ...report.warnings],
 	};
+}
+
+function loadConfirmedProjectConstitution(projectPath: string | undefined) {
+	if (!projectPath) return undefined;
+	const corePath = join(projectPath, "config", "project-core.json");
+	if (!existsSync(corePath)) return undefined;
+	try {
+		const core = loadProjectCore(projectPath);
+		if (core.status !== "confirmed") return undefined;
+		const constitutionPath = join(
+			projectPath,
+			"config",
+			"project-constitution.json",
+		);
+		return existsSync(constitutionPath)
+			? loadProjectConstitution(projectPath)
+			: deriveConstitutionFromProjectCore(core);
+	} catch {
+		return undefined;
+	}
 }
 
 function looksLikePath(text: string): boolean {
