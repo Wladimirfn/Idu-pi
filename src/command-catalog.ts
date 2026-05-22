@@ -73,6 +73,21 @@ export const TELEGRAM_COMMANDS: TelegramCommandEntry[] = [
 		usage: ["/idu_core_status"],
 	},
 	{
+		command: "idu_research_core",
+		description: "Generar research draft Project Core",
+		help: "/idu_research_core - pedir a IA un borrador de investigación técnica basado en Project Core",
+		usage: ["/idu_research_core"],
+	},
+	{
+		command: "idu_review_core_research",
+		description: "Revisar research draft Project Core",
+		help: "/idu_review_core_research [latest|ruta] - revisar borrador IA sin aplicar decisiones",
+		usage: [
+			"/idu_review_core_research latest",
+			"/idu_review_core_research <ruta>",
+		],
+	},
+	{
 		command: "preflight",
 		description: "Analizar riesgo antes de cambios",
 		help: "/preflight <solicitud> - analizar riesgo, contexto faltante y siguiente acción",

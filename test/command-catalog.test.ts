@@ -137,6 +137,10 @@ test("telegramCommandsForApi creates setMyCommands payload from catalog", () => 
 	assert.ok(commands.some((entry) => entry.command === "idu_prepare"));
 	assert.ok(commands.some((entry) => entry.command === "idu_define_project"));
 	assert.ok(commands.some((entry) => entry.command === "idu_core_status"));
+	assert.ok(commands.some((entry) => entry.command === "idu_research_core"));
+	assert.ok(
+		commands.some((entry) => entry.command === "idu_review_core_research"),
+	);
 	assert.ok(commands.some((entry) => entry.command === "preflight"));
 	assert.ok(commands.some((entry) => entry.command === "advisory"));
 	assert.ok(commands.some((entry) => entry.command === "postflight"));

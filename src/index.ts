@@ -80,6 +80,12 @@ import {
 	getProjectCoreWizardStatus,
 	startProjectCoreWizard,
 } from "./project-core-wizard.js";
+import {
+	formatProjectCoreResearchDraft,
+	formatProjectCoreResearchReview,
+	reviewProjectCoreResearchDraft,
+	saveProjectCoreResearchDraft,
+} from "./project-core-research.js";
 import { inspectProjectConnection } from "./project-connection.js";
 import {
 	analyzeProjectPreflight,
@@ -1034,6 +1040,39 @@ bot.command("idu_core_status", async (ctx) => {
 		projectName: activeProject?.name ?? activeProject?.id,
 	});
 	await replyLong(ctx, status.text);
+});
+
+bot.command("idu_research_core", async (ctx) => {
+	if (!(await guard(ctx))) return;
+	if (!isAllowedCwd(currentCwd, config.allowedRoots)) {
+		await ctx.reply(
+			"No puedo generar research Project Core: el proyecto activo está fuera de ALLOWED_ROOTS.",
+		);
+		return;
+	}
+	await replyLong(
+		ctx,
+		formatProjectCoreResearchDraft(
+			await saveProjectCoreResearchDraft({
+				projectPath: currentCwd,
+				reportsDir: join(config.agentWorkspaceRoot, "reports"),
+				generate: generateAiProjectDraft,
+			}),
+		),
+	);
+});
+
+bot.command("idu_review_core_research", async (ctx) => {
+	if (!(await guard(ctx))) return;
+	await replyLong(
+		ctx,
+		formatProjectCoreResearchReview(
+			reviewProjectCoreResearchDraft(
+				commandArg(ctx.message?.text ?? "") || "latest",
+				join(config.agentWorkspaceRoot, "reports"),
+			),
+		),
+	);
 });
 
 bot.command("preflight", async (ctx) => {
