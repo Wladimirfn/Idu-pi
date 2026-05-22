@@ -79,7 +79,12 @@ const REQUIRED_STRING_ARRAY_FIELDS = [
 	"openQuestions",
 ] as const;
 
-const COMPLEXITY_LEVELS = ["simple", "medium", "scalable", "enterprise"] as const;
+const COMPLEXITY_LEVELS = [
+	"simple",
+	"medium",
+	"scalable",
+	"enterprise",
+] as const;
 const DEPLOYMENT_TARGETS = [
 	"local",
 	"server",
@@ -99,7 +104,9 @@ const STATUSES = ["draft", "proposed", "confirmed", "stale"] as const;
 
 export function loadProjectCore(projectPath: string): ProjectCore {
 	const projectCorePath = join(projectPath, "config", "project-core.json");
-	const corePath = existsSync(projectCorePath) ? projectCorePath : defaultCorePath();
+	const corePath = existsSync(projectCorePath)
+		? projectCorePath
+		: defaultCorePath();
 	const raw = readFileSync(corePath, "utf8");
 	let parsed: unknown;
 	try {
@@ -205,7 +212,8 @@ export function createDefaultProjectCore(projectName: string): ProjectCore {
 		version: "1.0.0",
 		projectName: projectName.trim() || "Proyecto sin definir",
 		projectGoal: "Definir objetivo antes de construir",
-		problemStatement: "Plantilla inicial: definir el problema real antes de construir.",
+		problemStatement:
+			"Plantilla inicial: definir el problema real antes de construir.",
 		targetUsers: ["Usuarios por definir"],
 		projectType: "unknown",
 		complexityLevel: "simple",

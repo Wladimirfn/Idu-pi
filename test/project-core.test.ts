@@ -85,7 +85,10 @@ test("loadProjectCore fails clearly on invalid JSON", async () => {
 		mkdirSync(join(projectPath, "config"), { recursive: true });
 		writeFileSync(join(projectPath, "config", "project-core.json"), "{ nope");
 
-		assert.throws(() => loadProjectCore(projectPath), /Invalid project core JSON/u);
+		assert.throws(
+			() => loadProjectCore(projectPath),
+			/Invalid project core JSON/u,
+		);
 	});
 });
 
@@ -124,7 +127,9 @@ test("validateProjectCore validates allowed complexityLevel", () => {
 });
 
 test("validateProjectCore validates allowed deploymentTarget", () => {
-	const result = validateProjectCore(validCore({ deploymentTarget: "mainframe" }));
+	const result = validateProjectCore(
+		validCore({ deploymentTarget: "mainframe" }),
+	);
 
 	assert.equal(result.ok, false);
 	assert.match(result.errors.join("\n"), /deploymentTarget must be one of/u);
