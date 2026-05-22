@@ -25,6 +25,7 @@ export type ProjectPreflightReport = {
 	recommendedNext: string;
 	requiresHumanConfirmation: boolean;
 	shouldRunAgentLab: boolean;
+	availableContext?: string[];
 };
 
 type IntentFlags = {
@@ -127,6 +128,7 @@ export function analyzeProjectPreflight(
 	const connection = context.connection;
 	const affectedAreas: string[] = [];
 	const missingContext: string[] = [];
+	const availableContext: string[] = [];
 	const warnings: string[] = [...connection.warnings];
 	const intents = detectIntent(normalized);
 
@@ -171,11 +173,19 @@ export function analyzeProjectPreflight(
 	pushIf(affectedAreas, intents.newModule, "módulo nuevo");
 	pushIf(affectedAreas, intents.moduleConnection, "conexión entre módulos");
 
-	if (!hasLocalValidBlueprint(connection, context)) {
-		missingContext.push("project-blueprint project-local válido");
+	if (hasLocalValidBlueprint(connection, context)) {
+		availableContext.push("config/project-blueprint.json project-local válido");
+	} else {
+		missingContext.push(
+			missingLocalConfigMessage("project-blueprint", connection.blueprint),
+		);
 	}
-	if (!hasLocalValidFlows(connection, context)) {
-		missingContext.push("project-flows project-local válido");
+	if (hasLocalValidFlows(connection, context)) {
+		availableContext.push("config/project-flows.json project-local válido");
+	} else {
+		missingContext.push(
+			missingLocalConfigMessage("project-flows", connection.flows),
+		);
 	}
 
 	for (const moduleName of missingRequestedModules(
@@ -231,6 +241,7 @@ export function analyzeProjectPreflight(
 			: ["sin impacto estructural detectado"],
 		missingContext,
 		warnings,
+		availableContext,
 		recommendedNext: recommendedNext(
 			risk,
 			connection,
@@ -346,6 +357,16 @@ function hasLocalValidFlows(
 	);
 }
 
+function missingLocalConfigMessage(
+	name: "project-blueprint" | "project-flows",
+	config: ProjectConnectionReport["blueprint"],
+): string {
+	const path = `config/${name}.json`;
+	if (!config?.exists) return `Falta ${path} project-local.`;
+	if (!config.valid) return `${path} project-local inválido.`;
+	return `${path} project-local no confirmado.`;
+}
+
 function buildReport(options: {
 	request: string;
 	context: ProjectPreflightContext;
@@ -356,6 +377,7 @@ function buildReport(options: {
 	recommendedNext: string;
 	requiresHumanConfirmation: boolean;
 	shouldRunAgentLab: boolean;
+	availableContext?: string[];
 }): ProjectPreflightReport {
 	return {
 		risk: options.risk,
@@ -372,6 +394,7 @@ function buildReport(options: {
 		recommendedNext: options.recommendedNext,
 		requiresHumanConfirmation: options.requiresHumanConfirmation,
 		shouldRunAgentLab: options.shouldRunAgentLab,
+		availableContext: dedupe(options.availableContext ?? []),
 	};
 }
 

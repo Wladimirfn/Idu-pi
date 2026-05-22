@@ -112,6 +112,31 @@ test("formatProjectAdvisory renders short risk advisory", () => {
 	assert.ok(text.length < 1200);
 });
 
+test("formatProjectAdvisory separates missing context from warnings", () => {
+	const advisory = buildProjectAdvisory(
+		preflight({
+			risk: "medium",
+			missingContext: [
+				"Falta config/project-blueprint.json project-local.",
+				"Falta config/project-flows.json project-local.",
+			],
+			warnings: ["compras no está confirmado en project-flows."],
+		}),
+	);
+	const text = formatProjectAdvisory(advisory);
+
+	assert.match(
+		text,
+		/Contexto faltante:\n- Falta config\/project-blueprint\.json project-local/u,
+	);
+	assert.match(
+		text,
+		/Contexto faltante:[\s\S]*project-flows\.json project-local/u,
+	);
+	assert.match(text, /Alertas:\n- compras no está confirmado/u);
+	assert.doesNotMatch(text, /project-local válido/u);
+});
+
 test("buildProjectAdvisory does not write files", () => {
 	const dir = mkdtempSync(join(tmpdir(), "idu-advisory-"));
 	try {

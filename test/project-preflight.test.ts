@@ -184,6 +184,41 @@ test("compras/inventario without confirmed flows is high risk", () => {
 	assert.ok(report.affectedAreas.includes("conexión entre módulos"));
 });
 
+test("missing project-local configs are reported as missing context", () => {
+	const report = analyzeProjectPreflight("agregar botón", {
+		connection: connection({
+			status: "needs_understanding",
+			blueprint: {
+				exists: false,
+				source: "default",
+				valid: true,
+				path: "/demo/config/default-blueprint.json",
+				errors: [],
+			},
+			flows: {
+				exists: false,
+				source: "default",
+				valid: true,
+				path: "/demo/config/default-flows.json",
+				errors: [],
+			},
+		}),
+	});
+
+	assert.match(
+		report.missingContext.join("\n"),
+		/Falta config\/project-blueprint\.json project-local/u,
+	);
+	assert.match(
+		report.missingContext.join("\n"),
+		/Falta config\/project-flows\.json project-local/u,
+	);
+	assert.doesNotMatch(
+		report.missingContext.join("\n"),
+		/project-local válido/u,
+	);
+});
+
 test("not_connected blocks preflight", () => {
 	const report = analyzeProjectPreflight("crea dashboard", {
 		connection: connection({

@@ -77,6 +77,7 @@ import {
 	type ProjectPostflightReport,
 } from "./project-postflight.js";
 import { loadProjectFlows } from "./project-flows.js";
+import { decidePromptQueueAction } from "./prompt-queue-policy.js";
 import {
 	formatLabRunResultLines,
 	labProfilesForIndexes,
@@ -506,6 +507,12 @@ async function handleTestLabCommand(
 
 async function drainTaskQueue(ctx: Context, generation: number): Promise<void> {
 	while (taskQueue.size && generation === taskQueueGeneration) {
+		if (agentRouter.activeRuntime().session.busy) {
+			await ctx.reply(
+				"Cola pausada: Pi sigue ocupado; no reencolé ni descarté tareas.",
+			);
+			return;
+		}
 		const queuedPrompt = taskQueue.dequeue();
 		if (!queuedPrompt) return;
 		await ctx.reply(
@@ -530,22 +537,38 @@ async function runPrompt(
 	options: { fromQueue?: boolean } = {},
 ): Promise<void> {
 	const runtime = agentRouter.activeRuntime();
-	if (activePromptInFlight || runtime.session.busy) {
-		if (isNaturalCancelRequest(prompt)) {
-			pendingAction = null;
-			pendingLabRequest = null;
-			clearPendingUiRequest();
-			const queued = taskQueue.clear();
-			taskQueueGeneration++;
-			activePromptInFlight = false;
-			const cancelled = agentRouter.cancelActive();
+	const queueDecision = decidePromptQueueAction({
+		activePromptInFlight,
+		runtimeBusy: runtime.session.busy,
+		fromQueue: Boolean(options.fromQueue),
+		cancelRequest: isNaturalCancelRequest(prompt),
+	});
+	if (queueDecision === "cancel") {
+		pendingAction = null;
+		pendingLabRequest = null;
+		clearPendingUiRequest();
+		const queued = taskQueue.clear();
+		taskQueueGeneration++;
+		activePromptInFlight = false;
+		const cancelled = agentRouter.cancelActive();
+		await ctx.reply(
+			cancelled
+				? `Cancelé la tarea activa y limpié ${queued} tarea(s) en cola.`
+				: `No había tarea activa. Limpié ${queued} tarea(s) en cola.`,
+		);
+		return;
+	}
+	if (queueDecision === "defer") {
+		if (taskQueue.enqueue(prompt)) {
 			await ctx.reply(
-				cancelled
-					? `Cancelé la tarea activa y limpié ${queued} tarea(s) en cola.`
-					: `No había tarea activa. Limpié ${queued} tarea(s) en cola.`,
+				"Cola pausada: Pi sigue ocupado; la tarea vuelve a quedar en cola.",
 			);
-			return;
+		} else {
+			await ctx.reply("Cola pausada: la tarea en cola estaba vacía.");
 		}
+		return;
+	}
+	if (queueDecision === "enqueue") {
 		if (taskQueue.enqueue(prompt)) {
 			const projectId = currentProjectId();
 			const signal = analyzeStructuredTaskSignal(prompt);
@@ -636,8 +659,6 @@ async function runPrompt(
 		await replyLong(ctx, `${prefix}\n\n${result.output}`);
 		if (!options.fromQueue && taskQueue.size) {
 			await drainTaskQueue(ctx, taskQueueGeneration);
-		} else if (options.fromQueue && taskQueue.size) {
-			await drainTaskQueue(ctx, taskQueueGeneration);
 		}
 	} catch (error) {
 		clearPendingUiRequest();
@@ -652,7 +673,9 @@ async function runPrompt(
 			await ctx.reply(`Error inesperado: ${message}`);
 		}
 	} finally {
-		activePromptInFlight = false;
+		if (!options.fromQueue) {
+			activePromptInFlight = false;
+		}
 	}
 }
 
@@ -927,9 +950,15 @@ bot.command("config", async (ctx) => {
 			);
 			return;
 		}
+		const activeProject = getActiveProject(registry);
 		await replyLong(
 			ctx,
-			formatProjectMapInspection(inspectProjectMap(currentCwd)),
+			formatProjectMapInspection(
+				inspectProjectMap(currentCwd, {
+					activeProjectId: activeProject?.id ?? currentProjectId(),
+					activeProjectName: activeProject?.name,
+				}),
+			),
 		);
 		return;
 	}

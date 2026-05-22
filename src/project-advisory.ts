@@ -10,7 +10,9 @@ export type ProjectAdvisory = {
 	title: string;
 	request: string;
 	affectedAreas: string[];
+	missingContext: string[];
 	warnings: string[];
+	availableContext: string[];
 	recommendation: string;
 	actions: string[];
 	requiresHumanConfirmation: boolean;
@@ -26,7 +28,9 @@ export function buildProjectAdvisory(
 		title: advisoryTitle(level),
 		request: preflightReport.request,
 		affectedAreas: simplifyAreas(preflightReport.affectedAreas),
-		warnings: [...preflightReport.missingContext, ...preflightReport.warnings],
+		missingContext: preflightReport.missingContext,
+		warnings: preflightReport.warnings,
+		availableContext: preflightReport.availableContext ?? [],
 		recommendation: shortRecommendation(preflightReport),
 		actions: suggestedActions(preflightReport),
 		requiresHumanConfirmation: preflightReport.requiresHumanConfirmation,
@@ -43,6 +47,12 @@ export function formatProjectAdvisory(advisory: ProjectAdvisory): string {
 		"",
 		"Detecté impacto en:",
 		formatLimitedList(advisory.affectedAreas),
+		"",
+		"Contexto faltante:",
+		formatLimitedList(advisory.missingContext),
+		"",
+		"Contexto disponible:",
+		formatLimitedList(advisory.availableContext),
 		"",
 		"Alertas:",
 		formatLimitedList(advisory.warnings),
@@ -91,7 +101,7 @@ function simplifyAreas(areas: string[]): string[] {
 function shortRecommendation(report: ProjectPreflightReport): string {
 	if (report.risk === "blocker") return report.recommendedNext;
 	if (report.missingContext.length > 0) {
-		return "Confirmar project-blueprint/project-flows antes de implementar.";
+		return "Crear o corregir config project-local antes de implementar.";
 	}
 	if (report.warnings.some((warning) => /project-flows/u.test(warning))) {
 		return "Confirmar project-flows antes de implementar.";
