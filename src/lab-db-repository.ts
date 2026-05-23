@@ -21,11 +21,21 @@ import {
 	type SemanticAuditCheckpoint,
 	type SemanticAuditRunInput,
 	type SemanticAuditStats,
+	type SemanticAuditThresholds,
 	type SemanticMemoryItemInput,
 } from "./semantic-audit.js";
+import { maybeRunSemanticAuditTrigger } from "./semantic-audit-trigger.js";
+
+export type LabDbRepositoryOptions = {
+	enableSemanticAuditTrigger?: boolean;
+	semanticAuditTriggerThresholds?: SemanticAuditThresholds;
+};
 
 export class LabDbRepository {
-	constructor(private readonly dbPath: string) {}
+	constructor(
+		private readonly dbPath: string,
+		private readonly options: LabDbRepositoryOptions = {},
+	) {}
 
 	init(): InitLabDbResult {
 		return initLabDb(this.dbPath);
@@ -33,18 +43,22 @@ export class LabDbRepository {
 
 	recordBugFinding(input: BugFindingInput): void {
 		recordBugFinding(this.dbPath, input);
+		this.triggerSemanticAudit(input.projectId);
 	}
 
 	recordLabRun(record: LabRunRecord): void {
 		recordLabRun(this.dbPath, record);
+		this.triggerSemanticAudit(record.projectId);
 	}
 
 	recordUserSignal(input: UserSignalInput): void {
 		recordUserSignal(this.dbPath, input);
+		this.triggerSemanticAudit(input.projectId);
 	}
 
 	recordFindingWithProposal(input: FindingWithProposalInput): void {
 		recordFindingWithProposal(this.dbPath, input);
+		this.triggerSemanticAudit(input.finding.projectId);
 	}
 
 	listOpenFindings(projectId: string): BugFinding[] {
@@ -72,5 +86,14 @@ export class LabDbRepository {
 
 	recordSemanticMemoryItem(input: SemanticMemoryItemInput): void {
 		recordSemanticMemoryItem(this.dbPath, input);
+	}
+
+	private triggerSemanticAudit(projectId: string): void {
+		if (!this.options.enableSemanticAuditTrigger) return;
+		maybeRunSemanticAuditTrigger({
+			projectId,
+			repository: this,
+			thresholds: this.options.semanticAuditTriggerThresholds,
+		});
 	}
 }

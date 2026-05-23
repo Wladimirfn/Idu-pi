@@ -208,7 +208,9 @@ const agentRouter = new AgentRouter({
 	workspaceMode: config.agentWorkspaceMode,
 });
 const labReportStore = new LabReportStore(config.agentWorkspaceRoot);
-const labDbRepository = new LabDbRepository(labDbPath());
+const labDbRepository = new LabDbRepository(labDbPath(), {
+	enableSemanticAuditTrigger: true,
+});
 const taskQueue = new TaskQueue();
 const lastIduPrepareByProject = new Map<string, IduPrepareResult>();
 const structuredTaskQueue = new StructuredTaskQueue({
