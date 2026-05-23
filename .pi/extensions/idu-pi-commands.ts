@@ -171,11 +171,23 @@ export default function (pi: ExtensionAPI) {
 		usage: "/idu-lab-review-plan [postflight|preflight <solicitud>]",
 	});
 
-	registerIduCommand("task", {
+	registerIduCommand("idu-task", {
 		description: "Crear tarea estructurada Idu-pi desde Pi CLI",
 		cliArgs: (args) => ["task", ...args.split(/\s+/u).filter(Boolean)],
 		requiresArgs: true,
+		usage: "/idu-task bug|feature|refactor|docs <detalle>",
+	});
+
+	registerIduCommand("task", {
+		description: "Alias legacy para /idu-task",
+		cliArgs: (args) => ["task", ...args.split(/\s+/u).filter(Boolean)],
+		requiresArgs: true,
 		usage: "/task bug|feature|refactor|docs <detalle>",
+	});
+
+	registerIduCommand("idu-queue-detail", {
+		description: "Ver cola estructurada Idu-pi",
+		cliArgs: () => ["queue-detail"],
 	});
 
 	registerIduCommand("queue-detail", {
@@ -183,9 +195,42 @@ export default function (pi: ExtensionAPI) {
 		cliArgs: () => ["queue-detail"],
 	});
 
-	registerIduCommand("queue-clear-structured", {
+	registerIduCommand("idu-queue-clear-structured", {
 		description: "Limpiar cola estructurada Idu-pi",
 		cliArgs: () => ["queue-clear-structured"],
+	});
+
+	registerIduCommand("queue-clear-structured", {
+		description: "Alias legacy para /idu-queue-clear-structured",
+		cliArgs: () => ["queue-clear-structured"],
+	});
+
+	registerIduCommand("idu-queue-approve", {
+		description: "Aprobar tarea pausada en cola Idu-pi",
+		cliArgs: (args) => ["queue-approve", args],
+		requiresArgs: true,
+		usage: "/idu-queue-approve <id>",
+	});
+
+	registerIduCommand("queue_approve", {
+		description: "Aprobar tarea pausada en cola Idu-pi",
+		cliArgs: (args) => ["queue-approve", args],
+		requiresArgs: true,
+		usage: "/queue_approve <id>",
+	});
+
+	registerIduCommand("idu-queue-reject", {
+		description: "Rechazar tarea en cola Idu-pi",
+		cliArgs: (args) => ["queue-reject", args],
+		requiresArgs: true,
+		usage: "/idu-queue-reject <id>",
+	});
+
+	registerIduCommand("queue_reject", {
+		description: "Alias legacy para /idu-queue-reject",
+		cliArgs: (args) => ["queue-reject", args],
+		requiresArgs: true,
+		usage: "/queue_reject <id>",
 	});
 
 	registerIduCommand("semantic-audit-status", {

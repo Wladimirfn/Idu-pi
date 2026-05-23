@@ -285,6 +285,8 @@ function fakeRuntime(projectPath: string, workspaceRoot: string): CliRuntime {
 			].join("\n"),
 		queueDetail: () => "Cola estructurada (1):\n\ntask-1 | pending | P5 | bug",
 		queueClearStructured: () => 1,
+		queueApprove: fakeTask,
+		queueReject: fakeTask,
 	};
 }
 
@@ -437,7 +439,7 @@ test("CLI semantic-audit-run funciona", async () => {
 test("CLI task bug encola tarea sin AgentLabs", async () => {
 	await withRuntime(async (runtime) => {
 		const result = await runCliCommand(
-			["task", "bug", "urgente otra vez falló login"],
+			["idu-task", "bug", "urgente otra vez falló login"],
 			runtime,
 		);
 
@@ -450,7 +452,7 @@ test("CLI task bug encola tarea sin AgentLabs", async () => {
 
 test("CLI queue-detail muestra cola estructurada", async () => {
 	await withRuntime(async (runtime) => {
-		const result = await runCliCommand(["queue-detail"], runtime);
+		const result = await runCliCommand(["idu-queue-detail"], runtime);
 
 		assert.equal(result.exitCode, 0);
 		assert.match(result.stdout, /Cola estructurada/u);
@@ -459,10 +461,32 @@ test("CLI queue-detail muestra cola estructurada", async () => {
 
 test("CLI queue-clear-structured limpia cola estructurada", async () => {
 	await withRuntime(async (runtime) => {
-		const result = await runCliCommand(["queue-clear-structured"], runtime);
+		const result = await runCliCommand(["idu-queue-clear-structured"], runtime);
 
 		assert.equal(result.exitCode, 0);
 		assert.match(result.stdout, /Cola estructurada limpiada: 1 tarea/u);
+	});
+});
+
+test("CLI queue-approve aprueba tarea sin ejecutar AgentLabs", async () => {
+	await withRuntime(async (runtime) => {
+		const result = await runCliCommand(
+			["idu-queue-approve", "task-1"],
+			runtime,
+		);
+
+		assert.equal(result.exitCode, 0);
+		assert.match(result.stdout, /Tarea aprobada: task-1/u);
+		assert.match(result.stdout, /No ejecuté IA ni AgentLabs/u);
+	});
+});
+
+test("CLI queue_reject rechaza tarea", async () => {
+	await withRuntime(async (runtime) => {
+		const result = await runCliCommand(["idu-queue-reject", "task-1"], runtime);
+
+		assert.equal(result.exitCode, 0);
+		assert.match(result.stdout, /Tarea rechazada: task-1/u);
 	});
 });
 

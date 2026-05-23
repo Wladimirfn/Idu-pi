@@ -119,6 +119,8 @@ export type CliRuntime = {
 	formatTask: (task: StructuredTask) => string;
 	queueDetail: () => string;
 	queueClearStructured: () => number;
+	queueApprove: (idOrPrefix: string) => StructuredTask | undefined;
+	queueReject: (idOrPrefix: string) => StructuredTask | undefined;
 };
 
 type RuntimeContext = {
@@ -190,6 +192,19 @@ export function createCliRuntime(): CliRuntime {
 		queueDetail: () =>
 			formatStructuredTaskQueueDetail(structuredTaskQueue.listTasks()),
 		queueClearStructured: () => structuredTaskQueue.clearPersisted(),
+		queueApprove: (idOrPrefix) => {
+			const task = structuredTaskQueue.findByIdPrefix(idOrPrefix);
+			return task ? structuredTaskQueue.markGuardApproved(task.id) : undefined;
+		},
+		queueReject: (idOrPrefix) => {
+			const task = structuredTaskQueue.findByIdPrefix(idOrPrefix);
+			return task
+				? structuredTaskQueue.markGuardRejected(
+						task.id,
+						"Rechazada por confirmación humana.",
+					)
+				: undefined;
+		},
 	};
 }
 
@@ -260,18 +275,21 @@ export async function runCliCommand(
 					),
 				);
 			}
+			case "idu-semantic-audit-status":
 			case "semantic-audit-status":
 				return ok(
 					activeRuntime.formatSemanticAuditStatus(
 						activeRuntime.semanticAuditStatus(),
 					),
 				);
+			case "idu-semantic-audit-run":
 			case "semantic-audit-run":
 				return ok(
 					activeRuntime.formatSemanticAuditRun(
 						activeRuntime.semanticAuditRun(),
 					),
 				);
+			case "idu-task":
 			case "task": {
 				const kind = rest[0] as TaskTemplateKind | undefined;
 				if (!kind) return ok(formatTaskTemplateHelp());
@@ -279,12 +297,31 @@ export async function runCliCommand(
 				const task = activeRuntime.createTask(kind, details);
 				return ok(activeRuntime.formatTask(task));
 			}
+			case "idu-queue":
 			case "queue":
+			case "idu-queue-detail":
 			case "queue-detail":
 				return ok(activeRuntime.queueDetail());
+			case "idu-queue-clear-structured":
 			case "queue-clear-structured": {
 				const count = activeRuntime.queueClearStructured();
 				return ok(`Cola estructurada limpiada: ${count} tarea(s).`);
+			}
+			case "idu-queue-approve":
+			case "queue-approve":
+			case "queue_approve": {
+				const id = requiredText(rest);
+				const task = activeRuntime.queueApprove(id);
+				if (!task) return fail("Uso: idu-pi queue-approve <id>");
+				return ok(`Tarea aprobada: ${task.id}. No ejecuté IA ni AgentLabs.`);
+			}
+			case "idu-queue-reject":
+			case "queue-reject":
+			case "queue_reject": {
+				const id = requiredText(rest);
+				const task = activeRuntime.queueReject(id);
+				if (!task) return fail("Uso: idu-pi queue-reject <id>");
+				return ok(`Tarea rechazada: ${task.id}.`);
 			}
 			default:
 				return {
@@ -525,11 +562,13 @@ export function helpText(): string {
 		'  idu-pi advisory "solicitud"',
 		"  idu-pi postflight",
 		"  idu-pi lab-review-plan postflight",
-		"  idu-pi semantic-audit-status (Telegram: /semantic_audit_status)",
-		"  idu-pi semantic-audit-run    (Telegram: /semantic_audit_run)",
-		'  idu-pi task bug "detalle"    (Telegram: /task bug <detalle>)',
-		"  idu-pi queue-detail          (Telegram: /queue_detail)",
-		"  idu-pi queue-clear-structured (Telegram: /queue_clear_structured)",
+		"  idu-pi idu-semantic-audit-status (Telegram: /semantic_audit_status)",
+		"  idu-pi idu-semantic-audit-run    (Telegram: /semantic_audit_run)",
+		'  idu-pi idu-task bug "detalle"    (Telegram: /task bug <detalle>)',
+		"  idu-pi idu-queue-detail          (Telegram: /queue_detail)",
+		"  idu-pi idu-queue-clear-structured (Telegram: /queue_clear_structured)",
+		"  idu-pi idu-queue-approve <id>    (Telegram: /queue_approve <id>)",
+		"  idu-pi idu-queue-reject <id>     (Telegram: /queue_reject <id>)",
 		"",
 		"Notas:",
 		"- Usa AGENT_WORKSPACE_ROOT y el registro de proyectos del bridge.",
