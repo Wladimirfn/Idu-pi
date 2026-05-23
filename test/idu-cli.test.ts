@@ -18,6 +18,7 @@ import type {
 	SemanticAuditRunResult,
 	SemanticAuditStatusReport,
 } from "../src/semantic-audit-command.js";
+import type { StructuredTask } from "../src/structured-task-queue.js";
 
 async function withRuntime(
 	fn: (
@@ -147,6 +148,21 @@ function fakeSemanticAuditRun(): SemanticAuditRunResult {
 	};
 }
 
+function fakeTask(): StructuredTask {
+	return {
+		id: "task-1",
+		text: "Bug task. Symptom/context: urgente otra vez falló login",
+		category: "bug",
+		priority: 5,
+		status: "pending",
+		createdAt: "2026-05-23T00:00:00.000Z",
+		updatedAt: "2026-05-23T00:00:00.000Z",
+		emotion: "urgente",
+		source: "cli",
+		projectId: "pi-telegram-bridge",
+	};
+}
+
 function fakePrepare(projectPath: string): IduPrepareResult {
 	return {
 		projectId: "pi-telegram-bridge",
@@ -253,6 +269,22 @@ function fakeRuntime(projectPath: string, workspaceRoot: string): CliRuntime {
 				"",
 				"No usé IA, no compacté memoria, no borré datos y no ejecuté AgentLabs.",
 			].join("\n"),
+		createTask: fakeTask,
+		formatTask: (task) =>
+			[
+				"Idu-pi Task",
+				"",
+				"Estado:",
+				"queued",
+				"",
+				"ID:",
+				task.id,
+				"",
+				"Nota segura:",
+				"Registré la tarea y la señal localmente; no ejecuté IA ni AgentLabs.",
+			].join("\n"),
+		queueDetail: () => "Cola estructurada (1):\n\ntask-1 | pending | P5 | bug",
+		queueClearStructured: () => 1,
 	};
 }
 
@@ -399,6 +431,38 @@ test("CLI semantic-audit-run funciona", async () => {
 		assert.equal(result.exitCode, 0);
 		assert.match(result.stdout, /Semantic Audit Run/u);
 		assert.match(result.stdout, /No usé IA/u);
+	});
+});
+
+test("CLI task bug encola tarea sin AgentLabs", async () => {
+	await withRuntime(async (runtime) => {
+		const result = await runCliCommand(
+			["task", "bug", "urgente otra vez falló login"],
+			runtime,
+		);
+
+		assert.equal(result.exitCode, 0);
+		assert.match(result.stdout, /Idu-pi Task/u);
+		assert.match(result.stdout, /queued/u);
+		assert.match(result.stdout, /no ejecuté IA ni AgentLabs/u);
+	});
+});
+
+test("CLI queue-detail muestra cola estructurada", async () => {
+	await withRuntime(async (runtime) => {
+		const result = await runCliCommand(["queue-detail"], runtime);
+
+		assert.equal(result.exitCode, 0);
+		assert.match(result.stdout, /Cola estructurada/u);
+	});
+});
+
+test("CLI queue-clear-structured limpia cola estructurada", async () => {
+	await withRuntime(async (runtime) => {
+		const result = await runCliCommand(["queue-clear-structured"], runtime);
+
+		assert.equal(result.exitCode, 0);
+		assert.match(result.stdout, /Cola estructurada limpiada: 1 tarea/u);
 	});
 });
 

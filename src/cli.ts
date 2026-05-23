@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { loadConfig, type BridgeConfig } from "./config.js";
 import { initProjectConfig, inspectProjectMap } from "./config-wizard.js";
@@ -72,7 +73,18 @@ import {
 	type SemanticAuditRunResult,
 	type SemanticAuditStatusReport,
 } from "./semantic-audit-command.js";
-import { StructuredTaskQueue } from "./structured-task-queue.js";
+import {
+	analyzeStructuredTaskSignal,
+	formatStructuredTaskQueueDetail,
+	StructuredTaskQueue,
+	structuredTaskInputForText,
+	type StructuredTask,
+} from "./structured-task-queue.js";
+import {
+	buildTaskPrompt,
+	formatTaskTemplateHelp,
+	type TaskTemplateKind,
+} from "./task-templates.js";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
@@ -103,6 +115,10 @@ export type CliRuntime = {
 	formatSemanticAuditStatus: (report: SemanticAuditStatusReport) => string;
 	semanticAuditRun: () => SemanticAuditRunResult;
 	formatSemanticAuditRun: (result: SemanticAuditRunResult) => string;
+	createTask: (kind: TaskTemplateKind, details: string) => StructuredTask;
+	formatTask: (task: StructuredTask) => string;
+	queueDetail: () => string;
+	queueClearStructured: () => number;
 };
 
 type RuntimeContext = {
@@ -127,6 +143,7 @@ export function createCliRuntime(): CliRuntime {
 	});
 	const labDbRepository = new LabDbRepository(
 		join(config.agentWorkspaceRoot, "reports", "lab.db"),
+		{ enableSemanticAuditTrigger: true },
 	);
 	const context = { config, registry, activeProject, structuredTaskQueue };
 	return {
@@ -163,6 +180,16 @@ export function createCliRuntime(): CliRuntime {
 				repository: labDbRepository,
 			}),
 		formatSemanticAuditRun: formatSemanticAuditRunResult,
+		createTask: (kind, details) =>
+			createCliTask(kind, details, {
+				projectId: activeProject.id,
+				structuredTaskQueue,
+				labDbRepository,
+			}),
+		formatTask: formatCliTaskResult,
+		queueDetail: () =>
+			formatStructuredTaskQueueDetail(structuredTaskQueue.listTasks()),
+		queueClearStructured: () => structuredTaskQueue.clearPersisted(),
 	};
 }
 
@@ -245,6 +272,20 @@ export async function runCliCommand(
 						activeRuntime.semanticAuditRun(),
 					),
 				);
+			case "task": {
+				const kind = rest[0] as TaskTemplateKind | undefined;
+				if (!kind) return ok(formatTaskTemplateHelp());
+				const details = rest.slice(1).join(" ").trim();
+				const task = activeRuntime.createTask(kind, details);
+				return ok(activeRuntime.formatTask(task));
+			}
+			case "queue":
+			case "queue-detail":
+				return ok(activeRuntime.queueDetail());
+			case "queue-clear-structured": {
+				const count = activeRuntime.queueClearStructured();
+				return ok(`Cola estructurada limpiada: ${count} tarea(s).`);
+			}
 			default:
 				return {
 					exitCode: 1,
@@ -381,6 +422,69 @@ function loadConfirmedProjectConstitution(projectPath: string | undefined) {
 	}
 }
 
+function createCliTask(
+	kind: TaskTemplateKind,
+	details: string,
+	context: {
+		projectId: string;
+		structuredTaskQueue: StructuredTaskQueue;
+		labDbRepository: LabDbRepository;
+	},
+): StructuredTask {
+	const prompt = buildTaskPrompt(kind, details);
+	if (!prompt) {
+		throw new Error(formatTaskTemplateHelp());
+	}
+	const signal = analyzeStructuredTaskSignal(prompt);
+	const task = context.structuredTaskQueue.enqueueTask(
+		structuredTaskInputForText(prompt, {
+			source: "cli",
+			projectId: context.projectId,
+			category: kind,
+			analyzer: () => signal,
+		}),
+	);
+	try {
+		context.labDbRepository.recordUserSignal({
+			id: randomUUID(),
+			projectId: context.projectId,
+			source: "cli-task",
+			rawText: prompt,
+			detectedEmotion: signal.emotion,
+			urgency: signal.urgency,
+			confidence: signal.confidence,
+			matchedKeywords: signal.matchedKeywords,
+		});
+	} catch {
+		// SQLite/semantic trigger is secondary; CLI task creation remains the source of truth.
+	}
+	return task;
+}
+
+function formatCliTaskResult(task: StructuredTask): string {
+	return [
+		"Idu-pi Task",
+		"",
+		"Estado:",
+		"queued",
+		"",
+		"ID:",
+		task.id,
+		"",
+		"Categoría:",
+		task.category,
+		"",
+		"Prioridad:",
+		String(task.priority),
+		"",
+		"Emoción:",
+		task.emotion ?? "neutral",
+		"",
+		"Nota segura:",
+		"Registré la tarea y la señal localmente; no ejecuté IA ni AgentLabs.",
+	].join("\n");
+}
+
 function cliCommandFor(telegramCommand: string): string {
 	return telegramCommand
 		.replace(/^\/idu_prepare\b/u, "idu-pi prepare")
@@ -423,6 +527,9 @@ export function helpText(): string {
 		"  idu-pi lab-review-plan postflight",
 		"  idu-pi semantic-audit-status (Telegram: /semantic_audit_status)",
 		"  idu-pi semantic-audit-run    (Telegram: /semantic_audit_run)",
+		'  idu-pi task bug "detalle"    (Telegram: /task bug <detalle>)',
+		"  idu-pi queue-detail          (Telegram: /queue_detail)",
+		"  idu-pi queue-clear-structured (Telegram: /queue_clear_structured)",
 		"",
 		"Notas:",
 		"- Usa AGENT_WORKSPACE_ROOT y el registro de proyectos del bridge.",

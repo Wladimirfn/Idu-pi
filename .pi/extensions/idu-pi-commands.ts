@@ -171,6 +171,23 @@ export default function (pi: ExtensionAPI) {
 		usage: "/idu-lab-review-plan [postflight|preflight <solicitud>]",
 	});
 
+	registerIduCommand("task", {
+		description: "Crear tarea estructurada Idu-pi desde Pi CLI",
+		cliArgs: (args) => ["task", ...args.split(/\s+/u).filter(Boolean)],
+		requiresArgs: true,
+		usage: "/task bug|feature|refactor|docs <detalle>",
+	});
+
+	registerIduCommand("queue-detail", {
+		description: "Ver cola estructurada Idu-pi",
+		cliArgs: () => ["queue-detail"],
+	});
+
+	registerIduCommand("queue-clear-structured", {
+		description: "Limpiar cola estructurada Idu-pi",
+		cliArgs: () => ["queue-clear-structured"],
+	});
+
 	registerIduCommand("semantic-audit-status", {
 		description: "Mostrar estado de auditoría semántica Idu-pi",
 		cliArgs: () => ["semantic-audit-status"],
