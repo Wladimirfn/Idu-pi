@@ -178,6 +178,44 @@ Los AgentLabs reciben contexto resumido de `project-blueprint`, `project-flows` 
 
 Guía completa: [`docs/project-map-workflow.md`](docs/project-map-workflow.md).
 
+### CLI Idu-pi
+
+El bridge también expone un adaptador CLI mínimo para usar el mismo core sin Telegram:
+
+```text
+idu-pi status
+idu-pi idu
+idu-pi idu-off
+idu-pi idu-status
+idu-pi prepare
+idu-pi preflight "solicitud"
+idu-pi advisory "solicitud"
+idu-pi postflight
+idu-pi lab-review-plan postflight
+```
+
+Uso desde el repo:
+
+```text
+corepack pnpm cli -- status
+corepack pnpm cli -- preflight "cambia login"
+```
+
+Comandos slash en Pi, con la extensión local `.pi/extensions/idu-pi-commands.ts` cargada y luego `/reload`:
+
+```text
+/idu
+/idu-status
+/idu-off
+/idu-prepare
+/idu-preflight cambia login
+/idu-advisory usa JS embebido
+/idu-postflight
+/idu-lab-review-plan postflight
+```
+
+El CLI usa el mismo `AGENT_WORKSPACE_ROOT`, el mismo registro de proyectos y el mismo `reports/idu-session-state.json` que Telegram. No usa IA, no ejecuta AgentLabs y no aplica `project-flows` automáticamente.
+
 Reglas de seguridad:
 
 - No ejecuta MCP automáticamente.

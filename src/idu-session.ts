@@ -19,7 +19,8 @@ export type IduSessionStatus = {
 	active: boolean;
 	activatedAt?: string;
 	guardrails: "automatic" | "manual";
-	statePath: string;
+	workspaceRoot: string;
+	sessionStatePath: string;
 };
 
 export type IduSessionStoreOptions = {
@@ -30,19 +31,20 @@ export type IduSessionStoreOptions = {
 
 const emptyState = (): IduSessionState => ({ version: 1, projects: {} });
 
+export function resolveIduSessionStatePath(workspaceRoot: string): string {
+	return join(workspaceRoot, "reports", "idu-session-state.json");
+}
+
 export class IduSessionStore {
+	private readonly workspaceRoot: string;
 	private readonly filePath: string;
 	private readonly now: () => Date;
 	private state: IduSessionState;
 
 	constructor(options: IduSessionStoreOptions = {}) {
+		this.workspaceRoot = options.workspaceRoot ?? process.cwd();
 		this.filePath =
-			options.filePath ??
-			join(
-				options.workspaceRoot ?? process.cwd(),
-				"reports",
-				"idu-session-state.json",
-			);
+			options.filePath ?? resolveIduSessionStatePath(this.workspaceRoot);
 		this.now = options.now ?? (() => new Date());
 		this.state = this.load();
 	}
@@ -78,18 +80,21 @@ export class IduSessionStore {
 
 	shouldUseAutomaticGuardrails(projectId: string): boolean {
 		const normalizedProjectId = normalizeProjectId(projectId);
+		this.state = this.load();
 		return this.state.projects[normalizedProjectId]?.active === true;
 	}
 
 	status(projectId: string): IduSessionStatus {
 		const normalizedProjectId = normalizeProjectId(projectId);
+		this.state = this.load();
 		const project = this.state.projects[normalizedProjectId];
 		return {
 			projectId: normalizedProjectId,
 			active: project?.active === true,
 			...(project?.activatedAt ? { activatedAt: project.activatedAt } : {}),
 			guardrails: project?.active === true ? "automatic" : "manual",
-			statePath: this.filePath,
+			workspaceRoot: this.workspaceRoot,
+			sessionStatePath: this.filePath,
 		};
 	}
 
@@ -150,6 +155,12 @@ export function formatIduSessionStatus(status: IduSessionStatus): string {
 		"",
 		"guardrails:",
 		status.guardrails,
+		"",
+		"workspaceRoot:",
+		status.workspaceRoot,
+		"",
+		"sessionStatePath:",
+		status.sessionStatePath,
 	].join("\n");
 }
 
