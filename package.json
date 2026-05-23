@@ -3,12 +3,16 @@
   "version": "0.1.1",
   "private": true,
   "type": "module",
+  "bin": {
+    "idu-pi": "dist/src/cli.js"
+  },
   "packageManager": "pnpm@11.1.3",
   "scripts": {
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true}); require('fs').rmSync('.pi-lens',{recursive:true,force:true})\"",
     "setup": "node scripts/setup-env.mjs",
     "serve": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-bridge.ps1",
     "dev": "tsc -p tsconfig.json && node dist/src/index.js",
+    "cli": "tsc -p tsconfig.json && node dist/src/cli.js",
     "start": "node dist/src/index.js",
     "build": "tsc -p tsconfig.json",
     "test": "tsc -p tsconfig.json && node --test dist/test/*.test.js"

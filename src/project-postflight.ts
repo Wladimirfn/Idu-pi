@@ -203,7 +203,8 @@ function runGit(
 
 function parsePorcelainFiles(output: string): string[] {
 	return lines(output).map((line) => {
-		const path = line.slice(3).trim();
+		const match = /^(?:[ MADRCU?!]{1,2})\s+(.+)$/u.exec(line);
+		const path = (match?.[1] ?? line).trim();
 		const rename = path.split(" -> ").at(-1);
 		return rename ?? path;
 	});

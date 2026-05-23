@@ -12,6 +12,7 @@ import { deriveConstitutionFromProjectCore } from "../src/project-constitution.j
 import {
 	analyzeProjectPostflight,
 	formatProjectPostflightReport,
+	readProjectPostflightGitState,
 } from "../src/project-postflight.js";
 
 function connection(
@@ -161,6 +162,24 @@ test("formatProjectPostflightReport renders high report", () => {
 	assert.match(text, /src\/lab-db\.ts/u);
 	assert.match(text, /DB\/storage/u);
 	assert.match(text, /orquestación/u);
+});
+
+test("readProjectPostflightGitState parses status without truncating names", () => {
+	const state = readProjectPostflightGitState("/demo", (_command, args) => {
+		const joined = args.join(" ");
+		if (joined === "status --porcelain") {
+			return "M README.md\nM package.json\n?? src/cli.ts";
+		}
+		if (joined === "diff --name-only") return "README.md\npackage.json";
+		if (joined === "diff --stat") return " README.md | 1 +";
+		return "";
+	});
+
+	assert.deepEqual(state.changedFiles, [
+		"README.md",
+		"package.json",
+		"src/cli.ts",
+	]);
 });
 
 test("analyzeProjectPostflight does not write files", () => {
