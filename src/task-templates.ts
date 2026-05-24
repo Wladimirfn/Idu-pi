@@ -1,65 +1,60 @@
-export type TaskTemplateKind = "bug" | "feature" | "refactor" | "docs";
+import {
+	classifyHumanIntent,
+	inferTaskCategoryFromIntent,
+} from "./human-intent.js";
+
+export type TaskTemplateKind =
+	| "bug"
+	| "feature"
+	| "refactor"
+	| "docs"
+	| "review";
 
 const taskKinds = new Set<TaskTemplateKind>([
 	"bug",
 	"feature",
 	"refactor",
 	"docs",
+	"review",
 ]);
 
 export function parseTaskTemplateCommand(
 	text: string,
 ): { kind: TaskTemplateKind; details: string } | undefined {
-	const match = text.trim().match(/^\/task(?:\s+(\S+))?(?:\s+([\s\S]+))?$/iu);
+	const match = text.trim().match(/^\/task(?:\s+([\s\S]+))?$/iu);
 	if (!match) return undefined;
-	const rawKind = (match[1] ?? "").toLowerCase();
-	if (!taskKinds.has(rawKind as TaskTemplateKind)) return undefined;
+	const body = (match[1] ?? "").trim();
+	if (!body) return undefined;
+	const [rawKind = "", ...rest] = body.split(/\s+/u);
+	const normalizedKind = rawKind.toLowerCase();
+	if (taskKinds.has(normalizedKind as TaskTemplateKind)) {
+		return {
+			kind: normalizedKind as TaskTemplateKind,
+			details: rest.join(" ").trim(),
+		};
+	}
 	return {
-		kind: rawKind as TaskTemplateKind,
-		details: (match[2] ?? "").trim(),
+		kind: inferTaskTemplateKind(body),
+		details: body,
 	};
 }
 
 export function inferTaskTemplateKind(text: string): TaskTemplateKind {
-	const normalized = text.toLocaleLowerCase("es");
-	const mentionsDatabase =
-		/\b(base de datos|bases de datos|db|database|sqlite|tabla|tablas|schema)\b/u.test(
-			normalized,
-		);
-	const mentionsFailure =
-		/\b(bug|fall[aoó]s?|falla|fallas|error|rompi[oó]|rompe|roto|no funciona|crash|problema|arreglar|resolver)\b/u.test(
-			normalized,
-		);
-	if (mentionsDatabase && mentionsFailure) return "bug";
-	if (
-		/\b(bug|fall[aoó]s?|falla|fallas|error|rompi[oó]|rompe|roto|no funciona|crash|problema|login)\b/u.test(
-			normalized,
-		)
-	)
-		return "bug";
-	if (/\b(refactor|refactorizar|reestructurar|limpiar)\b/u.test(normalized))
-		return "refactor";
-	if (/\b(readme|docs?|documentaci[oó]n|gu[ií]a)\b/u.test(normalized))
-		return "docs";
-	if (
-		/\b(feature|funcionalidad|agregar|agrega|crear|crea|implementar|implementa|nuevo|nueva)\b/u.test(
-			normalized,
-		)
-	)
-		return "feature";
-	return "feature";
+	const classification = classifyHumanIntent(text);
+	const category = inferTaskCategoryFromIntent(classification);
+	return category === "general" ? "feature" : category;
 }
 
 export function formatTaskTemplateHelp(): string {
 	return `Plantillas de tarea:
 
-/task bug <síntoma o error>
-/task feature <objetivo de producto>
-/task refactor <área a mejorar>
-/task docs <documento o tema>
+/task [bug|feature|refactor|docs|review] <detalle>
+/task <texto libre>
 
-Ejemplo:
-/task bug el botón de decisión no responde en Telegram`;
+Ejemplos:
+/task bug el botón de decisión no responde en Telegram
+/task fallo el loggin
+/task database keeps failing`;
 }
 
 export function buildTaskPrompt(
@@ -86,6 +81,10 @@ Preserve behavior. Characterize existing behavior with tests or targeted checks 
 			return `Documentation task. Topic/context: ${scope}
 
 Improve documentation in Spanish unless the file/project convention says otherwise. Keep it concise, accurate, and actionable. Verify commands/examples against the current project where practical. Do not commit or push unless explicitly asked.`;
+		case "review":
+			return `Review task. Scope/context: ${scope}
+
+Inspect the requested code or plan, identify blockers first, separate evidence from opinion, avoid edits unless explicitly asked, and report concise findings with verification suggestions. Do not commit or push unless explicitly asked.`;
 		default:
 			return undefined;
 	}

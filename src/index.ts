@@ -666,6 +666,7 @@ async function guardTaskPrompt(
 	prompt: string,
 	options: {
 		structuredTaskCategory?: string;
+		originalText?: string;
 		source: string;
 		blockTitle: string;
 		enqueueLegacyOnBlock?: boolean;
@@ -701,6 +702,7 @@ async function guardTaskPrompt(
 					source: options.source,
 					projectId: currentProjectId(),
 					category: options.structuredTaskCategory,
+					originalText: options.originalText,
 				}),
 			);
 		const reason =
@@ -729,6 +731,7 @@ async function guardTaskPrompt(
 		source: options.source,
 		projectId: currentProjectId(),
 		category: options.structuredTaskCategory,
+		originalText: options.originalText,
 	});
 	const guardRisk = strongestGuardRisk(
 		report.risk,
@@ -1300,6 +1303,7 @@ bot.command("task", async (ctx) => {
 	if (
 		!(await guardTaskPrompt(ctx, prompt, {
 			structuredTaskCategory: parsed.kind,
+			originalText: parsed.details,
 			source: "task-direct-guard",
 			blockTitle: "⛔ Tarea pausada: requiere confirmación humana.",
 			enqueueLegacyOnBlock: true,

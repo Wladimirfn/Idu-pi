@@ -7,7 +7,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import {
-	classifyIntentWithContext,
+	classifyHumanIntentWithContext,
 	type IntentAction,
 	type IntentConcept,
 	type IntentKind,
@@ -26,6 +26,7 @@ export type StructuredTaskGuardStatus =
 export type StructuredTask = {
 	id: string;
 	text: string;
+	originalText?: string;
 	category: string;
 	priority: number;
 	status: StructuredTaskStatus;
@@ -48,6 +49,7 @@ export type StructuredTask = {
 
 export type StructuredTaskInput = {
 	text: string;
+	originalText?: string;
 	category: string;
 	priority?: number;
 	emotion?: string;
@@ -96,6 +98,7 @@ export class StructuredTaskQueue {
 			status: "pending",
 			createdAt: timestamp,
 			updatedAt: timestamp,
+			...(input.originalText ? { originalText: input.originalText } : {}),
 			...(input.emotion ? { emotion: input.emotion } : {}),
 			...(input.source ? { source: input.source } : {}),
 			...(input.projectId ? { projectId: input.projectId } : {}),
@@ -281,6 +284,7 @@ export function structuredTaskCategory(text: string): string {
 	if (normalized.startsWith("/task feature")) return "feature";
 	if (normalized.startsWith("/task refactor")) return "refactor";
 	if (normalized.startsWith("/task docs")) return "docs";
+	if (normalized.startsWith("/task review")) return "review";
 	return "general";
 }
 
@@ -315,14 +319,29 @@ export function structuredTaskInputForText(
 		source?: string;
 		projectId?: string;
 		category?: string;
+		originalText?: string;
 		analyzer?: UserSignalAnalyzer;
 	} = {},
 ): StructuredTaskInput {
-	const signal = analyzeStructuredTaskSignal(text, options.analyzer);
-	const category = options.category?.trim() || structuredTaskCategory(text);
-	const intent = classifyIntentWithContext(text, { taskCategory: category });
+	const analysisText = options.originalText ?? text;
+	const signal = analyzeStructuredTaskSignal(analysisText, options.analyzer);
+	const inferredIntent = classifyHumanIntentWithContext(analysisText, {
+		taskCategory: options.category,
+	});
+	const category =
+		options.category?.trim() ||
+		(inferredIntent.taskCategory === "general"
+			? structuredTaskCategory(text)
+			: inferredIntent.taskCategory);
+	const intent =
+		category === inferredIntent.taskCategory
+			? inferredIntent
+			: classifyHumanIntentWithContext(analysisText, {
+					taskCategory: category,
+				});
 	return {
 		text,
+		...(options.originalText ? { originalText: options.originalText } : {}),
 		category,
 		priority: signal.emotion === "neutral" ? 3 : signal.urgency,
 		emotion: signal.emotion,
@@ -331,7 +350,7 @@ export function structuredTaskInputForText(
 		intentConcepts: intent.concepts,
 		intentRiskHint: intent.riskHint,
 		intentConfidence: intent.confidence,
-		intentEvidence: intent.evidence,
+		intentEvidence: intent.matchedEvidence,
 		...(options.source ? { source: options.source } : {}),
 		...(options.projectId ? { projectId: options.projectId } : {}),
 	};
@@ -362,13 +381,14 @@ export function formatStructuredTaskQueueDetail(
 				task.guardStatus === "needs_confirmation"
 					? `\nAprobar: ${approveCommand(task.id)}\nRechazar: ${rejectCommand(task.id)}`
 					: "";
-			return `${task.id.slice(0, 12)} | ${task.status} | P${task.priority} | ${task.category} | ${task.emotion ?? "neutral"}${intent}${guard} | ${task.createdAt}\n${summarizeTaskText(task.text)}${approvalHint}`;
+			return `${task.id.slice(0, 12)} | ${task.status} | P${task.priority} | ${task.category} | ${task.emotion ?? "neutral"}${intent}${guard} | ${task.createdAt}\n${summarizeTaskText(task.originalText ?? task.text)}${approvalHint}`;
 		})
 		.join("\n\n")}`;
 }
 
 function primaryIntentConcept(concepts: string[] | undefined): string {
 	return (
+		concepts?.find((concept) => concept === "auth") ??
 		concepts?.find((concept) => concept !== "task" && concept !== "queue") ??
 		concepts?.[0] ??
 		"unknown"

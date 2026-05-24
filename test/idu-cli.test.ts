@@ -582,7 +582,7 @@ test("createCliTask active bloquea login high con confirmación", async () => {
 		assert.equal(task.guardRisk, "high");
 		assert.match(formatted, /Tarea pausada: requiere confirmación humana/u);
 		assert.match(formatted, /Intención:/u);
-		assert.match(formatted, /task\/auth\/high/u);
+		assert.match(formatted, /bug_report\/login\/high/u);
 		assert.match(formatted, /idu-pi idu-queue-approve/u);
 		assert.match(formatted, /idu-pi idu-queue-reject/u);
 	} finally {

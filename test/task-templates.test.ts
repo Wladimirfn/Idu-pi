@@ -16,7 +16,11 @@ test("parseTaskTemplateCommand extracts kind and details", () => {
 		kind: "feature",
 		details: "",
 	});
-	assert.equal(parseTaskTemplateCommand("/task nope"), undefined);
+	assert.deepEqual(parseTaskTemplateCommand("/task nope"), {
+		kind: "feature",
+		details: "nope",
+	});
+	assert.equal(parseTaskTemplateCommand("/task"), undefined);
 });
 
 test("inferTaskTemplateKind treats database failures as bugs", () => {
@@ -36,13 +40,13 @@ test("buildTaskPrompt creates focused templates", () => {
 	assert.match(buildTaskPrompt("feature", "nuevo dashboard") ?? "", /feature/i);
 	assert.match(buildTaskPrompt("refactor", "limpiar index") ?? "", /refactor/i);
 	assert.match(buildTaskPrompt("docs", "README") ?? "", /documentation|docs/i);
+	assert.match(buildTaskPrompt("review", "code") ?? "", /review/i);
 	assert.equal(buildTaskPrompt("bad", "x"), undefined);
 });
 
 test("formatTaskTemplateHelp lists supported kinds", () => {
 	const help = formatTaskTemplateHelp();
-	assert.match(help, /\/task bug/);
-	assert.match(help, /\/task feature/);
-	assert.match(help, /\/task refactor/);
-	assert.match(help, /\/task docs/);
+	assert.match(help, /\/task bug el botón/);
+	assert.match(help, /\/task \[bug\|feature\|refactor\|docs\|review\]/);
+	assert.match(help, /\/task <texto libre>/);
 });

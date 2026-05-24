@@ -293,6 +293,7 @@ export async function runCliCommand(
 					"feature",
 					"refactor",
 					"docs",
+					"review",
 				];
 				const hasExplicitKind = knownKinds.includes(first);
 				const details = (hasExplicitKind ? rest.slice(1) : rest)
@@ -478,12 +479,13 @@ export function createCliTask(
 	if (!prompt) {
 		throw new Error(formatTaskTemplateHelp());
 	}
-	const signal = analyzeStructuredTaskSignal(prompt);
+	const signal = analyzeStructuredTaskSignal(details || prompt);
 	let task = context.structuredTaskQueue.enqueueTask(
 		structuredTaskInputForText(prompt, {
 			source: "cli",
 			projectId: context.projectId,
 			category: kind,
+			originalText: details,
 			analyzer: () => signal,
 		}),
 	);
@@ -518,7 +520,7 @@ export function createCliTask(
 			id: randomUUID(),
 			projectId: context.projectId,
 			source: "cli-task",
-			rawText: prompt,
+			rawText: details || prompt,
 			detectedEmotion: signal.emotion,
 			urgency: signal.urgency,
 			confidence: signal.confidence,

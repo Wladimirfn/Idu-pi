@@ -1,6 +1,7 @@
 export type UserEmotion =
 	| "neutral"
 	| "molesto"
+	| "frustrado"
 	| "urgente"
 	| "cansado"
 	| "feliz"
@@ -33,12 +34,35 @@ const RULES: EmotionRule[] = [
 			"se cayo",
 			"no funciona",
 			"ya",
+			"ahora",
+			"asap",
+			"urgent",
+			"critical",
+			"immediately",
 		],
 	},
 	{
 		emotion: "molesto",
 		urgency: 4,
-		keywords: ["harto", "otra vez", "molesto", "me tiene cansado"],
+		keywords: ["por la mierda", "por la mirda", "maldita", "harto", "harta"],
+	},
+	{
+		emotion: "molesto",
+		urgency: 4,
+		keywords: [
+			"otra vez",
+			"nuevamente",
+			"de nuevo",
+			"sigue fallando",
+			"volvió a fallar",
+			"volvio a fallar",
+			"falla recurrente",
+			"keeps failing",
+			"still failing",
+			"again",
+			"molesto",
+			"me tiene cansado",
+		],
 	},
 	{
 		emotion: "cansado",

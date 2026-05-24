@@ -226,10 +226,12 @@ test("structuredTaskInputForText stores emotion priority and human intent", () =
 	assert.equal(urgent.category, "bug");
 	assert.equal(urgent.priority, 5);
 	assert.equal(urgent.emotion, "urgente");
-	assert.equal(urgent.intentKind, "task");
+	assert.equal(urgent.originalText, undefined);
+	assert.equal(urgent.intentKind, "bug_report");
 	assert.equal(urgent.intentAction, "require_confirmation");
 	assert.equal(urgent.intentRiskHint, "high");
 	assert.equal(urgent.intentConcepts?.includes("auth"), true);
+	assert.equal(urgent.intentConcepts?.includes("login"), true);
 	assert.equal(urgent.source, "telegram");
 	assert.equal(urgent.projectId, "idu-pi");
 	assert.equal(annoyed.emotion, "molesto");
@@ -251,8 +253,9 @@ test("analyzeStructuredTaskSignal falls back to neutral", () => {
 test("formatStructuredTaskQueueDetail shows structured task fields", async () => {
 	await withTempQueue((queue) => {
 		queue.enqueueTask(
-			structuredTaskInputForText("/task bug arreglar login", {
+			structuredTaskInputForText("Bug task. Symptom/context: fallo el loggin", {
 				category: "bug",
+				originalText: "fallo el loggin",
 			}),
 		);
 
@@ -264,8 +267,9 @@ test("formatStructuredTaskQueueDetail shows structured task fields", async () =>
 		assert.match(detail, /P3/u);
 		assert.match(detail, /bug/u);
 		assert.match(detail, /auth/u);
-		assert.match(detail, /intent: task\/auth\/high/u);
-		assert.match(detail, /\/task bug arreglar login/u);
+		assert.match(detail, /intent: bug_report\/auth\/high/u);
+		assert.match(detail, /fallo el loggin/u);
+		assert.doesNotMatch(detail, /Use systematic debugging/u);
 	});
 });
 

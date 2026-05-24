@@ -1,3 +1,7 @@
+import {
+	classifyHumanIntent,
+	type HumanIntentClassification,
+} from "./human-intent.js";
 import type { ProjectBlueprint } from "./project-blueprint.js";
 import type { ProjectConnectionReport } from "./project-connection.js";
 import type { ProjectFlows } from "./project-flows.js";
@@ -33,6 +37,7 @@ export type ProjectPreflightReport = {
 	shouldRunAgentLab: boolean;
 	availableContext?: string[];
 	constitutionGate?: ConstitutionGateResult;
+	humanIntent?: HumanIntentClassification;
 };
 
 type IntentFlags = {
@@ -138,6 +143,7 @@ export function analyzeProjectPreflight(
 	const availableContext: string[] = [];
 	const warnings: string[] = [...connection.warnings];
 	const intents = detectIntent(normalized);
+	const humanIntent = classifyHumanIntent(normalizedRequest);
 
 	if (!normalizedRequest) {
 		return buildReport({
@@ -171,12 +177,48 @@ export function analyzeProjectPreflight(
 		});
 	}
 
-	pushIf(affectedAreas, intents.architecture, "arquitectura");
-	pushIf(affectedAreas, intents.data, "datos");
-	pushIf(affectedAreas, intents.critical, "auth/seguridad");
+	pushIf(
+		affectedAreas,
+		intents.architecture ||
+			humanIntent.concepts.includes("module") ||
+			humanIntent.concepts.includes("flow"),
+		"arquitectura",
+	);
+	pushIf(
+		affectedAreas,
+		intents.data ||
+			humanIntent.concepts.includes("database") ||
+			humanIntent.concepts.includes("schema"),
+		"datos",
+	);
+	pushIf(
+		affectedAreas,
+		intents.critical ||
+			humanIntent.concepts.some((concept) =>
+				[
+					"auth",
+					"login",
+					"session",
+					"access",
+					"password",
+					"permission",
+					"security",
+				].includes(concept),
+			),
+		"auth/seguridad",
+	);
 	pushIf(affectedAreas, intents.functional, "interfaz/API");
-	pushIf(affectedAreas, intents.flow, "flujo funcional");
+	pushIf(
+		affectedAreas,
+		intents.flow || humanIntent.concepts.includes("flow"),
+		"flujo funcional",
+	);
 	pushIf(affectedAreas, intents.simple, "tarea simple");
+	pushIf(
+		affectedAreas,
+		humanIntent.concepts.includes("recurring_failure"),
+		"falla recurrente",
+	);
 	pushIf(affectedAreas, intents.newModule, "módulo nuevo");
 	pushIf(affectedAreas, intents.moduleConnection, "conexión entre módulos");
 
@@ -195,6 +237,10 @@ export function analyzeProjectPreflight(
 		);
 	}
 
+	for (const reason of humanIntentReasonWarnings(humanIntent)) {
+		warnings.push(reason);
+	}
+
 	for (const moduleName of missingRequestedModules(
 		intents.requestedModules,
 		context.flows,
@@ -206,6 +252,7 @@ export function analyzeProjectPreflight(
 		intents.architecture ||
 		intents.data ||
 		intents.critical ||
+		humanIntent.shouldBlockIfIduActive ||
 		intents.newModule ||
 		intents.moduleConnection ||
 		intents.functional ||
@@ -214,6 +261,7 @@ export function analyzeProjectPreflight(
 	if (
 		intents.data ||
 		intents.critical ||
+		humanIntent.shouldBlockIfIduActive ||
 		intents.newModule ||
 		intents.moduleConnection
 	) {
@@ -279,6 +327,7 @@ export function analyzeProjectPreflight(
 		requiresHumanConfirmation,
 		shouldRunAgentLab,
 		constitutionGate,
+		humanIntent,
 	});
 }
 
@@ -415,6 +464,7 @@ function buildReport(options: {
 	shouldRunAgentLab: boolean;
 	availableContext?: string[];
 	constitutionGate?: ConstitutionGateResult;
+	humanIntent?: HumanIntentClassification;
 }): ProjectPreflightReport {
 	return {
 		risk: options.risk,
@@ -433,7 +483,31 @@ function buildReport(options: {
 		shouldRunAgentLab: options.shouldRunAgentLab,
 		availableContext: dedupe(options.availableContext ?? []),
 		constitutionGate: options.constitutionGate,
+		humanIntent: options.humanIntent,
 	};
+}
+
+function humanIntentReasonWarnings(
+	intent: HumanIntentClassification,
+): string[] {
+	const reasons: string[] = [];
+	if (
+		intent.concepts.some((concept) =>
+			["auth", "login", "session", "access", "password"].includes(concept),
+		)
+	) {
+		reasons.push("Detecté posible login/acceso.");
+	}
+	if (
+		intent.concepts.includes("database") ||
+		intent.concepts.includes("schema")
+	) {
+		reasons.push("Detecté posible base de datos.");
+	}
+	if (intent.concepts.includes("recurring_failure")) {
+		reasons.push("Detecté falla recurrente.");
+	}
+	return reasons;
 }
 
 function recommendedNext(
