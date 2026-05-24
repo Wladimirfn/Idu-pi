@@ -5,10 +5,19 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
+	activateIduSession,
 	configureIduSessionStore,
 	getIduSessionStatus,
 } from "../src/idu-session.js";
-import { runCliCommand, type CliRuntime } from "../src/cli.js";
+import {
+	approveStructuredTaskById,
+	createCliTask,
+	formatCliTaskResult,
+	rejectStructuredTaskById,
+	runCliCommand,
+	type CliRuntime,
+} from "../src/cli.js";
+import { LabDbRepository } from "../src/lab-db-repository.js";
 import type { IduPrepareResult } from "../src/idu-prepare.js";
 import type { ProjectAdvisory } from "../src/project-advisory.js";
 import type { ProjectConnectionReport } from "../src/project-connection.js";
@@ -18,7 +27,10 @@ import type {
 	SemanticAuditRunResult,
 	SemanticAuditStatusReport,
 } from "../src/semantic-audit-command.js";
-import type { StructuredTask } from "../src/structured-task-queue.js";
+import {
+	StructuredTaskQueue,
+	type StructuredTask,
+} from "../src/structured-task-queue.js";
 
 async function withRuntime(
 	fn: (
@@ -450,6 +462,54 @@ test("CLI task bug encola tarea sin AgentLabs", async () => {
 	});
 });
 
+test("createCliTask inactive encola sin needs_confirmation", async () => {
+	const root = mkdtempSync(join(tmpdir(), "idu-cli-task-inactive-"));
+	try {
+		const workspaceRoot = join(root, "workspace");
+		configureIduSessionStore({ workspaceRoot });
+		const task = createCliTask("bug", "urgente login falla", {
+			projectId: "pi-telegram-bridge",
+			structuredTaskQueue: new StructuredTaskQueue({ workspaceRoot }),
+			labDbRepository: new LabDbRepository(
+				join(workspaceRoot, "reports", "lab.db"),
+			),
+			preflight: fakePreflight,
+		});
+
+		assert.equal(task.status, "pending");
+		assert.notEqual(task.guardStatus, "needs_confirmation");
+		assert.match(formatCliTaskResult(task), /queued/u);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("createCliTask active bloquea login high con confirmación", async () => {
+	const root = mkdtempSync(join(tmpdir(), "idu-cli-task-active-"));
+	try {
+		const workspaceRoot = join(root, "workspace");
+		configureIduSessionStore({ workspaceRoot });
+		activateIduSession("pi-telegram-bridge");
+		const task = createCliTask("bug", "urgente login falla", {
+			projectId: "pi-telegram-bridge",
+			structuredTaskQueue: new StructuredTaskQueue({ workspaceRoot }),
+			labDbRepository: new LabDbRepository(
+				join(workspaceRoot, "reports", "lab.db"),
+			),
+			preflight: fakePreflight,
+		});
+		const formatted = formatCliTaskResult(task);
+
+		assert.equal(task.guardStatus, "needs_confirmation");
+		assert.equal(task.guardRisk, "high");
+		assert.match(formatted, /Tarea pausada: requiere confirmación humana/u);
+		assert.match(formatted, /idu-pi idu-queue-approve/u);
+		assert.match(formatted, /idu-pi idu-queue-reject/u);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
 test("CLI queue-detail muestra cola estructurada", async () => {
 	await withRuntime(async (runtime) => {
 		const result = await runCliCommand(["idu-queue-detail"], runtime);
@@ -488,6 +548,76 @@ test("CLI queue_reject rechaza tarea", async () => {
 		assert.equal(result.exitCode, 0);
 		assert.match(result.stdout, /Tarea rechazada: task-1/u);
 	});
+});
+
+test("CLI queue-reject sin ID falla y no modifica cola", async () => {
+	await withRuntime(async (runtime) => {
+		let called = false;
+		const guardedRuntime: CliRuntime = {
+			...runtime,
+			queueReject: () => {
+				called = true;
+				return fakeTask();
+			},
+		};
+
+		const result = await runCliCommand(["idu-queue-reject"], guardedRuntime);
+
+		assert.equal(result.exitCode, 1);
+		assert.equal(called, false);
+		assert.match(result.stderr, /Falta solicitud/u);
+	});
+});
+
+test("CLI queue-approve sin ID falla y no modifica cola", async () => {
+	await withRuntime(async (runtime) => {
+		let called = false;
+		const guardedRuntime: CliRuntime = {
+			...runtime,
+			queueApprove: () => {
+				called = true;
+				return fakeTask();
+			},
+		};
+
+		const result = await runCliCommand(["idu-queue-approve"], guardedRuntime);
+
+		assert.equal(result.exitCode, 1);
+		assert.equal(called, false);
+		assert.match(result.stderr, /Falta solicitud/u);
+	});
+});
+
+test("CLI queue helpers exigen ID completo", async () => {
+	const root = mkdtempSync(join(tmpdir(), "idu-cli-queue-exact-"));
+	try {
+		const queue = new StructuredTaskQueue({ workspaceRoot: root });
+		const task = queue.enqueueTask({
+			text: "Bug task. Symptom/context: login falla",
+			category: "bug",
+			priority: 5,
+		});
+		queue.markNeedsConfirmation(task.id, {
+			guardRisk: "high",
+			guardReason: "preflight high",
+		});
+
+		assert.equal(
+			approveStructuredTaskById(queue, task.id.slice(0, 12)),
+			undefined,
+		);
+		assert.equal(queue.getTask(task.id)?.guardStatus, "needs_confirmation");
+		assert.equal(
+			approveStructuredTaskById(queue, task.id)?.guardStatus,
+			"approved",
+		);
+		assert.equal(
+			rejectStructuredTaskById(queue, task.id.slice(0, 12)),
+			undefined,
+		);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
 });
 
 test("comando desconocido muestra ayuda", async () => {

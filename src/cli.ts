@@ -9,6 +9,7 @@ import {
 	deactivateIduSession,
 	formatIduSessionStatus,
 	getIduSessionStatus,
+	shouldUseAutomaticGuardrails,
 } from "./idu-session.js";
 import {
 	formatIduPrepareResult,
@@ -187,24 +188,14 @@ export function createCliRuntime(): CliRuntime {
 				projectId: activeProject.id,
 				structuredTaskQueue,
 				labDbRepository,
+				preflight: (request) => buildPreflightReport(request, context),
 			}),
 		formatTask: formatCliTaskResult,
 		queueDetail: () =>
 			formatStructuredTaskQueueDetail(structuredTaskQueue.listTasks()),
 		queueClearStructured: () => structuredTaskQueue.clearPersisted(),
-		queueApprove: (idOrPrefix) => {
-			const task = structuredTaskQueue.findByIdPrefix(idOrPrefix);
-			return task ? structuredTaskQueue.markGuardApproved(task.id) : undefined;
-		},
-		queueReject: (idOrPrefix) => {
-			const task = structuredTaskQueue.findByIdPrefix(idOrPrefix);
-			return task
-				? structuredTaskQueue.markGuardRejected(
-						task.id,
-						"Rechazada por confirmación humana.",
-					)
-				: undefined;
-		},
+		queueApprove: (id) => approveStructuredTaskById(structuredTaskQueue, id),
+		queueReject: (id) => rejectStructuredTaskById(structuredTaskQueue, id),
 	};
 }
 
@@ -459,13 +450,14 @@ function loadConfirmedProjectConstitution(projectPath: string | undefined) {
 	}
 }
 
-function createCliTask(
+export function createCliTask(
 	kind: TaskTemplateKind,
 	details: string,
 	context: {
 		projectId: string;
 		structuredTaskQueue: StructuredTaskQueue;
 		labDbRepository: LabDbRepository;
+		preflight: (request: string) => ProjectPreflightReport;
 	},
 ): StructuredTask {
 	const prompt = buildTaskPrompt(kind, details);
@@ -473,7 +465,7 @@ function createCliTask(
 		throw new Error(formatTaskTemplateHelp());
 	}
 	const signal = analyzeStructuredTaskSignal(prompt);
-	const task = context.structuredTaskQueue.enqueueTask(
+	let task = context.structuredTaskQueue.enqueueTask(
 		structuredTaskInputForText(prompt, {
 			source: "cli",
 			projectId: context.projectId,
@@ -481,6 +473,25 @@ function createCliTask(
 			analyzer: () => signal,
 		}),
 	);
+	if (shouldUseAutomaticGuardrails(context.projectId)) {
+		const report = context.preflight(prompt);
+		const reason = [
+			`preflight ${report.risk}`,
+			...report.affectedAreas.map((area) => `área: ${area}`),
+			...report.warnings,
+		].join("; ");
+		task =
+			report.risk === "high" || report.risk === "blocker"
+				? (context.structuredTaskQueue.markNeedsConfirmation(task.id, {
+						guardRisk: report.risk,
+						guardReason: reason,
+					}) ?? task)
+				: (context.structuredTaskQueue.markGuardClear(
+						task.id,
+						report.risk,
+						reason,
+					) ?? task);
+	}
 	try {
 		context.labDbRepository.recordUserSignal({
 			id: randomUUID(),
@@ -498,12 +509,31 @@ function createCliTask(
 	return task;
 }
 
-function formatCliTaskResult(task: StructuredTask): string {
+export function approveStructuredTaskById(
+	queue: StructuredTaskQueue,
+	id: string,
+): StructuredTask | undefined {
+	const task = queue.getTask(id);
+	return task ? queue.markGuardApproved(task.id) : undefined;
+}
+
+export function rejectStructuredTaskById(
+	queue: StructuredTaskQueue,
+	id: string,
+): StructuredTask | undefined {
+	const task = queue.getTask(id);
+	return task
+		? queue.markGuardRejected(task.id, "Rechazada por confirmación humana.")
+		: undefined;
+}
+
+export function formatCliTaskResult(task: StructuredTask): string {
+	const paused = task.guardStatus === "needs_confirmation";
 	return [
 		"Idu-pi Task",
 		"",
 		"Estado:",
-		"queued",
+		paused ? "Tarea pausada: requiere confirmación humana" : "queued",
 		"",
 		"ID:",
 		task.id,
@@ -516,6 +546,22 @@ function formatCliTaskResult(task: StructuredTask): string {
 		"",
 		"Emoción:",
 		task.emotion ?? "neutral",
+		...(task.guardStatus
+			? [
+					"",
+					"Guard:",
+					`${task.guardStatus}${task.guardRisk ? `/${task.guardRisk}` : ""}`,
+				]
+			: []),
+		...(paused
+			? [
+					"",
+					"Aprobar:",
+					`idu-pi idu-queue-approve ${task.id}`,
+					"Rechazar:",
+					`idu-pi idu-queue-reject ${task.id}`,
+				]
+			: []),
 		"",
 		"Nota segura:",
 		"Registré la tarea y la señal localmente; no ejecuté IA ni AgentLabs.",

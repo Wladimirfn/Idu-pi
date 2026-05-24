@@ -1984,7 +1984,7 @@ bot.command("queue_clear_structured", async (ctx) => {
 bot.command("queue_approve", async (ctx) => {
 	if (!(await guard(ctx))) return;
 	const id = commandArg(ctx.message?.text ?? "");
-	const task = structuredTaskQueue.findByIdPrefix(id);
+	const task = id ? structuredTaskQueue.getTask(id) : undefined;
 	if (!id || !task) {
 		await ctx.reply("Uso: /queue_approve <id>");
 		return;
@@ -2005,7 +2005,7 @@ bot.command("queue_approve", async (ctx) => {
 bot.command("queue_reject", async (ctx) => {
 	if (!(await guard(ctx))) return;
 	const id = commandArg(ctx.message?.text ?? "");
-	const task = structuredTaskQueue.findByIdPrefix(id);
+	const task = id ? structuredTaskQueue.getTask(id) : undefined;
 	if (!id || !task) {
 		await ctx.reply("Uso: /queue_reject <id>");
 		return;
