@@ -276,4 +276,28 @@ export default function (pi: ExtensionAPI) {
 		cliArgs: (args) => ["semantic-compact-review", args || "latest"],
 		usage: "/idu-semantic-compact-review [latest|ruta]",
 	});
+
+	registerIduCommand("semantic-agent-tasks-review", {
+		description: "Revisar tareas AgentLab sugeridas por auditoría semántica",
+		cliArgs: (args) => ["semantic-agent-tasks-review", args || "latest"],
+		usage: "/semantic-agent-tasks-review [latest|ruta]",
+	});
+
+	registerIduCommand("semantic-agent-tasks-create", {
+		description: "Crear tareas review desde auditoría semántica",
+		cliArgs: (args) => ["semantic-agent-tasks-create", args || "latest"],
+		usage: "/semantic-agent-tasks-create [latest|ruta]",
+	});
+
+	registerIduCommand("idu-semantic-agent-tasks-review", {
+		description: "Alias Idu-pi para revisar tareas AgentLab semánticas",
+		cliArgs: (args) => ["semantic-agent-tasks-review", args || "latest"],
+		usage: "/idu-semantic-agent-tasks-review [latest|ruta]",
+	});
+
+	registerIduCommand("idu-semantic-agent-tasks-create", {
+		description: "Alias Idu-pi para crear tareas review semánticas",
+		cliArgs: (args) => ["semantic-agent-tasks-create", args || "latest"],
+		usage: "/idu-semantic-agent-tasks-create [latest|ruta]",
+	});
 }

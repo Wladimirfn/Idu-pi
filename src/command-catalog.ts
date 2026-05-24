@@ -88,6 +88,24 @@ export const TELEGRAM_COMMANDS: TelegramCommandEntry[] = [
 		],
 	},
 	{
+		command: "semantic_agent_tasks_review",
+		description: "Revisar tareas AgentLab sugeridas",
+		help: "/semantic_agent_tasks_review [latest|ruta] - ver tareas review desde compactación sin escribir cola",
+		usage: [
+			"/semantic_agent_tasks_review latest",
+			"/semantic_agent_tasks_review <ruta>",
+		],
+	},
+	{
+		command: "semantic_agent_tasks_create",
+		description: "Crear tareas review semánticas",
+		help: "/semantic_agent_tasks_create [latest|ruta] - registrar tareas review sin ejecutar AgentLabs",
+		usage: [
+			"/semantic_agent_tasks_create latest",
+			"/semantic_agent_tasks_create <ruta>",
+		],
+	},
+	{
 		command: "idu_define_project",
 		description: "Definir Project Core manual",
 		help: "/idu_define_project - iniciar wizard manual para crear config/project-core.json draft",

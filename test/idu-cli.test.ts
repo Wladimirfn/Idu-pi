@@ -31,6 +31,10 @@ import type {
 	SaveSemanticCompactionDraftResult,
 	SemanticCompactionReview,
 } from "../src/semantic-compaction.js";
+import type {
+	SemanticAgentTaskCreationResult,
+	SemanticAgentTaskPlan,
+} from "../src/semantic-agent-tasks.js";
 import {
 	formatStructuredTaskQueueDetail,
 	StructuredTaskQueue,
@@ -235,6 +239,52 @@ function fakeSemanticCompactionReview(
 	};
 }
 
+function fakeSemanticAgentTaskPlan(): SemanticAgentTaskPlan {
+	return {
+		draftPath: "semantic-compaction-draft-20260102-030405.json",
+		draftName: "semantic-compaction-draft-20260102-030405.json",
+		projectId: "pi-telegram-bridge",
+		validDraft: true,
+		errors: [],
+		candidates: [
+			{
+				type: "security",
+				category: "review",
+				title: "Revisar seguridad auth/login",
+				priority: 5,
+				reason: "findings críticos sobre auth/login",
+				recommendation: "revisar seguridad de autenticación",
+				evidence: "Critical auth bug",
+				requiresHumanApproval: true,
+				dedupeKey: "security:auth-login",
+				queuePriority: 1,
+				text: "Revisión SG5 semantic-audit — security: Revisar seguridad auth/login\nPrioridad semántica: 5\nPrioridad cola: 1\nNo ejecutar cambios sin aprobación humana.\nDedupe: security:auth-login",
+			},
+		],
+	};
+}
+
+function fakeSemanticAgentTaskCreation(): SemanticAgentTaskCreationResult {
+	return {
+		plan: fakeSemanticAgentTaskPlan(),
+		created: [
+			{
+				id: "task-sg5-1",
+				text: "Revisión SG5 semantic-audit — security: Revisar seguridad auth/login",
+				category: "review",
+				priority: 5,
+				status: "pending",
+				createdAt: "2026-05-23T00:00:00.000Z",
+				updatedAt: "2026-05-23T00:00:00.000Z",
+				emotion: "neutral",
+				source: "semantic-audit",
+				projectId: "pi-telegram-bridge",
+			},
+		],
+		skippedDuplicates: [],
+	};
+}
+
 function fakeTask(): StructuredTask {
 	return {
 		id: "task-1",
@@ -379,6 +429,30 @@ function fakeRuntime(projectPath: string, workspaceRoot: string): CliRuntime {
 				"",
 				"suggestedAgentTasks:",
 				review.summary.suggestedAgentTasks.join("\n"),
+			].join("\n"),
+		semanticAgentTaskPlan: fakeSemanticAgentTaskPlan,
+		formatSemanticAgentTaskPlan: (plan) =>
+			[
+				"Semantic Agent Tasks Review",
+				"",
+				"Tareas candidatas:",
+				String(plan.candidates.length),
+				"",
+				"security — priority 5",
+				"",
+				"No ejecuté AgentLabs ni modifiqué código.",
+			].join("\n"),
+		semanticAgentTasksCreate: fakeSemanticAgentTaskCreation,
+		formatSemanticAgentTaskCreationResult: (result) =>
+			[
+				"Semantic Agent Tasks Created",
+				"",
+				"Creadas:",
+				...result.created.map(
+					(task) => `- ${task.id} ${task.category} priority ${task.priority}`,
+				),
+				"",
+				"Solo registré tareas para revisión. No ejecuté AgentLabs.",
 			].join("\n"),
 		createTask: fakeTask,
 		formatTask: (task) =>
@@ -569,6 +643,34 @@ test("CLI semantic-compact-review latest funciona", async () => {
 		assert.match(result.stdout, /Semantic Compaction Review/u);
 		assert.match(result.stdout, /suggestedRuleUpdates/u);
 		assert.match(result.stdout, /suggestedAgentTasks/u);
+	});
+});
+
+test("CLI semantic-agent-tasks-review latest funciona", async () => {
+	await withRuntime(async (runtime) => {
+		const result = await runCliCommand(
+			["semantic-agent-tasks-review", "latest"],
+			runtime,
+		);
+
+		assert.equal(result.exitCode, 0);
+		assert.match(result.stdout, /Semantic Agent Tasks Review/u);
+		assert.match(result.stdout, /security — priority 5/u);
+		assert.match(result.stdout, /No ejecuté AgentLabs/u);
+	});
+});
+
+test("CLI semantic-agent-tasks-create latest funciona", async () => {
+	await withRuntime(async (runtime) => {
+		const result = await runCliCommand(
+			["semantic-agent-tasks-create", "latest"],
+			runtime,
+		);
+
+		assert.equal(result.exitCode, 0);
+		assert.match(result.stdout, /Semantic Agent Tasks Created/u);
+		assert.match(result.stdout, /task-sg5-1/u);
+		assert.match(result.stdout, /No ejecuté AgentLabs/u);
 	});
 });
 

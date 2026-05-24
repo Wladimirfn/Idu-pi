@@ -140,6 +140,12 @@ import {
 	reviewSemanticCompactionDraft,
 	saveSemanticCompactionDraft,
 } from "./semantic-compaction.js";
+import {
+	buildSemanticAgentTaskPlan,
+	createSemanticAgentTasks,
+	formatSemanticAgentTaskCreationResult,
+	formatSemanticAgentTaskPlan,
+} from "./semantic-agent-tasks.js";
 import { findPiProcesses } from "./processes.js";
 import {
 	addProject,
@@ -1152,6 +1158,33 @@ bot.command("semantic_compact_review", async (ctx) => {
 		ctx,
 		formatSemanticCompactionReview(
 			reviewSemanticCompactionDraft(pathOrLatest, reportsPath()),
+		),
+	);
+});
+
+bot.command("semantic_agent_tasks_review", async (ctx) => {
+	if (!(await guard(ctx))) return;
+	const pathOrLatest = ctx.match?.trim() || "latest";
+	await replyLong(
+		ctx,
+		formatSemanticAgentTaskPlan(
+			buildSemanticAgentTaskPlan(pathOrLatest, reportsPath()),
+		),
+	);
+});
+
+bot.command("semantic_agent_tasks_create", async (ctx) => {
+	if (!(await guard(ctx))) return;
+	const pathOrLatest = ctx.match?.trim() || "latest";
+	await replyLong(
+		ctx,
+		formatSemanticAgentTaskCreationResult(
+			createSemanticAgentTasks({
+				pathOrLatest,
+				reportsPath: reportsPath(),
+				queue: structuredTaskQueue,
+				projectId: currentProjectId(),
+			}),
 		),
 	);
 });

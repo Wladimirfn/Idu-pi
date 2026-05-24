@@ -83,6 +83,14 @@ import {
 	type SemanticCompactionReview,
 } from "./semantic-compaction.js";
 import {
+	buildSemanticAgentTaskPlan,
+	createSemanticAgentTasks,
+	formatSemanticAgentTaskCreationResult,
+	formatSemanticAgentTaskPlan,
+	type SemanticAgentTaskCreationResult,
+	type SemanticAgentTaskPlan,
+} from "./semantic-agent-tasks.js";
+import {
 	analyzeStructuredTaskSignal,
 	formatStructuredTaskQueueDetail,
 	StructuredTaskQueue,
@@ -131,6 +139,14 @@ export type CliRuntime = {
 	) => string;
 	semanticCompactionReview: (pathOrLatest: string) => SemanticCompactionReview;
 	formatSemanticCompactionReview: (review: SemanticCompactionReview) => string;
+	semanticAgentTaskPlan: (pathOrLatest: string) => SemanticAgentTaskPlan;
+	formatSemanticAgentTaskPlan: (plan: SemanticAgentTaskPlan) => string;
+	semanticAgentTasksCreate: (
+		pathOrLatest: string,
+	) => SemanticAgentTaskCreationResult;
+	formatSemanticAgentTaskCreationResult: (
+		result: SemanticAgentTaskCreationResult,
+	) => string;
 	createTask: (kind: TaskTemplateKind, details: string) => StructuredTask;
 	formatTask: (task: StructuredTask) => string;
 	queueDetail: () => string;
@@ -213,6 +229,20 @@ export function createCliRuntime(): CliRuntime {
 				join(config.agentWorkspaceRoot, "reports"),
 			),
 		formatSemanticCompactionReview,
+		semanticAgentTaskPlan: (pathOrLatest) =>
+			buildSemanticAgentTaskPlan(
+				pathOrLatest,
+				join(config.agentWorkspaceRoot, "reports"),
+			),
+		formatSemanticAgentTaskPlan,
+		semanticAgentTasksCreate: (pathOrLatest) =>
+			createSemanticAgentTasks({
+				pathOrLatest,
+				reportsPath: join(config.agentWorkspaceRoot, "reports"),
+				queue: structuredTaskQueue,
+				projectId: activeProject.id,
+			}),
+		formatSemanticAgentTaskCreationResult,
 		createTask: (kind, details) =>
 			createCliTask(kind, details, {
 				projectId: activeProject.id,
@@ -325,6 +355,20 @@ export async function runCliCommand(
 				return ok(
 					activeRuntime.formatSemanticCompactionReview(
 						activeRuntime.semanticCompactionReview(requiredText(rest)),
+					),
+				);
+			case "idu-semantic-agent-tasks-review":
+			case "semantic-agent-tasks-review":
+				return ok(
+					activeRuntime.formatSemanticAgentTaskPlan(
+						activeRuntime.semanticAgentTaskPlan(requiredText(rest)),
+					),
+				);
+			case "idu-semantic-agent-tasks-create":
+			case "semantic-agent-tasks-create":
+				return ok(
+					activeRuntime.formatSemanticAgentTaskCreationResult(
+						activeRuntime.semanticAgentTasksCreate(requiredText(rest)),
 					),
 				);
 			case "idu-task":
@@ -741,6 +785,8 @@ export function helpText(): string {
 		"  idu-pi idu-semantic-audit-run    (Telegram: /semantic_audit_run)",
 		"  idu-pi semantic-compact-draft    (Telegram: /semantic_compact_draft)",
 		"  idu-pi semantic-compact-review latest",
+		"  idu-pi semantic-agent-tasks-review latest",
+		"  idu-pi semantic-agent-tasks-create latest",
 		'  idu-pi idu-task [tipo] "detalle" (Telegram: /task bug <detalle>)',
 		"  idu-pi idu-queue-detail          (Telegram: /queue_detail)",
 		"  idu-pi idu-queue-clear-structured (Telegram: /queue_clear_structured)",

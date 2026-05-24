@@ -26,6 +26,8 @@ test("formatHelpText includes primary Telegram commands", () => {
 	assert.match(text, /\/semantic_audit_run/);
 	assert.match(text, /\/semantic_compact_draft/);
 	assert.match(text, /\/semantic_compact_review/);
+	assert.match(text, /\/semantic_agent_tasks_review/);
+	assert.match(text, /\/semantic_agent_tasks_create/);
 	assert.match(text, /\/preflight <solicitud>/);
 	assert.match(text, /\/advisory <solicitud>/);
 	assert.match(text, /\/postflight/);
@@ -56,6 +58,8 @@ test("formatCommandCatalog includes argument examples and local command surfaces
 	assert.match(text, /\/semantic_audit_run/);
 	assert.match(text, /\/semantic_compact_draft/);
 	assert.match(text, /\/semantic_compact_review latest/);
+	assert.match(text, /\/semantic_agent_tasks_review latest/);
+	assert.match(text, /\/semantic_agent_tasks_create latest/);
 	assert.match(text, /\/preflight <solicitud>/);
 	assert.match(text, /\/advisory <solicitud>/);
 	assert.match(text, /\/postflight/);
