@@ -35,6 +35,7 @@ import type {
 	SemanticAgentTaskCreationResult,
 	SemanticAgentTaskPlan,
 } from "../src/semantic-agent-tasks.js";
+import type { IduSupervisorLoopResult } from "../src/idu-supervisor-loop.js";
 import {
 	formatStructuredTaskQueueDetail,
 	StructuredTaskQueue,
@@ -285,6 +286,46 @@ function fakeSemanticAgentTaskCreation(): SemanticAgentTaskCreationResult {
 	};
 }
 
+function fakeSupervisorResult(): IduSupervisorLoopResult {
+	return {
+		status: "completed",
+		trigger: "manual",
+		projectId: "pi-telegram-bridge",
+		steps: [
+			{ name: "session_check", status: "active", summary: "Idu-pi activo." },
+			{
+				name: "semantic_audit_status",
+				status: "completed",
+				summary: "shouldRun=false trigger=not_enough_data",
+			},
+			{
+				name: "semantic_audit_run",
+				status: "skipped",
+				summary: "No se alcanzó umbral.",
+			},
+			{
+				name: "semantic_compaction_draft",
+				status: "skipped",
+				summary: "No corresponde crear draft.",
+			},
+			{
+				name: "semantic_agent_tasks",
+				status: "skipped",
+				summary: "allowAgentTaskPlan=false.",
+			},
+		],
+		createdTasks: 0,
+		summary: "No se alcanzó umbral. No se ejecutaron tareas.",
+		recommendedNext: ["Esperar umbral o ejecutar revisión manual."],
+		safety: {
+			agentLabsExecuted: false,
+			rulesApplied: false,
+			memoryDeleted: false,
+			projectCoreModified: false,
+		},
+	};
+}
+
 function fakeTask(): StructuredTask {
 	return {
 		id: "task-1",
@@ -429,6 +470,16 @@ function fakeRuntime(projectPath: string, workspaceRoot: string): CliRuntime {
 				"",
 				"suggestedAgentTasks:",
 				review.summary.suggestedAgentTasks.join("\n"),
+			].join("\n"),
+		supervisorTick: fakeSupervisorResult,
+		formatSupervisorTick: (result) =>
+			[
+				"Idu-pi Supervisor Tick",
+				"",
+				"Estado:",
+				result.status,
+				"",
+				"No ejecuté AgentLabs, no apliqué reglas, no borré memoria.",
 			].join("\n"),
 		semanticAgentTaskPlan: fakeSemanticAgentTaskPlan,
 		formatSemanticAgentTaskPlan: (plan) =>
@@ -671,6 +722,26 @@ test("CLI semantic-agent-tasks-create latest funciona", async () => {
 		assert.match(result.stdout, /Semantic Agent Tasks Created/u);
 		assert.match(result.stdout, /task-sg5-1/u);
 		assert.match(result.stdout, /No ejecuté AgentLabs/u);
+	});
+});
+
+test("CLI supervisor-tick funciona sin AgentLabs", async () => {
+	await withRuntime(async (runtime) => {
+		const result = await runCliCommand(["supervisor-tick"], runtime);
+
+		assert.equal(result.exitCode, 0);
+		assert.match(result.stdout, /Idu-pi Supervisor Tick/u);
+		assert.match(result.stdout, /Estado:\ncompleted/u);
+		assert.match(result.stdout, /No ejecuté AgentLabs/u);
+	});
+});
+
+test("CLI idu-supervisor-tick alias funciona", async () => {
+	await withRuntime(async (runtime) => {
+		const result = await runCliCommand(["idu-supervisor-tick"], runtime);
+
+		assert.equal(result.exitCode, 0);
+		assert.match(result.stdout, /Idu-pi Supervisor Tick/u);
 	});
 });
 

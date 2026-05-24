@@ -47,6 +47,7 @@ export type CreateSemanticAgentTasksInput = {
 	reportsPath: string;
 	queue: StructuredTaskQueue;
 	projectId?: string;
+	maxCreatedTasks?: number;
 };
 
 export type SemanticAgentTaskCreationResult = {
@@ -98,10 +99,8 @@ export function createSemanticAgentTasks(
 	if (!plan.validDraft) return { plan, created, skippedDuplicates };
 	const projectId = input.projectId ?? plan.projectId;
 	const existing = input.queue.listTasks();
-	for (const candidate of plan.candidates.slice(
-		0,
-		DEFAULT_MAX_TASKS_PER_CYCLE,
-	)) {
+	const maxCreatedTasks = input.maxCreatedTasks ?? DEFAULT_MAX_TASKS_PER_CYCLE;
+	for (const candidate of plan.candidates.slice(0, maxCreatedTasks)) {
 		if (hasExistingDedupe(existing, candidate.dedupeKey, projectId)) {
 			skippedDuplicates.push(candidate);
 			continue;

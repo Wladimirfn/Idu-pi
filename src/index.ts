@@ -146,6 +146,10 @@ import {
 	formatSemanticAgentTaskCreationResult,
 	formatSemanticAgentTaskPlan,
 } from "./semantic-agent-tasks.js";
+import {
+	formatIduSupervisorLoopResult,
+	runIduSupervisorLoop,
+} from "./idu-supervisor-loop.js";
 import { findPiProcesses } from "./processes.js";
 import {
 	addProject,
@@ -1106,6 +1110,28 @@ bot.command("idu_status", async (ctx) => {
 	await replyLong(
 		ctx,
 		formatIduSessionStatus(getIduSessionStatus(currentProjectId())),
+	);
+});
+
+bot.command("idu_supervisor_tick", async (ctx) => {
+	if (!(await guard(ctx))) return;
+	await replyLong(
+		ctx,
+		formatIduSupervisorLoopResult(
+			runIduSupervisorLoop({
+				projectId: currentProjectId(),
+				projectPath: activeProjectPath(),
+				workspaceRoot: config.agentWorkspaceRoot,
+				trigger: "manual",
+				options: {
+					allowSemanticDraft: true,
+					allowAgentTaskPlan: true,
+					dryRun: false,
+				},
+				repository: labDbRepository,
+				queue: structuredTaskQueue,
+			}),
+		),
 	);
 });
 

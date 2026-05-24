@@ -22,6 +22,7 @@ test("formatHelpText includes primary Telegram commands", () => {
 	assert.match(text, /\/idu_off/);
 	assert.match(text, /\/idu_status/);
 	assert.match(text, /\/idu_prepare/);
+	assert.match(text, /\/idu_supervisor_tick/);
 	assert.match(text, /\/semantic_audit_status/);
 	assert.match(text, /\/semantic_audit_run/);
 	assert.match(text, /\/semantic_compact_draft/);
@@ -54,6 +55,7 @@ test("formatCommandCatalog includes argument examples and local command surfaces
 	assert.match(text, /\/idu_off/);
 	assert.match(text, /\/idu_status/);
 	assert.match(text, /\/idu_prepare/);
+	assert.match(text, /\/idu_supervisor_tick/);
 	assert.match(text, /\/semantic_audit_status/);
 	assert.match(text, /\/semantic_audit_run/);
 	assert.match(text, /\/semantic_compact_draft/);
@@ -74,6 +76,8 @@ test("formatCommandCatalog includes argument examples and local command surfaces
 	assert.match(text, /corepack pnpm cli -- semantic-compact-review latest/);
 	assert.match(text, /corepack pnpm cli -- semantic-agent-tasks-review latest/);
 	assert.match(text, /corepack pnpm cli -- semantic-agent-tasks-create latest/);
+	assert.match(text, /corepack pnpm cli -- supervisor-tick/);
+	assert.match(text, /corepack pnpm cli -- idu-supervisor-tick/);
 	assert.match(text, /corepack pnpm cli -- idu-semantic-audit-status/);
 	assert.match(text, /corepack pnpm cli -- idu-queue-detail/);
 	assert.match(text, /Batch directos/);

@@ -61,6 +61,12 @@ export const TELEGRAM_COMMANDS: TelegramCommandEntry[] = [
 		usage: ["/idu_prepare"],
 	},
 	{
+		command: "idu_supervisor_tick",
+		description: "Ejecutar supervisor Idu-pi",
+		help: "/idu_supervisor_tick - observar/auditar/compactar/proponer tareas de forma segura si /idu está activo",
+		usage: ["/idu_supervisor_tick"],
+	},
+	{
 		command: "semantic_audit_status",
 		description: "Ver auditoría semántica",
 		help: "/semantic_audit_status - revisar conteos, checkpoint y decisión de auditoría semántica sin IA",
@@ -471,6 +477,11 @@ export const CLI_COMMANDS: LocalCommandEntry[] = [
 	{ label: "Idu status", command: "corepack pnpm cli -- idu-status" },
 	{ label: "Idu off", command: "corepack pnpm cli -- idu-off" },
 	{ label: "Prepare seguro", command: "corepack pnpm cli -- prepare" },
+	{ label: "Supervisor tick", command: "corepack pnpm cli -- supervisor-tick" },
+	{
+		label: "Supervisor tick alias",
+		command: "corepack pnpm cli -- idu-supervisor-tick",
+	},
 	{ label: "Preflight", command: 'corepack pnpm cli -- preflight "solicitud"' },
 	{ label: "Advisory", command: 'corepack pnpm cli -- advisory "solicitud"' },
 	{ label: "Postflight", command: "corepack pnpm cli -- postflight" },

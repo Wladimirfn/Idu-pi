@@ -92,6 +92,11 @@ import {
 	type SemanticAgentTaskPlan,
 } from "./semantic-agent-tasks.js";
 import {
+	formatIduSupervisorLoopResult,
+	runIduSupervisorLoop,
+	type IduSupervisorLoopResult,
+} from "./idu-supervisor-loop.js";
+import {
 	analyzeStructuredTaskSignal,
 	formatStructuredTaskQueueDetail,
 	StructuredTaskQueue,
@@ -148,6 +153,8 @@ export type CliRuntime = {
 	formatSemanticAgentTaskCreationResult: (
 		result: SemanticAgentTaskCreationResult,
 	) => string;
+	supervisorTick: () => IduSupervisorLoopResult;
+	formatSupervisorTick: (result: IduSupervisorLoopResult) => string;
 	createTask: (kind: TaskTemplateKind, details: string) => StructuredTask;
 	formatTask: (task: StructuredTask) => string;
 	queueDetail: () => string;
@@ -244,6 +251,21 @@ export function createCliRuntime(): CliRuntime {
 				projectId: activeProject.id,
 			}),
 		formatSemanticAgentTaskCreationResult,
+		supervisorTick: () =>
+			runIduSupervisorLoop({
+				projectId: activeProject.id,
+				projectPath: activeProject.path,
+				workspaceRoot: config.agentWorkspaceRoot,
+				trigger: "manual",
+				options: {
+					allowSemanticDraft: true,
+					allowAgentTaskPlan: true,
+					dryRun: false,
+				},
+				repository: labDbRepository,
+				queue: structuredTaskQueue,
+			}),
+		formatSupervisorTick: formatIduSupervisorLoopResult,
 		createTask: (kind, details) =>
 			createCliTask(kind, details, {
 				projectId: activeProject.id,
@@ -372,6 +394,11 @@ export async function runCliCommand(
 					activeRuntime.formatSemanticAgentTaskCreationResult(
 						activeRuntime.semanticAgentTasksCreate(requiredText(rest)),
 					),
+				);
+			case "idu-supervisor-tick":
+			case "supervisor-tick":
+				return ok(
+					activeRuntime.formatSupervisorTick(activeRuntime.supervisorTick()),
 				);
 			case "idu-task":
 			case "task": {
@@ -779,6 +806,7 @@ export function helpText(): string {
 		"  idu-pi idu-off             (Telegram: /idu_off)",
 		"  idu-pi idu-status          (Telegram: /idu_status)",
 		"  idu-pi prepare             (Telegram: /idu_prepare)",
+		"  idu-pi supervisor-tick     (Telegram: /idu_supervisor_tick)",
 		'  idu-pi preflight "solicitud"',
 		'  idu-pi advisory "solicitud"',
 		"  idu-pi postflight",
