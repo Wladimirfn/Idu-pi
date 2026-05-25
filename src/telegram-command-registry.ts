@@ -25,6 +25,8 @@ export const PUBLIC_TELEGRAM_HANDLER_COMMANDS = [
 	"supervisor_improvements_approve",
 	"supervisor_improvements_reject",
 	"supervisor_improvements_defer",
+	"supervisor_improvements_apply",
+	"supervisor_learning_rules_status",
 	"idu_define_project",
 	"idu_core_status",
 	"idu_research_core",

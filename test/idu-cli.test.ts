@@ -44,6 +44,10 @@ import type {
 	SupervisorImprovementDecisionResult,
 	SupervisorImprovementStatusResult,
 } from "../src/supervisor-improvement-decisions.js";
+import type {
+	SupervisorLearningRulesApplyResult,
+	SupervisorLearningRulesStatus,
+} from "../src/supervisor-learning-rules.js";
 import {
 	formatStructuredTaskQueueDetail,
 	StructuredTaskQueue,
@@ -420,6 +424,37 @@ function fakeTask(): StructuredTask {
 	};
 }
 
+function fakeSupervisorLearningRulesApply(
+	workspaceRoot: string,
+): SupervisorLearningRulesApplyResult {
+	return {
+		path: join(workspaceRoot, "reports", "supervisor-learning-rules.json"),
+		created: [],
+		omitted: [],
+		notApplicable: [],
+		file: {
+			version: 1,
+			updatedAt: "2026-05-23T00:00:00.000Z",
+			sourceProposalFiles: [],
+			rules: [],
+		},
+	};
+}
+
+function fakeSupervisorLearningRulesStatus(
+	workspaceRoot: string,
+): SupervisorLearningRulesStatus {
+	return {
+		path: join(workspaceRoot, "reports", "supervisor-learning-rules.json"),
+		exists: true,
+		ruleCount: 0,
+		enabledCount: 0,
+		types: [],
+		rules: [],
+		warnings: [],
+	};
+}
+
 function fakePrepare(projectPath: string): IduPrepareResult {
 	return {
 		projectId: "pi-telegram-bridge",
@@ -605,6 +640,27 @@ function fakeRuntime(projectPath: string, workspaceRoot: string): CliRuntime {
 				result.action,
 				"",
 				"Sólo registré decisión humana. No apliqué cambios.",
+			].join("\n"),
+		supervisorImprovementsApply: () =>
+			fakeSupervisorLearningRulesApply(workspaceRoot),
+		formatSupervisorLearningRulesApplyResult: (result) =>
+			[
+				"Supervisor Learning Rules Applied",
+				"",
+				"Ruta:",
+				result.path,
+				"",
+				"Reglas creadas:",
+				String(result.created.length),
+			].join("\n"),
+		supervisorLearningRulesStatus: () =>
+			fakeSupervisorLearningRulesStatus(workspaceRoot),
+		formatSupervisorLearningRulesStatus: (status) =>
+			[
+				"Supervisor Learning Rules Status",
+				"",
+				"Reglas:",
+				String(status.ruleCount),
 			].join("\n"),
 		semanticAgentTaskPlan: fakeSemanticAgentTaskPlan,
 		formatSemanticAgentTaskPlan: (plan) =>
@@ -953,6 +1009,24 @@ test("CLI supervisor-improvements aliases siguen funcionando", async () => {
 		assert.equal(create.exitCode, 0);
 		assert.match(review.stdout, /Supervisor Improvement Proposals/u);
 		assert.match(create.stdout, /Supervisor Improvement Proposals Created/u);
+	});
+});
+
+test("CLI supervisor learning rules apply/status funcionan", async () => {
+	await withRuntime(async (runtime) => {
+		const apply = await runCliCommand(
+			["idu-supervisor-improvements-apply", "latest"],
+			runtime,
+		);
+		const status = await runCliCommand(
+			["idu-supervisor-learning-rules-status"],
+			runtime,
+		);
+
+		assert.equal(apply.exitCode, 0);
+		assert.equal(status.exitCode, 0);
+		assert.match(apply.stdout, /Supervisor Learning Rules Applied/u);
+		assert.match(status.stdout, /Supervisor Learning Rules Status/u);
 	});
 });
 

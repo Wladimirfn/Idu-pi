@@ -1,3 +1,8 @@
+import { join } from "node:path";
+import {
+	loadSupervisorLearningRules,
+	matchingRules,
+} from "./supervisor-learning-rules.js";
 import {
 	analyzeUserSignal,
 	type UserEmotion,
@@ -665,7 +670,7 @@ export function classifyHumanIntent(
 	}
 	if (hasChange && !criticalConcept && !hasBug) intent = "feature_request";
 
-	const taskCategory = inferTaskCategoryFromIntent(
+	let taskCategory = inferTaskCategoryFromIntent(
 		{
 			intent,
 			concepts,
@@ -703,6 +708,32 @@ export function classifyHumanIntent(
 		riskHints.push("architecture_change", "scope_change");
 	}
 	if (concepts.includes("security")) riskHints.push("security");
+
+	let dynamicShouldBlockIfIduActive = false;
+	for (const rule of loadMatchingSupervisorLearningRules(originalText)) {
+		concepts.push(...rule.outcome.concepts);
+		riskHints.push(
+			...rule.outcome.riskHints.filter((risk) => risk !== "low_risk"),
+		);
+		matchedEvidence.push(`learning-rule:${rule.id}`);
+		if (
+			rule.outcome.intent &&
+			(intent === "unknown" || intent === "feature_request")
+		) {
+			intent = rule.outcome.intent;
+		}
+		if (rule.outcome.taskCategory && options.explicitCategory === undefined) {
+			if (
+				rule.outcome.taskCategory !== "general" &&
+				taskCategory === "general"
+			) {
+				taskCategory = rule.outcome.taskCategory;
+				concepts.push("task");
+			}
+		}
+		if (rule.outcome.shouldBlockIfIduActive)
+			dynamicShouldBlockIfIduActive = true;
+	}
 	if (riskHints.length === 0) riskHints.push("low_risk");
 
 	const uniqueConcepts: HumanIntentConcept[] = unique(
@@ -713,7 +744,9 @@ export function classifyHumanIntent(
 		? "blocker"
 		: legacyRiskHint(uniqueRiskHints, uniqueConcepts, intent);
 	const shouldBlockIfIduActive =
-		legacyRisk === "high" || legacyRisk === "blocker";
+		dynamicShouldBlockIfIduActive ||
+		legacyRisk === "high" ||
+		legacyRisk === "blocker";
 	const ambiguity = ambiguityFor(
 		intent,
 		uniqueConcepts,
@@ -865,6 +898,17 @@ export function formatIntentClassification(
 	classification: HumanIntentClassification,
 ): string {
 	return formatHumanIntentClassification(classification);
+}
+
+function loadMatchingSupervisorLearningRules(text: string) {
+	const workspaceRoot = process.env.AGENT_WORKSPACE_ROOT?.trim();
+	if (!workspaceRoot) return [];
+	try {
+		const loaded = loadSupervisorLearningRules(join(workspaceRoot, "reports"));
+		return loaded.file ? matchingRules(loaded.file.rules, text) : [];
+	} catch {
+		return [];
+	}
 }
 
 function normalizeCategory(

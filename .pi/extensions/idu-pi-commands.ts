@@ -291,4 +291,16 @@ export default function (pi: ExtensionAPI) {
 		usage:
 			"/idu-supervisor-improvements-defer latest <proposalId|all> [motivo]",
 	});
+
+	registerIduCommand("idu-supervisor-improvements-apply", {
+		description: "Aplicar sólo propuestas aprobadas como reglas dinámicas",
+		cliArgs: (args) => ["supervisor-improvements-apply", args || "latest"],
+		usage: "/idu-supervisor-improvements-apply [latest|ruta]",
+	});
+
+	registerIduCommand("idu-supervisor-learning-rules-status", {
+		description: "Ver reglas dinámicas del supervisor",
+		cliArgs: () => ["supervisor-learning-rules-status"],
+		usage: "/idu-supervisor-learning-rules-status",
+	});
 }

@@ -121,6 +121,14 @@ import {
 	type SupervisorImprovementStatusResult,
 } from "./supervisor-improvement-decisions.js";
 import {
+	applySupervisorLearningRules,
+	formatSupervisorLearningRulesApplyResult,
+	formatSupervisorLearningRulesStatus,
+	getSupervisorLearningRulesStatus,
+	type SupervisorLearningRulesApplyResult,
+	type SupervisorLearningRulesStatus,
+} from "./supervisor-learning-rules.js";
+import {
 	analyzeStructuredTaskSignal,
 	formatStructuredTaskQueueDetail,
 	StructuredTaskQueue,
@@ -214,6 +222,16 @@ export type CliRuntime = {
 	formatSupervisorImprovementDecisionResult: (
 		result: SupervisorImprovementDecisionResult,
 	) => string;
+	supervisorImprovementsApply: (
+		pathOrLatest: string,
+	) => SupervisorLearningRulesApplyResult;
+	formatSupervisorLearningRulesApplyResult: (
+		result: SupervisorLearningRulesApplyResult,
+	) => string;
+	supervisorLearningRulesStatus: () => SupervisorLearningRulesStatus;
+	formatSupervisorLearningRulesStatus: (
+		status: SupervisorLearningRulesStatus,
+	) => string;
 	createTask: (kind: TaskTemplateKind, details: string) => StructuredTask;
 	formatTask: (task: StructuredTask) => string;
 	queueDetail: () => string;
@@ -231,6 +249,7 @@ type RuntimeContext = {
 
 export function createCliRuntime(): CliRuntime {
 	const config = loadConfig();
+	process.env.AGENT_WORKSPACE_ROOT ??= config.agentWorkspaceRoot;
 	configureIduSessionStore({ workspaceRoot: config.agentWorkspaceRoot });
 	const registry = loadRegistry(config.defaultCwd, config.allowedRoots);
 	const activeProject = getActiveProject(registry);
@@ -397,6 +416,17 @@ export function createCliRuntime(): CliRuntime {
 				{ source: "cli", reason },
 			),
 		formatSupervisorImprovementDecisionResult,
+		supervisorImprovementsApply: (pathOrLatest) =>
+			applySupervisorLearningRules(
+				pathOrLatest,
+				join(config.agentWorkspaceRoot, "reports"),
+			),
+		formatSupervisorLearningRulesApplyResult,
+		supervisorLearningRulesStatus: () =>
+			getSupervisorLearningRulesStatus(
+				join(config.agentWorkspaceRoot, "reports"),
+			),
+		formatSupervisorLearningRulesStatus,
 		createTask: (kind, details) =>
 			createCliTask(kind, details, {
 				projectId: activeProject.id,
@@ -596,6 +626,22 @@ export async function runCliCommand(
 					),
 				);
 			}
+			case "idu-supervisor-improvements-apply":
+			case "supervisor-improvements-apply":
+				return ok(
+					activeRuntime.formatSupervisorLearningRulesApplyResult(
+						activeRuntime.supervisorImprovementsApply(
+							rest.join(" ").trim() || "latest",
+						),
+					),
+				);
+			case "idu-supervisor-learning-rules-status":
+			case "supervisor-learning-rules-status":
+				return ok(
+					activeRuntime.formatSupervisorLearningRulesStatus(
+						activeRuntime.supervisorLearningRulesStatus(),
+					),
+				);
 			case "idu-task":
 			case "task": {
 				if (!rest.length) return ok(formatTaskTemplateHelp());

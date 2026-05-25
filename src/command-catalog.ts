@@ -159,6 +159,18 @@ export const TELEGRAM_COMMANDS: TelegramCommandEntry[] = [
 		],
 	},
 	{
+		command: "supervisor_improvements_apply",
+		description: "Aplicar reglas dinámicas aprobadas",
+		help: "/supervisor_improvements_apply [latest|ruta] - crear reglas dinámicas sólo desde propuestas aprobadas",
+		usage: ["/supervisor_improvements_apply latest"],
+	},
+	{
+		command: "supervisor_learning_rules_status",
+		description: "Ver reglas dinámicas",
+		help: "/supervisor_learning_rules_status - ver supervisor-learning-rules.json sin modificar nada",
+		usage: ["/supervisor_learning_rules_status"],
+	},
+	{
 		command: "idu_define_project",
 		description: "Definir Project Core manual",
 		help: "/idu_define_project - iniciar wizard manual para crear config/project-core.json draft",
@@ -602,6 +614,14 @@ export const CLI_COMMANDS: LocalCommandEntry[] = [
 		label: "Supervisor improvements defer",
 		command:
 			"corepack pnpm cli -- idu-supervisor-improvements-defer latest improvement-001 motivo",
+	},
+	{
+		label: "Supervisor improvements apply",
+		command: "corepack pnpm cli -- idu-supervisor-improvements-apply latest",
+	},
+	{
+		label: "Supervisor learning rules status",
+		command: "corepack pnpm cli -- idu-supervisor-learning-rules-status",
 	},
 ];
 

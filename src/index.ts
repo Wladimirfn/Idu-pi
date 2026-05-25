@@ -170,6 +170,12 @@ import {
 	getSupervisorImprovementStatus,
 	rejectSupervisorImprovement,
 } from "./supervisor-improvement-decisions.js";
+import {
+	applySupervisorLearningRules,
+	formatSupervisorLearningRulesApplyResult,
+	formatSupervisorLearningRulesStatus,
+	getSupervisorLearningRulesStatus,
+} from "./supervisor-learning-rules.js";
 import { findPiProcesses } from "./processes.js";
 import {
 	addProject,
@@ -227,6 +233,7 @@ import {
 } from "./structured-task-queue.js";
 
 const config = loadConfig();
+process.env.AGENT_WORKSPACE_ROOT ??= config.agentWorkspaceRoot;
 configureIduSessionStore({ workspaceRoot: config.agentWorkspaceRoot });
 const bot = new Bot(config.telegramBotToken);
 const registry = loadRegistry(config.defaultCwd, config.allowedRoots);
@@ -1369,6 +1376,27 @@ bot.command("supervisor_improvements_defer", async (ctx) => {
 				reportsPath(),
 				{ source: "telegram", reason: parsed.reason },
 			),
+		),
+	);
+});
+
+bot.command("supervisor_improvements_apply", async (ctx) => {
+	if (!(await guard(ctx))) return;
+	const pathOrLatest = ctx.match?.trim() || "latest";
+	await replyLong(
+		ctx,
+		formatSupervisorLearningRulesApplyResult(
+			applySupervisorLearningRules(pathOrLatest, reportsPath()),
+		),
+	);
+});
+
+bot.command("supervisor_learning_rules_status", async (ctx) => {
+	if (!(await guard(ctx))) return;
+	await replyLong(
+		ctx,
+		formatSupervisorLearningRulesStatus(
+			getSupervisorLearningRulesStatus(reportsPath()),
 		),
 	);
 });

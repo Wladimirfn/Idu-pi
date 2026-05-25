@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
-test("supervisor improvement commands are wired without apply or AgentLabs execution", () => {
+test("supervisor improvement proposal commands are wired", () => {
 	const source = readFileSync("src/index.ts", "utf8");
 	const extensionSource = readFileSync(
 		".pi/extensions/idu-pi-commands.ts",
@@ -15,6 +15,4 @@ test("supervisor improvement commands are wired without apply or AgentLabs execu
 	assert.match(source, /createSupervisorImprovementProposals/u);
 	assert.match(extensionSource, /idu-supervisor-improvements-review/u);
 	assert.match(extensionSource, /idu-supervisor-improvements-create/u);
-	assert.doesNotMatch(source, /supervisor_improvements_apply/u);
-	assert.doesNotMatch(extensionSource, /supervisor-improvements-apply/u);
 });
