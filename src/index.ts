@@ -171,6 +171,14 @@ import {
 	rejectSupervisorImprovement,
 } from "./supervisor-improvement-decisions.js";
 import {
+	buildSkillImprovementPlan,
+	createSkillImprovementProposals,
+	formatSkillImprovementCreationResult,
+	formatSkillImprovementPlan,
+	formatSkillImprovementStatus,
+	getSkillImprovementStatus,
+} from "./skill-improvement-proposals.js";
+import {
 	applySupervisorLearningRules,
 	disableSupervisorLearningRule,
 	enableSupervisorLearningRule,
@@ -1407,6 +1415,45 @@ bot.command("supervisor_improvements_apply", async (ctx) => {
 		ctx,
 		formatSupervisorLearningRulesApplyResult(
 			applySupervisorLearningRules(pathOrLatest, reportsPath()),
+		),
+	);
+});
+
+bot.command("skill_improvements_review", async (ctx) => {
+	if (!(await guard(ctx))) return;
+	const pathOrLatest = ctx.match?.trim() || "latest";
+	await replyLong(
+		ctx,
+		formatSkillImprovementPlan(
+			buildSkillImprovementPlan(pathOrLatest, reportsPath(), {
+				workspaceRoot: activeProjectPath(),
+				dbPath: labDbPath(),
+			}),
+		),
+	);
+});
+
+bot.command("skill_improvements_create", async (ctx) => {
+	if (!(await guard(ctx))) return;
+	const pathOrLatest = ctx.match?.trim() || "latest";
+	await replyLong(
+		ctx,
+		formatSkillImprovementCreationResult(
+			createSkillImprovementProposals(pathOrLatest, reportsPath(), {
+				workspaceRoot: activeProjectPath(),
+				dbPath: labDbPath(),
+			}),
+		),
+	);
+});
+
+bot.command("skill_improvements_status", async (ctx) => {
+	if (!(await guard(ctx))) return;
+	const pathOrLatest = ctx.match?.trim() || "latest";
+	await replyLong(
+		ctx,
+		formatSkillImprovementStatus(
+			getSkillImprovementStatus(pathOrLatest, reportsPath()),
 		),
 	);
 });

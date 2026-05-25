@@ -298,6 +298,24 @@ export default function (pi: ExtensionAPI) {
 		usage: "/idu-supervisor-improvements-apply [latest|ruta]",
 	});
 
+	registerIduCommand("idu-skill-improvements-review", {
+		description: "Revisar propuestas de mejora de skills sin aplicar cambios",
+		cliArgs: (args) => ["skill-improvements-review", args || "latest"],
+		usage: "/idu-skill-improvements-review [latest|ruta]",
+	});
+
+	registerIduCommand("idu-skill-improvements-create", {
+		description: "Crear propuestas review-only de skills en reports",
+		cliArgs: (args) => ["skill-improvements-create", args || "latest"],
+		usage: "/idu-skill-improvements-create [latest|ruta]",
+	});
+
+	registerIduCommand("idu-skill-improvements-status", {
+		description: "Ver estados de propuestas de mejora de skills",
+		cliArgs: (args) => ["skill-improvements-status", args || "latest"],
+		usage: "/idu-skill-improvements-status [latest|ruta]",
+	});
+
 	registerIduCommand("idu-supervisor-learning-rules-status", {
 		description: "Ver reglas dinámicas del supervisor",
 		cliArgs: () => ["supervisor-learning-rules-status"],

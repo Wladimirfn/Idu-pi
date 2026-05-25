@@ -45,6 +45,11 @@ import type {
 	SupervisorImprovementStatusResult,
 } from "../src/supervisor-improvement-decisions.js";
 import type {
+	SkillImprovementCreationResult,
+	SkillImprovementPlan,
+	SkillImprovementStatusResult,
+} from "../src/skill-improvement-proposals.js";
+import type {
 	SupervisorLearningRuleDecisionResult,
 	SupervisorLearningRulesApplyResult,
 	SupervisorLearningRulesRollbackResult,
@@ -528,6 +533,70 @@ function fakeSupervisorLearningRulesRollback(
 	};
 }
 
+function fakeSkillImprovementPlan(): SkillImprovementPlan {
+	return {
+		draftPath: "semantic-compaction-draft-20260102-030405.json",
+		sourceDraftPath: "semantic-compaction-draft-20260102-030405.json",
+		draftName: "semantic-compaction-draft-20260102-030405.json",
+		projectId: "pi-telegram-bridge",
+		validDraft: true,
+		errors: [],
+		skillRegistry: [
+			{
+				name: "project-understanding",
+				path: ".agents/skills/project-understanding/SKILL.md",
+				source: "index",
+			},
+		],
+		proposals: [
+			{
+				id: "skill-improvement-001",
+				type: "improve_skill",
+				skillName: "project-understanding",
+				title: "Mejorar skill project-understanding",
+				description: "Propuesta review-only de skill.",
+				evidence: ["Project Core/Constitution"],
+				sourceDraftPath: "semantic-compaction-draft-20260102-030405.json",
+				riskLevel: "medium",
+				expectedBenefit: ["quality", "architecture_consistency"],
+				suggestedAction: "approve_for_manual_apply",
+				requiresHumanApproval: true,
+				status: "proposed",
+				createdAt: "2026-05-25T00:00:00.000Z",
+			},
+		],
+	};
+}
+
+function fakeSkillImprovementCreation(): SkillImprovementCreationResult {
+	return {
+		plan: fakeSkillImprovementPlan(),
+		path: "reports/skill-improvement-proposals-20260525-000000.json",
+		created: fakeSkillImprovementPlan().proposals,
+	};
+}
+
+function fakeSkillImprovementStatus(): SkillImprovementStatusResult {
+	return {
+		path: "reports/skill-improvement-proposals-20260525-000000.json",
+		name: "skill-improvement-proposals-20260525-000000.json",
+		valid: true,
+		errors: [],
+		createdAt: "2026-05-25T00:00:00.000Z",
+		sourceDraftPath: "semantic-compaction-draft-20260102-030405.json",
+		projectId: "pi-telegram-bridge",
+		countsByStatus: { proposed: 1, approved: 0, rejected: 0, deferred: 0 },
+		countsByType: {
+			create_skill: 0,
+			improve_skill: 1,
+			archive_skill: 0,
+			move_skill: 0,
+			validate_skill: 0,
+		},
+		proposals: fakeSkillImprovementPlan().proposals,
+	};
+}
+
 function fakePrepare(projectPath: string): IduPrepareResult {
 	return {
 		projectId: "pi-telegram-bridge",
@@ -754,6 +823,34 @@ function fakeRuntime(projectPath: string, workspaceRoot: string): CliRuntime {
 			fakeSupervisorLearningRulesRollback(workspaceRoot),
 		formatSupervisorLearningRulesRollback: () =>
 			"Supervisor Learning Rules Rollback\n\nRules:\n0",
+		skillImprovementPlan: fakeSkillImprovementPlan,
+		formatSkillImprovementPlan: (plan) =>
+			[
+				"Skill Improvement Proposals",
+				"",
+				"Propuestas:",
+				String(plan.proposals.length),
+				"",
+				"No modifiqué skills ni ejecuté AgentLabs.",
+			].join("\n"),
+		skillImprovementCreate: fakeSkillImprovementCreation,
+		formatSkillImprovementCreationResult: (result) =>
+			[
+				"Skill Improvement Proposals Created",
+				"",
+				"Ruta:",
+				result.path,
+				"",
+				"No modifiqué skills, .agents ni .atl.",
+			].join("\n"),
+		skillImprovementStatus: fakeSkillImprovementStatus,
+		formatSkillImprovementStatus: (status) =>
+			[
+				"Skill Improvement Status",
+				"",
+				"proposed:",
+				String(status.countsByStatus.proposed),
+			].join("\n"),
 		semanticAgentTaskPlan: fakeSemanticAgentTaskPlan,
 		formatSemanticAgentTaskPlan: (plan) =>
 			[
@@ -1037,6 +1134,33 @@ test("CLI supervisor-improvements-status latest funciona", async () => {
 		assert.match(result.stdout, /Supervisor Improvement Status/u);
 		assert.match(result.stdout, /proposed:\n1/u);
 		assert.match(result.stdout, /No apliqué cambios/u);
+	});
+});
+
+test("CLI skill-improvements commands funcionan", async () => {
+	await withRuntime(async (runtime) => {
+		const review = await runCliCommand(
+			["skill-improvements-review", "latest"],
+			runtime,
+		);
+		const create = await runCliCommand(
+			["idu-skill-improvements-create", "latest"],
+			runtime,
+		);
+		const status = await runCliCommand(
+			["skill-improvements-status", "latest"],
+			runtime,
+		);
+
+		assert.equal(review.exitCode, 0);
+		assert.match(review.stdout, /Skill Improvement Proposals/u);
+		assert.match(review.stdout, /No modifiqué skills/u);
+		assert.equal(create.exitCode, 0);
+		assert.match(create.stdout, /skill-improvement-proposals/u);
+		assert.match(create.stdout, /.agents ni .atl/u);
+		assert.equal(status.exitCode, 0);
+		assert.match(status.stdout, /Skill Improvement Status/u);
+		assert.match(status.stdout, /proposed:\n1/u);
 	});
 });
 

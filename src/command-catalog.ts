@@ -165,6 +165,33 @@ export const TELEGRAM_COMMANDS: TelegramCommandEntry[] = [
 		usage: ["/supervisor_improvements_apply latest"],
 	},
 	{
+		command: "skill_improvements_review",
+		description: "Revisar mejoras de skills",
+		help: "/skill_improvements_review [latest|ruta] - ver propuestas de skills sin modificar .agents/.atl ni ejecutar AgentLabs",
+		usage: [
+			"/skill_improvements_review latest",
+			"/skill_improvements_review <ruta>",
+		],
+	},
+	{
+		command: "skill_improvements_create",
+		description: "Crear propuestas de skills",
+		help: "/skill_improvements_create [latest|ruta] - guardar propuestas de skills en reports sin modificar skills",
+		usage: [
+			"/skill_improvements_create latest",
+			"/skill_improvements_create <ruta>",
+		],
+	},
+	{
+		command: "skill_improvements_status",
+		description: "Ver propuestas de skills",
+		help: "/skill_improvements_status [latest|ruta] - ver conteos y estados de propuestas de skills",
+		usage: [
+			"/skill_improvements_status latest",
+			"/skill_improvements_status <ruta>",
+		],
+	},
+	{
 		command: "supervisor_learning_rules_status",
 		description: "Ver reglas dinámicas",
 		help: "/supervisor_learning_rules_status - ver supervisor-learning-rules.json sin modificar nada",
@@ -642,6 +669,18 @@ export const CLI_COMMANDS: LocalCommandEntry[] = [
 	{
 		label: "Supervisor improvements apply",
 		command: "corepack pnpm cli -- idu-supervisor-improvements-apply latest",
+	},
+	{
+		label: "Skill improvements review",
+		command: "corepack pnpm cli -- idu-skill-improvements-review latest",
+	},
+	{
+		label: "Skill improvements create",
+		command: "corepack pnpm cli -- idu-skill-improvements-create latest",
+	},
+	{
+		label: "Skill improvements status",
+		command: "corepack pnpm cli -- idu-skill-improvements-status latest",
 	},
 	{
 		label: "Supervisor learning rules status",

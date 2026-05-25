@@ -121,6 +121,17 @@ import {
 	type SupervisorImprovementStatusResult,
 } from "./supervisor-improvement-decisions.js";
 import {
+	buildSkillImprovementPlan,
+	createSkillImprovementProposals,
+	formatSkillImprovementCreationResult,
+	formatSkillImprovementPlan,
+	formatSkillImprovementStatus,
+	getSkillImprovementStatus,
+	type SkillImprovementCreationResult,
+	type SkillImprovementPlan,
+	type SkillImprovementStatusResult,
+} from "./skill-improvement-proposals.js";
+import {
 	applySupervisorLearningRules,
 	disableSupervisorLearningRule,
 	enableSupervisorLearningRule,
@@ -262,6 +273,20 @@ export type CliRuntime = {
 	) => SupervisorLearningRulesRollbackResult;
 	formatSupervisorLearningRulesRollback: (
 		result: SupervisorLearningRulesRollbackResult,
+	) => string;
+	skillImprovementPlan: (pathOrLatest: string) => SkillImprovementPlan;
+	formatSkillImprovementPlan: (plan: SkillImprovementPlan) => string;
+	skillImprovementCreate: (
+		pathOrLatest: string,
+	) => SkillImprovementCreationResult;
+	formatSkillImprovementCreationResult: (
+		result: SkillImprovementCreationResult,
+	) => string;
+	skillImprovementStatus: (
+		pathOrLatest: string,
+	) => SkillImprovementStatusResult;
+	formatSkillImprovementStatus: (
+		status: SkillImprovementStatusResult,
 	) => string;
 	createTask: (kind: TaskTemplateKind, details: string) => StructuredTask;
 	formatTask: (task: StructuredTask) => string;
@@ -480,6 +505,32 @@ export function createCliRuntime(): CliRuntime {
 				join(config.agentWorkspaceRoot, "reports"),
 			),
 		formatSupervisorLearningRulesRollback,
+		skillImprovementPlan: (pathOrLatest) =>
+			buildSkillImprovementPlan(
+				pathOrLatest,
+				join(config.agentWorkspaceRoot, "reports"),
+				{
+					workspaceRoot: activeProject.path,
+					dbPath: join(config.agentWorkspaceRoot, "reports", "lab.db"),
+				},
+			),
+		formatSkillImprovementPlan,
+		skillImprovementCreate: (pathOrLatest) =>
+			createSkillImprovementProposals(
+				pathOrLatest,
+				join(config.agentWorkspaceRoot, "reports"),
+				{
+					workspaceRoot: activeProject.path,
+					dbPath: join(config.agentWorkspaceRoot, "reports", "lab.db"),
+				},
+			),
+		formatSkillImprovementCreationResult,
+		skillImprovementStatus: (pathOrLatest) =>
+			getSkillImprovementStatus(
+				pathOrLatest,
+				join(config.agentWorkspaceRoot, "reports"),
+			),
+		formatSkillImprovementStatus,
 		createTask: (kind, details) =>
 			createCliTask(kind, details, {
 				projectId: activeProject.id,
@@ -731,6 +782,29 @@ export async function runCliCommand(
 				return ok(
 					activeRuntime.formatSupervisorLearningRulesRollback(
 						activeRuntime.supervisorLearningRulesRollback(
+							rest.join(" ").trim() || "latest",
+						),
+					),
+				);
+			case "idu-skill-improvements-review":
+			case "skill-improvements-review":
+				return ok(
+					activeRuntime.formatSkillImprovementPlan(
+						activeRuntime.skillImprovementPlan(requiredText(rest)),
+					),
+				);
+			case "idu-skill-improvements-create":
+			case "skill-improvements-create":
+				return ok(
+					activeRuntime.formatSkillImprovementCreationResult(
+						activeRuntime.skillImprovementCreate(requiredText(rest)),
+					),
+				);
+			case "idu-skill-improvements-status":
+			case "skill-improvements-status":
+				return ok(
+					activeRuntime.formatSkillImprovementStatus(
+						activeRuntime.skillImprovementStatus(
 							rest.join(" ").trim() || "latest",
 						),
 					),
@@ -1194,6 +1268,12 @@ export function helpText(): string {
 		"  idu-pi idu-supervisor-learning-rules-disable <ruleId> [motivo]",
 		"  idu-pi idu-supervisor-learning-rules-enable <ruleId> [motivo]",
 		"  idu-pi idu-supervisor-learning-rules-rollback latest",
+		"  idu-pi skill-improvements-review latest",
+		"  idu-pi skill-improvements-create latest",
+		"  idu-pi skill-improvements-status latest",
+		"  idu-pi idu-skill-improvements-review latest",
+		"  idu-pi idu-skill-improvements-create latest",
+		"  idu-pi idu-skill-improvements-status latest",
 		'  idu-pi preflight "solicitud"',
 		'  idu-pi advisory "solicitud"',
 		"  idu-pi postflight",
