@@ -139,6 +139,14 @@ import {
 	type SkillImprovementDecisionResult,
 } from "./skill-improvement-decisions.js";
 import {
+	createAgentLabReviewRequests,
+	formatAgentLabReviewRequestPlan,
+	formatAgentLabReviewRequestReview,
+	reviewAgentLabReviewRequest,
+	type AgentLabReviewRequestPlan,
+	type AgentLabReviewRequestReview,
+} from "./agentlab-review-requests.js";
+import {
 	createSkillDraftsFromApprovedProposals,
 	formatSkillDraftCreationResult,
 	formatSkillDraftReview,
@@ -325,6 +333,15 @@ export type CliRuntime = {
 	formatSkillDraftCreationResult: (result: SkillDraftCreationResult) => string;
 	skillDraftReview: (pathOrLatest: string) => SkillDraftReview;
 	formatSkillDraftReview: (review: SkillDraftReview) => string;
+	agentLabRequestCreate: (
+		source: string,
+		pathOrLatest?: string,
+	) => AgentLabReviewRequestPlan;
+	formatAgentLabReviewRequestPlan: (plan: AgentLabReviewRequestPlan) => string;
+	agentLabRequestReview: (pathOrLatest: string) => AgentLabReviewRequestReview;
+	formatAgentLabReviewRequestReview: (
+		review: AgentLabReviewRequestReview,
+	) => string;
 	createTask: (kind: TaskTemplateKind, details: string) => StructuredTask;
 	formatTask: (task: StructuredTask) => string;
 	queueDetail: () => string;
@@ -602,6 +619,36 @@ export function createCliRuntime(): CliRuntime {
 				join(config.agentWorkspaceRoot, "reports"),
 			),
 		formatSkillDraftReview,
+		agentLabRequestCreate: (source, pathOrLatest) => {
+			if (source === "postflight") {
+				return createAgentLabReviewRequests({
+					source: "postflight",
+					reportsPath: join(config.agentWorkspaceRoot, "reports"),
+					projectId: activeProject.id,
+					projectPath: activeProject.path,
+					postflightReport: buildPostflightReport(context),
+				});
+			}
+			if (source === "skill-draft") {
+				return createAgentLabReviewRequests({
+					source: "skill_draft",
+					reportsPath: join(config.agentWorkspaceRoot, "reports"),
+					projectId: activeProject.id,
+					projectPath: activeProject.path,
+					skillDraftPathOrLatest: pathOrLatest ?? "latest",
+				});
+			}
+			throw new Error(
+				`Fuente no soportada para agentlab-request-create: ${source}`,
+			);
+		},
+		formatAgentLabReviewRequestPlan,
+		agentLabRequestReview: (pathOrLatest) =>
+			reviewAgentLabReviewRequest(
+				pathOrLatest,
+				join(config.agentWorkspaceRoot, "reports"),
+			),
+		formatAgentLabReviewRequestReview,
 		createTask: (kind, details) =>
 			createCliTask(kind, details, {
 				projectId: activeProject.id,
@@ -692,6 +739,27 @@ export async function runCliCommand(
 					),
 				);
 			}
+			case "idu-agentlab-request-create":
+			case "agentlab-request-create": {
+				const source = rest[0] ?? "postflight";
+				return ok(
+					activeRuntime.formatAgentLabReviewRequestPlan(
+						activeRuntime.agentLabRequestCreate(
+							source,
+							rest.slice(1).join(" ").trim() || "latest",
+						),
+					),
+				);
+			}
+			case "idu-agentlab-request-review":
+			case "agentlab-request-review":
+				return ok(
+					activeRuntime.formatAgentLabReviewRequestReview(
+						activeRuntime.agentLabRequestReview(
+							rest.join(" ").trim() || "latest",
+						),
+					),
+				);
 			case "idu-semantic-audit-status":
 			case "semantic-audit-status":
 				return ok(
@@ -1412,6 +1480,9 @@ export function helpText(): string {
 		'  idu-pi advisory "solicitud"',
 		"  idu-pi postflight",
 		"  idu-pi lab-review-plan postflight",
+		"  idu-pi agentlab-request-create postflight",
+		"  idu-pi agentlab-request-create skill-draft latest",
+		"  idu-pi agentlab-request-review latest",
 		"  idu-pi idu-semantic-audit-status (Telegram: /semantic_audit_status)",
 		"  idu-pi idu-semantic-audit-run    (Telegram: /semantic_audit_run)",
 		"  idu-pi idu-semantic-compact-draft (Telegram: /semantic_compact_draft)",

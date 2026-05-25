@@ -185,6 +185,12 @@ import {
 	rejectSkillImprovementProposal,
 } from "./skill-improvement-decisions.js";
 import {
+	createAgentLabReviewRequests,
+	formatAgentLabReviewRequestPlan,
+	formatAgentLabReviewRequestReview,
+	reviewAgentLabReviewRequest,
+} from "./agentlab-review-requests.js";
+import {
 	createSkillDraftsFromApprovedProposals,
 	formatSkillDraftCreationResult,
 	formatSkillDraftReview,
@@ -1255,6 +1261,44 @@ bot.command("idu_supervisor_tick", async (ctx) => {
 				repository: labDbRepository,
 				queue: structuredTaskQueue,
 			}),
+		),
+	);
+});
+
+bot.command("agentlab_request_create", async (ctx) => {
+	if (!(await guard(ctx))) return;
+	const args = ctx.match?.trim().split(/\s+/u).filter(Boolean) ?? [];
+	const source = args[0] ?? "postflight";
+	if (source !== "postflight" && source !== "skill-draft") {
+		await replyLong(ctx, `Fuente no soportada: ${source}`);
+		return;
+	}
+	await replyLong(
+		ctx,
+		formatAgentLabReviewRequestPlan(
+			createAgentLabReviewRequests({
+				source: source === "postflight" ? "postflight" : "skill_draft",
+				reportsPath: reportsPath(),
+				projectId: currentProjectId(),
+				projectPath: activeProjectPath(),
+				postflightReport:
+					source === "postflight" ? buildPostflightReport() : undefined,
+				skillDraftPathOrLatest:
+					source === "skill-draft"
+						? args.slice(1).join(" ").trim() || "latest"
+						: undefined,
+			}),
+		),
+	);
+});
+
+bot.command("agentlab_request_review", async (ctx) => {
+	if (!(await guard(ctx))) return;
+	const pathOrLatest = ctx.match?.trim() || "latest";
+	await replyLong(
+		ctx,
+		formatAgentLabReviewRequestReview(
+			reviewAgentLabReviewRequest(pathOrLatest, reportsPath()),
 		),
 	);
 });

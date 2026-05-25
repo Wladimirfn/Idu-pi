@@ -67,6 +67,24 @@ export const TELEGRAM_COMMANDS: TelegramCommandEntry[] = [
 		usage: ["/idu_supervisor_tick"],
 	},
 	{
+		command: "agentlab_request_create",
+		description: "Crear solicitud AgentLab",
+		help: "/agentlab_request_create [postflight|skill-draft latest] - crear solicitudes formales sin ejecutar AgentLabs",
+		usage: [
+			"/agentlab_request_create postflight",
+			"/agentlab_request_create skill-draft latest",
+		],
+	},
+	{
+		command: "agentlab_request_review",
+		description: "Revisar solicitud AgentLab",
+		help: "/agentlab_request_review [latest|ruta] - validar solicitudes AgentLab sin ejecutarlas",
+		usage: [
+			"/agentlab_request_review latest",
+			"/agentlab_request_review <ruta>",
+		],
+	},
+	{
 		command: "semantic_audit_status",
 		description: "Ver auditoría semántica",
 		help: "/semantic_audit_status - revisar conteos, checkpoint y decisión de auditoría semántica sin IA",
@@ -648,6 +666,14 @@ export const CLI_COMMANDS: LocalCommandEntry[] = [
 	{
 		label: "Queue reject",
 		command: "corepack pnpm cli -- idu-queue-reject <id>",
+	},
+	{
+		label: "AgentLab request create",
+		command: "corepack pnpm cli -- agentlab-request-create postflight",
+	},
+	{
+		label: "AgentLab request review",
+		command: "corepack pnpm cli -- agentlab-request-review latest",
 	},
 	{
 		label: "Semantic audit status",

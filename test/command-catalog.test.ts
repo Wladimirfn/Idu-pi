@@ -23,6 +23,8 @@ test("formatHelpText includes primary Telegram commands", () => {
 	assert.match(text, /\/idu_status/);
 	assert.match(text, /\/idu_prepare/);
 	assert.match(text, /\/idu_supervisor_tick/);
+	assert.match(text, /\/agentlab_request_create/);
+	assert.match(text, /\/agentlab_request_review/);
 	assert.match(text, /\/semantic_audit_status/);
 	assert.match(text, /\/semantic_audit_run/);
 	assert.match(text, /\/semantic_compact_draft/);
@@ -61,6 +63,8 @@ test("formatCommandCatalog includes argument examples and local command surfaces
 	assert.match(text, /\/idu_status/);
 	assert.match(text, /\/idu_prepare/);
 	assert.match(text, /\/idu_supervisor_tick/);
+	assert.match(text, /\/agentlab_request_create postflight/);
+	assert.match(text, /\/agentlab_request_review latest/);
 	assert.match(text, /\/semantic_audit_status/);
 	assert.match(text, /\/semantic_audit_run/);
 	assert.match(text, /\/semantic_compact_draft/);
@@ -108,6 +112,8 @@ test("formatCommandCatalog includes argument examples and local command surfaces
 	);
 	assert.match(text, /corepack pnpm cli -- idu-skill-drafts-create latest/);
 	assert.match(text, /corepack pnpm cli -- idu-skill-drafts-review latest/);
+	assert.match(text, /corepack pnpm cli -- agentlab-request-create postflight/);
+	assert.match(text, /corepack pnpm cli -- agentlab-request-review latest/);
 	assert.match(text, /corepack pnpm cli -- idu-semantic-audit-status/);
 	assert.match(text, /corepack pnpm cli -- idu-queue-detail/);
 	assert.match(text, /Batch directos/);
@@ -190,6 +196,8 @@ test("telegramCommandsForApi creates setMyCommands payload from catalog", () => 
 	assert.ok(
 		commands.some((entry) => entry.command === "semantic_audit_status"),
 	);
+	assert.ok(commands.some((entry) => entry.command === "agentlab_request_create"));
+	assert.ok(commands.some((entry) => entry.command === "agentlab_request_review"));
 	assert.ok(commands.some((entry) => entry.command === "semantic_audit_run"));
 	assert.ok(
 		commands.some((entry) => entry.command === "semantic_compact_draft"),

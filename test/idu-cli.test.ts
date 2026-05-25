@@ -46,6 +46,10 @@ import type {
 } from "../src/supervisor-improvement-decisions.js";
 import type { SkillImprovementDecisionResult } from "../src/skill-improvement-decisions.js";
 import type {
+	AgentLabReviewRequestPlan,
+	AgentLabReviewRequestReview,
+} from "../src/agentlab-review-requests.js";
+import type {
 	SkillDraftCreationResult,
 	SkillDraftReview,
 } from "../src/skill-drafts.js";
@@ -618,6 +622,52 @@ function fakeSkillImprovementDecision(
 	};
 }
 
+function fakeAgentLabRequestPlan(): AgentLabReviewRequestPlan {
+	return {
+		generatedAt: "2026-05-25T00:00:00.000Z",
+		projectId: "pi-telegram-bridge",
+		source: "postflight",
+		warning: "Solicitud AgentLab. No ejecuta revisión por sí sola.",
+		path: "reports/agentlab-review-request-20260525-000000.json",
+		errors: [],
+		requests: [
+			{
+				id: "agentlab-pi-postflight-security-01",
+				projectId: "pi-telegram-bridge",
+				projectPath: "C:/repo",
+				requestedBy: "supervisor",
+				specialty: "security",
+				trigger: "postflight",
+				objective: "Revisar postflight high para security",
+				contextSummary: "Cambio auth/login",
+				evidence: ["src/auth.ts"],
+				filesToInspect: ["src/auth.ts"],
+				flowsToCheck: [],
+				rulesToCheck: [],
+				constraints: ["No modificar repo real"],
+				allowedActions: ["inspeccionar"],
+				forbiddenActions: ["no commit", "no push", "no modificar repo real"],
+				maxCommands: 5,
+				maxMinutes: 15,
+				tokenBudgetHint: "bounded-postflight",
+				expectedOutputs: ["hallazgos con evidencia"],
+				requiresHumanApproval: true,
+				createdAt: "2026-05-25T00:00:00.000Z",
+			},
+		],
+	};
+}
+
+function fakeAgentLabRequestReview(): AgentLabReviewRequestReview {
+	return {
+		path: "reports/agentlab-review-request-20260525-000000.json",
+		name: "agentlab-review-request-20260525-000000.json",
+		valid: true,
+		errors: [],
+		plan: fakeAgentLabRequestPlan(),
+	};
+}
+
 function fakeSkillDraftCreation(): SkillDraftCreationResult {
 	const draft = {
 		proposalId: "skill-improvement-001",
@@ -968,6 +1018,26 @@ function fakeRuntime(projectPath: string, workspaceRoot: string): CliRuntime {
 				"",
 				"No modifiqué skills reales, .agents ni .atl.",
 			].join("\n"),
+		agentLabRequestCreate: fakeAgentLabRequestPlan,
+		formatAgentLabReviewRequestPlan: (plan) =>
+			[
+				"AgentLab Review Requests Created",
+				"",
+				"Ruta:",
+				plan.path,
+				"",
+				"No ejecuté AgentLabs ni apliqué skills.",
+			].join("\n"),
+		agentLabRequestReview: fakeAgentLabRequestReview,
+		formatAgentLabReviewRequestReview: (review) =>
+			[
+				"AgentLab Review Request Review",
+				"",
+				"Archivo:",
+				review.name,
+				"",
+				"security",
+			].join("\n"),
 		semanticAgentTaskPlan: fakeSemanticAgentTaskPlan,
 		formatSemanticAgentTaskPlan: (plan) =>
 			[
@@ -1136,6 +1206,31 @@ test("cli lab-review-plan postflight prepara plan sin AgentLabs", async () => {
 		assert.equal(result.exitCode, 0);
 		assert.match(result.stdout, /Lab Review Plan Idu-pi/u);
 		assert.match(result.stdout, /No ejecuté AgentLabs/u);
+	});
+});
+
+test("CLI agentlab request commands funcionan", async () => {
+	await withRuntime(async (runtime) => {
+		const createPostflight = await runCliCommand(
+			["agentlab-request-create", "postflight"],
+			runtime,
+		);
+		const createSkillDraft = await runCliCommand(
+			["agentlab-request-create", "skill-draft", "latest"],
+			runtime,
+		);
+		const review = await runCliCommand(
+			["idu-agentlab-request-review", "latest"],
+			runtime,
+		);
+
+		assert.equal(createPostflight.exitCode, 0);
+		assert.match(createPostflight.stdout, /AgentLab Review Requests Created/u);
+		assert.match(createPostflight.stdout, /No ejecuté AgentLabs/u);
+		assert.equal(createSkillDraft.exitCode, 0);
+		assert.match(createSkillDraft.stdout, /agentlab-review-request/u);
+		assert.equal(review.exitCode, 0);
+		assert.match(review.stdout, /AgentLab Review Request Review/u);
 	});
 });
 
