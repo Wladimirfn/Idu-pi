@@ -253,4 +253,42 @@ export default function (pi: ExtensionAPI) {
 		cliArgs: (args) => ["supervisor-improvements-create", args || "latest"],
 		usage: "/idu-supervisor-improvements-create [latest|ruta]",
 	});
+
+	registerIduCommand("idu-supervisor-improvements-status", {
+		description: "Ver estados de propuestas de mejora del supervisor",
+		cliArgs: (args) => ["supervisor-improvements-status", args || "latest"],
+		usage: "/idu-supervisor-improvements-status [latest|ruta]",
+	});
+
+	registerIduCommand("idu-supervisor-improvements-approve", {
+		description: "Aprobar propuestas de mejora sin aplicarlas",
+		cliArgs: (args) => [
+			"supervisor-improvements-approve",
+			...args.split(/\s+/u).filter(Boolean),
+		],
+		requiresArgs: true,
+		usage: "/idu-supervisor-improvements-approve latest <proposalId|all>",
+	});
+
+	registerIduCommand("idu-supervisor-improvements-reject", {
+		description: "Rechazar propuestas de mejora sin borrarlas",
+		cliArgs: (args) => [
+			"supervisor-improvements-reject",
+			...args.split(/\s+/u).filter(Boolean),
+		],
+		requiresArgs: true,
+		usage:
+			"/idu-supervisor-improvements-reject latest <proposalId|all> [motivo]",
+	});
+
+	registerIduCommand("idu-supervisor-improvements-defer", {
+		description: "Diferir propuestas de mejora sin aplicarlas",
+		cliArgs: (args) => [
+			"supervisor-improvements-defer",
+			...args.split(/\s+/u).filter(Boolean),
+		],
+		requiresArgs: true,
+		usage:
+			"/idu-supervisor-improvements-defer latest <proposalId|all> [motivo]",
+	});
 }

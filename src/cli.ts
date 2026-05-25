@@ -111,6 +111,16 @@ import {
 	type SupervisorImprovementPlan,
 } from "./supervisor-improvement-proposals.js";
 import {
+	approveSupervisorImprovement,
+	deferSupervisorImprovement,
+	formatSupervisorImprovementDecisionResult,
+	formatSupervisorImprovementStatus,
+	getSupervisorImprovementStatus,
+	rejectSupervisorImprovement,
+	type SupervisorImprovementDecisionResult,
+	type SupervisorImprovementStatusResult,
+} from "./supervisor-improvement-decisions.js";
+import {
 	analyzeStructuredTaskSignal,
 	formatStructuredTaskQueueDetail,
 	StructuredTaskQueue,
@@ -179,6 +189,30 @@ export type CliRuntime = {
 	) => SupervisorImprovementCreationResult;
 	formatSupervisorImprovementCreationResult: (
 		result: SupervisorImprovementCreationResult,
+	) => string;
+	supervisorImprovementStatus: (
+		pathOrLatest: string,
+	) => SupervisorImprovementStatusResult;
+	formatSupervisorImprovementStatus: (
+		result: SupervisorImprovementStatusResult,
+	) => string;
+	supervisorImprovementApprove: (
+		pathOrLatest: string,
+		proposalIdOrAll: string,
+		reason?: string,
+	) => SupervisorImprovementDecisionResult;
+	supervisorImprovementReject: (
+		pathOrLatest: string,
+		proposalIdOrAll: string,
+		reason?: string,
+	) => SupervisorImprovementDecisionResult;
+	supervisorImprovementDefer: (
+		pathOrLatest: string,
+		proposalIdOrAll: string,
+		reason?: string,
+	) => SupervisorImprovementDecisionResult;
+	formatSupervisorImprovementDecisionResult: (
+		result: SupervisorImprovementDecisionResult,
 	) => string;
 	createTask: (kind: TaskTemplateKind, details: string) => StructuredTask;
 	formatTask: (task: StructuredTask) => string;
@@ -335,6 +369,34 @@ export function createCliRuntime(): CliRuntime {
 				join(config.agentWorkspaceRoot, "reports"),
 			),
 		formatSupervisorImprovementCreationResult,
+		supervisorImprovementStatus: (pathOrLatest) =>
+			getSupervisorImprovementStatus(
+				pathOrLatest,
+				join(config.agentWorkspaceRoot, "reports"),
+			),
+		formatSupervisorImprovementStatus,
+		supervisorImprovementApprove: (pathOrLatest, proposalIdOrAll, reason) =>
+			approveSupervisorImprovement(
+				pathOrLatest,
+				proposalIdOrAll,
+				join(config.agentWorkspaceRoot, "reports"),
+				{ source: "cli", reason },
+			),
+		supervisorImprovementReject: (pathOrLatest, proposalIdOrAll, reason) =>
+			rejectSupervisorImprovement(
+				pathOrLatest,
+				proposalIdOrAll,
+				join(config.agentWorkspaceRoot, "reports"),
+				{ source: "cli", reason },
+			),
+		supervisorImprovementDefer: (pathOrLatest, proposalIdOrAll, reason) =>
+			deferSupervisorImprovement(
+				pathOrLatest,
+				proposalIdOrAll,
+				join(config.agentWorkspaceRoot, "reports"),
+				{ source: "cli", reason },
+			),
+		formatSupervisorImprovementDecisionResult,
 		createTask: (kind, details) =>
 			createCliTask(kind, details, {
 				projectId: activeProject.id,
@@ -486,6 +548,54 @@ export async function runCliCommand(
 						activeRuntime.supervisorImprovementCreate(requiredText(rest)),
 					),
 				);
+			case "idu-supervisor-improvements-status":
+			case "supervisor-improvements-status":
+				return ok(
+					activeRuntime.formatSupervisorImprovementStatus(
+						activeRuntime.supervisorImprovementStatus(
+							rest.join(" ").trim() || "latest",
+						),
+					),
+				);
+			case "idu-supervisor-improvements-approve":
+			case "supervisor-improvements-approve": {
+				const decision = requiredDecisionParts(rest);
+				return ok(
+					activeRuntime.formatSupervisorImprovementDecisionResult(
+						activeRuntime.supervisorImprovementApprove(
+							decision.pathOrLatest,
+							decision.proposalIdOrAll,
+							decision.reason,
+						),
+					),
+				);
+			}
+			case "idu-supervisor-improvements-reject":
+			case "supervisor-improvements-reject": {
+				const decision = requiredDecisionParts(rest);
+				return ok(
+					activeRuntime.formatSupervisorImprovementDecisionResult(
+						activeRuntime.supervisorImprovementReject(
+							decision.pathOrLatest,
+							decision.proposalIdOrAll,
+							decision.reason,
+						),
+					),
+				);
+			}
+			case "idu-supervisor-improvements-defer":
+			case "supervisor-improvements-defer": {
+				const decision = requiredDecisionParts(rest);
+				return ok(
+					activeRuntime.formatSupervisorImprovementDecisionResult(
+						activeRuntime.supervisorImprovementDefer(
+							decision.pathOrLatest,
+							decision.proposalIdOrAll,
+							decision.reason,
+						),
+					),
+				);
+			}
 			case "idu-task":
 			case "task": {
 				if (!rest.length) return ok(formatTaskTemplateHelp());
@@ -884,6 +994,25 @@ function requiredText(parts: string[]): string {
 	return text;
 }
 
+function requiredDecisionParts(parts: string[]): {
+	pathOrLatest: string;
+	proposalIdOrAll: string;
+	reason?: string;
+} {
+	const [pathOrLatest = "", proposalIdOrAll = "", ...reasonParts] = parts;
+	if (!pathOrLatest.trim() || !proposalIdOrAll.trim()) {
+		throw new Error(
+			"Uso: supervisor-improvements-approve latest <proposalId|all> [motivo]",
+		);
+	}
+	const reason = reasonParts.join(" ").trim();
+	return {
+		pathOrLatest,
+		proposalIdOrAll,
+		...(reason ? { reason } : {}),
+	};
+}
+
 function ok(stdout: string): CliResult {
 	return { exitCode: 0, stdout, stderr: "" };
 }
@@ -905,6 +1034,10 @@ export function helpText(): string {
 		"  idu-pi idu-supervisor-tick (Telegram: /idu_supervisor_tick)",
 		"  idu-pi idu-supervisor-improvements-review latest",
 		"  idu-pi idu-supervisor-improvements-create latest",
+		"  idu-pi idu-supervisor-improvements-status latest",
+		"  idu-pi idu-supervisor-improvements-approve latest <proposalId|all>",
+		"  idu-pi idu-supervisor-improvements-reject latest <proposalId|all> [motivo]",
+		"  idu-pi idu-supervisor-improvements-defer latest <proposalId|all> [motivo]",
 		'  idu-pi preflight "solicitud"',
 		'  idu-pi advisory "solicitud"',
 		"  idu-pi postflight",

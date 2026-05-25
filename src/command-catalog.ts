@@ -130,6 +130,35 @@ export const TELEGRAM_COMMANDS: TelegramCommandEntry[] = [
 		],
 	},
 	{
+		command: "supervisor_improvements_status",
+		description: "Ver decisiones de mejoras",
+		help: "/supervisor_improvements_status [latest|ruta] - ver conteos y estados sin aplicar mejoras",
+		usage: [
+			"/supervisor_improvements_status latest",
+			"/supervisor_improvements_status <ruta>",
+		],
+	},
+	{
+		command: "supervisor_improvements_approve",
+		description: "Aprobar mejora propuesta",
+		help: "/supervisor_improvements_approve latest <proposalId|all> - registrar aprobación humana sin aplicar cambios",
+		usage: ["/supervisor_improvements_approve latest improvement-001"],
+	},
+	{
+		command: "supervisor_improvements_reject",
+		description: "Rechazar mejora propuesta",
+		help: "/supervisor_improvements_reject latest <proposalId|all> [motivo] - registrar rechazo sin borrar propuestas",
+		usage: ["/supervisor_improvements_reject latest improvement-001 no aplica"],
+	},
+	{
+		command: "supervisor_improvements_defer",
+		description: "Diferir mejora propuesta",
+		help: "/supervisor_improvements_defer latest <proposalId|all> [motivo] - registrar diferido sin aplicar cambios",
+		usage: [
+			"/supervisor_improvements_defer latest improvement-001 requiere evidencia",
+		],
+	},
+	{
 		command: "idu_define_project",
 		description: "Definir Project Core manual",
 		help: "/idu_define_project - iniciar wizard manual para crear config/project-core.json draft",
@@ -554,6 +583,25 @@ export const CLI_COMMANDS: LocalCommandEntry[] = [
 	{
 		label: "Supervisor improvements create",
 		command: "corepack pnpm cli -- idu-supervisor-improvements-create latest",
+	},
+	{
+		label: "Supervisor improvements status",
+		command: "corepack pnpm cli -- idu-supervisor-improvements-status latest",
+	},
+	{
+		label: "Supervisor improvements approve",
+		command:
+			"corepack pnpm cli -- idu-supervisor-improvements-approve latest improvement-001",
+	},
+	{
+		label: "Supervisor improvements reject",
+		command:
+			"corepack pnpm cli -- idu-supervisor-improvements-reject latest improvement-001 motivo",
+	},
+	{
+		label: "Supervisor improvements defer",
+		command:
+			"corepack pnpm cli -- idu-supervisor-improvements-defer latest improvement-001 motivo",
 	},
 ];
 

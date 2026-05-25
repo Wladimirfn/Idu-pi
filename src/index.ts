@@ -162,6 +162,14 @@ import {
 	formatSupervisorImprovementCreationResult,
 	formatSupervisorImprovementPlan,
 } from "./supervisor-improvement-proposals.js";
+import {
+	approveSupervisorImprovement,
+	deferSupervisorImprovement,
+	formatSupervisorImprovementDecisionResult,
+	formatSupervisorImprovementStatus,
+	getSupervisorImprovementStatus,
+	rejectSupervisorImprovement,
+} from "./supervisor-improvement-decisions.js";
 import { findPiProcesses } from "./processes.js";
 import {
 	addProject,
@@ -421,6 +429,28 @@ async function guard(ctx: Context): Promise<boolean> {
 
 function commandArg(text: string): string {
 	return text.replace(/^\/\w+(?:@\w+)?\s*/u, "").trim();
+}
+
+function parseSupervisorImprovementDecisionArgs(match: string | undefined): {
+	pathOrLatest: string;
+	proposalIdOrAll: string;
+	reason?: string;
+} {
+	const [pathOrLatest = "", proposalIdOrAll = "", ...reasonParts] = (
+		match ?? ""
+	)
+		.trim()
+		.split(/\s+/u)
+		.filter(Boolean);
+	if (!pathOrLatest || !proposalIdOrAll) {
+		throw new Error("Uso: latest <proposalId|all> [motivo]");
+	}
+	const reason = reasonParts.join(" ").trim();
+	return {
+		pathOrLatest,
+		proposalIdOrAll,
+		...(reason ? { reason } : {}),
+	};
 }
 
 function buildPreflightReport(request: string): ProjectPreflightReport {
@@ -1280,6 +1310,65 @@ bot.command("supervisor_improvements_create", async (ctx) => {
 		ctx,
 		formatSupervisorImprovementCreationResult(
 			createSupervisorImprovementProposals(pathOrLatest, reportsPath()),
+		),
+	);
+});
+
+bot.command("supervisor_improvements_status", async (ctx) => {
+	if (!(await guard(ctx))) return;
+	const pathOrLatest = ctx.match?.trim() || "latest";
+	await replyLong(
+		ctx,
+		formatSupervisorImprovementStatus(
+			getSupervisorImprovementStatus(pathOrLatest, reportsPath()),
+		),
+	);
+});
+
+bot.command("supervisor_improvements_approve", async (ctx) => {
+	if (!(await guard(ctx))) return;
+	const parsed = parseSupervisorImprovementDecisionArgs(ctx.match);
+	await replyLong(
+		ctx,
+		formatSupervisorImprovementDecisionResult(
+			approveSupervisorImprovement(
+				parsed.pathOrLatest,
+				parsed.proposalIdOrAll,
+				reportsPath(),
+				{ source: "telegram", reason: parsed.reason },
+			),
+		),
+	);
+});
+
+bot.command("supervisor_improvements_reject", async (ctx) => {
+	if (!(await guard(ctx))) return;
+	const parsed = parseSupervisorImprovementDecisionArgs(ctx.match);
+	await replyLong(
+		ctx,
+		formatSupervisorImprovementDecisionResult(
+			rejectSupervisorImprovement(
+				parsed.pathOrLatest,
+				parsed.proposalIdOrAll,
+				reportsPath(),
+				{ source: "telegram", reason: parsed.reason },
+			),
+		),
+	);
+});
+
+bot.command("supervisor_improvements_defer", async (ctx) => {
+	if (!(await guard(ctx))) return;
+	const parsed = parseSupervisorImprovementDecisionArgs(ctx.match);
+	await replyLong(
+		ctx,
+		formatSupervisorImprovementDecisionResult(
+			deferSupervisorImprovement(
+				parsed.pathOrLatest,
+				parsed.proposalIdOrAll,
+				reportsPath(),
+				{ source: "telegram", reason: parsed.reason },
+			),
 		),
 	);
 });

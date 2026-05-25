@@ -40,6 +40,10 @@ import type {
 	SupervisorImprovementCreationResult,
 	SupervisorImprovementPlan,
 } from "../src/supervisor-improvement-proposals.js";
+import type {
+	SupervisorImprovementDecisionResult,
+	SupervisorImprovementStatusResult,
+} from "../src/supervisor-improvement-decisions.js";
 import {
 	formatStructuredTaskQueueDetail,
 	StructuredTaskQueue,
@@ -325,6 +329,42 @@ function fakeSupervisorImprovementCreation(): SupervisorImprovementCreationResul
 	};
 }
 
+function fakeSupervisorImprovementStatus(): SupervisorImprovementStatusResult {
+	return {
+		file: {
+			path: "reports/supervisor-improvement-proposals-20260524-000000.json",
+			name: "supervisor-improvement-proposals-20260524-000000.json",
+			warning: "Propuestas revisables. No aplicar sin aprobación humana.",
+			projectId: "pi-telegram-bridge",
+			proposals: fakeSupervisorImprovementPlan().proposals,
+		},
+		counts: { proposed: 1, approved: 0, rejected: 0, deferred: 0 },
+		recommendedNext: "Aprobar, rechazar o diferir propuestas pendientes.",
+	};
+}
+
+function fakeSupervisorImprovementDecision(
+	action: "approved" | "rejected" | "deferred",
+): SupervisorImprovementDecisionResult {
+	const proposal = {
+		...fakeSupervisorImprovementPlan().proposals[0]!,
+		status: action,
+		decision: {
+			decision: action,
+			decidedAt: "2026-05-24T00:00:00.000Z",
+			source: "cli" as const,
+		},
+	};
+	return {
+		action,
+		file: { ...fakeSupervisorImprovementStatus().file, proposals: [proposal] },
+		updated: [proposal],
+		skipped: [],
+		backupPath:
+			"reports/supervisor-improvement-proposals.backup-20260524-000000.json",
+	};
+}
+
 function fakeSupervisorResult(): IduSupervisorLoopResult {
 	return {
 		status: "completed",
@@ -540,6 +580,31 @@ function fakeRuntime(projectPath: string, workspaceRoot: string): CliRuntime {
 				result.path,
 				"",
 				"No apliqué reglas, no modifiqué skills y no ejecuté AgentLabs.",
+			].join("\n"),
+		supervisorImprovementStatus: fakeSupervisorImprovementStatus,
+		formatSupervisorImprovementStatus: (result) =>
+			[
+				"Supervisor Improvement Status",
+				"",
+				"proposed:",
+				String(result.counts.proposed),
+				"",
+				"No apliqué cambios ni ejecuté AgentLabs.",
+			].join("\n"),
+		supervisorImprovementApprove: () =>
+			fakeSupervisorImprovementDecision("approved"),
+		supervisorImprovementReject: () =>
+			fakeSupervisorImprovementDecision("rejected"),
+		supervisorImprovementDefer: () =>
+			fakeSupervisorImprovementDecision("deferred"),
+		formatSupervisorImprovementDecisionResult: (result) =>
+			[
+				"Supervisor Improvement Decision",
+				"",
+				"Acción:",
+				result.action,
+				"",
+				"Sólo registré decisión humana. No apliqué cambios.",
 			].join("\n"),
 		semanticAgentTaskPlan: fakeSemanticAgentTaskPlan,
 		formatSemanticAgentTaskPlan: (plan) =>
@@ -810,6 +875,66 @@ test("CLI idu-supervisor-improvements-create latest funciona", async () => {
 		assert.match(result.stdout, /Supervisor Improvement Proposals Created/u);
 		assert.match(result.stdout, /supervisor-improvement-proposals/u);
 		assert.match(result.stdout, /no ejecuté AgentLabs/u);
+	});
+});
+
+test("CLI supervisor-improvements-status latest funciona", async () => {
+	await withRuntime(async (runtime) => {
+		const result = await runCliCommand(
+			["supervisor-improvements-status", "latest"],
+			runtime,
+		);
+
+		assert.equal(result.exitCode, 0);
+		assert.match(result.stdout, /Supervisor Improvement Status/u);
+		assert.match(result.stdout, /proposed:\n1/u);
+		assert.match(result.stdout, /No apliqué cambios/u);
+	});
+});
+
+test("CLI supervisor-improvements decision commands funcionan", async () => {
+	await withRuntime(async (runtime) => {
+		const approved = await runCliCommand(
+			["supervisor-improvements-approve", "latest", "improvement-001"],
+			runtime,
+		);
+		const rejected = await runCliCommand(
+			[
+				"supervisor-improvements-reject",
+				"latest",
+				"improvement-001",
+				"no aplica",
+			],
+			runtime,
+		);
+		const deferred = await runCliCommand(
+			[
+				"supervisor-improvements-defer",
+				"latest",
+				"improvement-001",
+				"requiere evidencia",
+			],
+			runtime,
+		);
+
+		assert.equal(approved.exitCode, 0);
+		assert.equal(rejected.exitCode, 0);
+		assert.equal(deferred.exitCode, 0);
+		assert.match(approved.stdout, /Acción:\napproved/u);
+		assert.match(rejected.stdout, /Acción:\nrejected/u);
+		assert.match(deferred.stdout, /Acción:\ndeferred/u);
+	});
+});
+
+test("CLI idu-supervisor-improvements decision aliases funcionan", async () => {
+	await withRuntime(async (runtime) => {
+		const result = await runCliCommand(
+			["idu-supervisor-improvements-approve", "latest", "improvement-001"],
+			runtime,
+		);
+
+		assert.equal(result.exitCode, 0);
+		assert.match(result.stdout, /Supervisor Improvement Decision/u);
 	});
 });
 
