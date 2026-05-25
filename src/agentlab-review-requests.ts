@@ -284,17 +284,21 @@ function requestsFromSkillDraft(
 			specialty: "skill_review",
 			trigger: "skill_draft",
 			objective: "Revisar skill drafts aprobados sin aplicar skills reales",
-			contextSummary: skillDraftContext(review.plan),
-			evidence: review.plan.skillDrafts.map(
-				(draft) => `${draft.proposalId}: ${draft.title}`,
-			),
-			filesToInspect: review.plan.skillDrafts
-				.map((draft) => draft.targetPath)
-				.filter((path): path is string => Boolean(path)),
+			contextSummary: skillDraftContext(review),
+			evidence: skillDraftEvidence(review),
+			filesToInspect: [review.path],
 			flowsToCheck: [],
-			rulesToCheck: ["No aplicar skills reales", "Revisar borrador solamente"],
-			constraints: ["Puede revisar skill drafts pero no aplicar skills."],
+			rulesToCheck: [
+				"No aplicar skills reales",
+				"Revisar borrador JSON solamente",
+			],
+			sourceSkillDraftPath: review.path,
+			constraints: [
+				"Puede revisar el JSON de skill draft pero no aplicar skills.",
+				"No buscar .agents/skills/<skill>/SKILL.md; la skill real todavía no existe.",
+			],
 			allowedActions: ["revisar skill drafts", "proponer correcciones"],
+			forbiddenActions: ["no modificar .agents", "no modificar .atl"],
 			maxCommands: 3,
 			maxMinutes: 10,
 			tokenBudgetHint: "bounded-skill-review",
@@ -518,12 +522,49 @@ function isSource(value: unknown): value is AgentLabReviewRequestSource {
 	);
 }
 
-function skillDraftContext(plan: SkillDraftPlan): string {
+function skillDraftContext(review: {
+	path: string;
+	plan?: SkillDraftPlan;
+}): string {
+	const plan = review.plan!;
 	return [
+		`Source skill draft path: ${review.path}`,
 		`Source proposal file: ${plan.sourceProposalFile}`,
 		`Skill drafts: ${plan.skillDrafts.length}`,
+		...plan.skillDrafts.flatMap((draft, index) => [
+			`Draft ${index + 1}:`,
+			`- Proposal: ${draft.proposalId}`,
+			`- Skill: ${draft.skillName}`,
+			`- Action: ${draft.action}`,
+			`- Target path (future only, do not inspect as real file): ${draft.targetPath ?? "none"}`,
+			`- Purpose: ${draft.purpose}`,
+			`- When to use: ${draft.whenToUse}`,
+			`- Safety rules: ${draft.safetyRules.join("; ") || "none"}`,
+			`- Tests suggested: ${draft.testsSuggested.join("; ") || "none"}`,
+			`- Content preview:\n${draft.contentPreview}`,
+		]),
 		`Omitidas: ${plan.omittedProposals.length}`,
 	].join("\n");
+}
+
+function skillDraftEvidence(review: {
+	path: string;
+	plan?: SkillDraftPlan;
+}): string[] {
+	const plan = review.plan!;
+	return [
+		`sourceSkillDraftPath: ${review.path}`,
+		...plan.skillDrafts.flatMap((draft) => [
+			`${draft.proposalId}: ${draft.title}`,
+			`skillName: ${draft.skillName}`,
+			`action: ${draft.action}`,
+			`purpose: ${draft.purpose}`,
+			`whenToUse: ${draft.whenToUse}`,
+			`safetyRules: ${draft.safetyRules.join("; ") || "none"}`,
+			`testsSuggested: ${draft.testsSuggested.join("; ") || "none"}`,
+			`contentPreview:\n${draft.contentPreview}`,
+		]),
+	];
 }
 
 function formatRequests(requests: AgentLabReviewRequest[]): string[] {
@@ -539,6 +580,9 @@ function formatRequestDetail(request: AgentLabReviewRequest): string[] {
 	return [
 		`- specialty: ${request.specialty}`,
 		`  objective: ${request.objective}`,
+		...(request.sourceSkillDraftPath
+			? [`  sourceSkillDraftPath: ${request.sourceSkillDraftPath}`]
+			: []),
 		`  forbiddenActions: ${request.forbiddenActions.join("; ")}`,
 		`  maxCommands: ${request.maxCommands}`,
 		`  maxMinutes: ${request.maxMinutes}`,

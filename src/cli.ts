@@ -749,22 +749,27 @@ export async function runCliCommand(
 				return ok(
 					formatIduSessionStatus(getIduSessionStatus(activeRuntime.projectId)),
 				);
+			case "idu-prepare":
 			case "prepare":
 				return ok(activeRuntime.formatPrepare(activeRuntime.prepare()));
+			case "idu-preflight":
 			case "preflight":
 				return ok(
 					activeRuntime.formatPreflight(
 						activeRuntime.preflight(requiredText(rest)),
 					),
 				);
+			case "idu-advisory":
 			case "advisory":
 				return ok(
 					activeRuntime.formatAdvisory(
 						activeRuntime.advisory(requiredText(rest)),
 					),
 				);
+			case "idu-postflight":
 			case "postflight":
 				return ok(activeRuntime.formatPostflight(activeRuntime.postflight()));
+			case "idu-lab-review-plan":
 			case "lab-review-plan": {
 				const mode = rest[0] ?? "postflight";
 				if (mode !== "postflight") {
@@ -1438,7 +1443,7 @@ function primaryIntentConcept(concepts: string[] | undefined): string {
 
 function cliCommandFor(telegramCommand: string): string {
 	return telegramCommand
-		.replace(/^\/idu_prepare\b/u, "idu-pi prepare")
+		.replace(/^\/idu_prepare\b/u, "idu-pi idu-prepare")
 		.replace(
 			/^\/config init_project_config\b/u,
 			"Telegram: /config init_project_config",
@@ -1502,7 +1507,7 @@ export function helpText(): string {
 		"  idu-pi idu                 (Telegram: /idu)",
 		"  idu-pi idu-off             (Telegram: /idu_off)",
 		"  idu-pi idu-status          (Telegram: /idu_status)",
-		"  idu-pi prepare             (Telegram: /idu_prepare)",
+		"  idu-pi idu-prepare         (Telegram: /idu_prepare)",
 		"  idu-pi idu-supervisor-tick (Telegram: /idu_supervisor_tick)",
 		"  idu-pi idu-supervisor-improvements-review latest",
 		"  idu-pi idu-supervisor-improvements-create latest",
@@ -1515,31 +1520,23 @@ export function helpText(): string {
 		"  idu-pi idu-supervisor-learning-rules-disable <ruleId> [motivo]",
 		"  idu-pi idu-supervisor-learning-rules-enable <ruleId> [motivo]",
 		"  idu-pi idu-supervisor-learning-rules-rollback latest",
-		"  idu-pi skill-improvements-review latest",
-		"  idu-pi skill-improvements-create latest",
-		"  idu-pi skill-improvements-status latest",
 		"  idu-pi idu-skill-improvements-review latest",
 		"  idu-pi idu-skill-improvements-create latest",
 		"  idu-pi idu-skill-improvements-status latest",
-		"  idu-pi skill-improvements-approve latest <proposalId|all>",
-		"  idu-pi skill-improvements-reject latest <proposalId|all> [motivo]",
-		"  idu-pi skill-improvements-defer latest <proposalId|all> [motivo]",
 		"  idu-pi idu-skill-improvements-approve latest <proposalId|all>",
 		"  idu-pi idu-skill-improvements-reject latest <proposalId|all> [motivo]",
 		"  idu-pi idu-skill-improvements-defer latest <proposalId|all> [motivo]",
-		"  idu-pi skill-drafts-create latest",
-		"  idu-pi skill-drafts-review latest",
 		"  idu-pi idu-skill-drafts-create latest",
 		"  idu-pi idu-skill-drafts-review latest",
-		'  idu-pi preflight "solicitud"',
-		'  idu-pi advisory "solicitud"',
-		"  idu-pi postflight",
-		"  idu-pi lab-review-plan postflight",
-		"  idu-pi agentlab-request-create postflight",
-		"  idu-pi agentlab-request-create skill-draft latest",
-		"  idu-pi agentlab-request-review latest",
-		"  idu-pi agentlab-review-run latest",
-		"  idu-pi agentlab-review-status latest",
+		'  idu-pi idu-preflight "solicitud"',
+		'  idu-pi idu-advisory "solicitud"',
+		"  idu-pi idu-postflight",
+		"  idu-pi idu-lab-review-plan postflight",
+		"  idu-pi idu-agentlab-request-create postflight",
+		"  idu-pi idu-agentlab-request-create skill-draft latest",
+		"  idu-pi idu-agentlab-request-review latest",
+		"  idu-pi idu-agentlab-review-run latest",
+		"  idu-pi idu-agentlab-review-status latest",
 		"  idu-pi idu-semantic-audit-status (Telegram: /semantic_audit_status)",
 		"  idu-pi idu-semantic-audit-run    (Telegram: /semantic_audit_run)",
 		"  idu-pi idu-semantic-compact-draft (Telegram: /semantic_compact_draft)",

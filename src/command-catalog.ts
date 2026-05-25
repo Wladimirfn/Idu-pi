@@ -650,17 +650,23 @@ export const CLI_COMMANDS: LocalCommandEntry[] = [
 	{ label: "Idu activo", command: "corepack pnpm cli -- idu" },
 	{ label: "Idu status", command: "corepack pnpm cli -- idu-status" },
 	{ label: "Idu off", command: "corepack pnpm cli -- idu-off" },
-	{ label: "Prepare seguro", command: "corepack pnpm cli -- prepare" },
+	{ label: "Prepare seguro", command: "corepack pnpm cli -- idu-prepare" },
 	{
 		label: "Idu supervisor tick",
 		command: "corepack pnpm cli -- idu-supervisor-tick",
 	},
-	{ label: "Preflight", command: 'corepack pnpm cli -- preflight "solicitud"' },
-	{ label: "Advisory", command: 'corepack pnpm cli -- advisory "solicitud"' },
-	{ label: "Postflight", command: "corepack pnpm cli -- postflight" },
+	{
+		label: "Preflight",
+		command: 'corepack pnpm cli -- idu-preflight "solicitud"',
+	},
+	{
+		label: "Advisory",
+		command: 'corepack pnpm cli -- idu-advisory "solicitud"',
+	},
+	{ label: "Postflight", command: "corepack pnpm cli -- idu-postflight" },
 	{
 		label: "Lab review plan",
-		command: "corepack pnpm cli -- lab-review-plan postflight",
+		command: "corepack pnpm cli -- idu-lab-review-plan postflight",
 	},
 	{
 		label: "Crear task",
@@ -681,19 +687,19 @@ export const CLI_COMMANDS: LocalCommandEntry[] = [
 	},
 	{
 		label: "AgentLab request create",
-		command: "corepack pnpm cli -- agentlab-request-create postflight",
+		command: "corepack pnpm cli -- idu-agentlab-request-create postflight",
 	},
 	{
 		label: "AgentLab request review",
-		command: "corepack pnpm cli -- agentlab-request-review latest",
+		command: "corepack pnpm cli -- idu-agentlab-request-review latest",
 	},
 	{
 		label: "AgentLab review run",
-		command: "corepack pnpm cli -- agentlab-review-run latest",
+		command: "corepack pnpm cli -- idu-agentlab-review-run latest",
 	},
 	{
 		label: "AgentLab review status",
-		command: "corepack pnpm cli -- agentlab-review-status latest",
+		command: "corepack pnpm cli -- idu-agentlab-review-status latest",
 	},
 	{
 		label: "Semantic audit status",

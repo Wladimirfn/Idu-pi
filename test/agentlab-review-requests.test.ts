@@ -10,6 +10,7 @@ import {
 	formatAgentLabReviewRequestReview,
 	reviewAgentLabReviewRequest,
 } from "../src/agentlab-review-requests.js";
+import { formatAgentLabReviewRequestForPrompt } from "../src/agentlab-supervisor-contract.js";
 import type { ProjectPostflightReport } from "../src/project-postflight.js";
 
 function root(): string {
@@ -112,10 +113,46 @@ test("skill-draft crea request skill_review", () => {
 	});
 	assert.equal(result.requests.length, 1);
 	assert.equal(result.requests[0]?.specialty, "skill_review");
+	const forbidden = result.requests[0]!.forbiddenActions.join("\n");
+	assert.match(forbidden, /no modificar skills reales/u);
+	assert.match(forbidden, /no modificar \.agents/u);
+	assert.match(forbidden, /no modificar \.atl/u);
+});
+
+test("skill-draft request usa JSON de reports como fuente temporal", () => {
+	const reportsPath = join(root(), "reports");
+	writeSkillDraft(reportsPath);
+	const result = createAgentLabReviewRequests({
+		source: "skill_draft",
+		reportsPath,
+		projectId: "pi-telegram-bridge",
+		projectPath: root(),
+		skillDraftPathOrLatest: "latest",
+		now,
+	});
+	const request = result.requests[0]!;
+	const prompt = formatAgentLabReviewRequestForPrompt(request);
+
 	assert.match(
-		result.requests[0]!.forbiddenActions.join("\n"),
-		/no modificar skills reales/u,
+		request.sourceSkillDraftPath ?? "",
+		/skill-draft-20260525-120000\.json/u,
 	);
+	assert.deepEqual(request.filesToInspect, [request.sourceSkillDraftPath]);
+	assert.doesNotMatch(
+		request.filesToInspect.join("\n"),
+		/\.agents\/skills\/security-auth-review\/SKILL\.md/u,
+	);
+	assert.match(prompt, /No busques SKILL\.md real/u);
+	assert.match(prompt, /Revisa el JSON de draft/u);
+	assert.match(prompt, /Source skill draft path:/u);
+	assert.match(prompt, /Skill: security-auth-review/u);
+	assert.match(prompt, /Action: create_skill/u);
+	assert.match(prompt, /Purpose: Revisar auth/u);
+	assert.match(prompt, /When to use: Cambios de login/u);
+	assert.match(prompt, /Safety rules: No aplicar automáticamente/u);
+	assert.match(prompt, /Tests suggested: skill-check/u);
+	assert.match(prompt, /Content preview:/u);
+	assert.match(prompt, /name: security-auth-review/u);
 });
 
 test("request siempre incluye forbiddenActions obligatorias", () => {

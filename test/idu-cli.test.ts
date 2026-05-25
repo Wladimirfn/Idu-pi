@@ -1212,7 +1212,7 @@ test("cli ignora separador -- que agrega pnpm run", async () => {
 
 test("cli prepare llama al flujo de idu_prepare", async () => {
 	await withRuntime(async (runtime) => {
-		const result = await runCliCommand(["prepare"], runtime);
+		const result = await runCliCommand(["idu-prepare"], runtime);
 
 		assert.equal(result.exitCode, 0);
 		assert.match(result.stdout, /Idu-pi Prepare/u);
@@ -1222,7 +1222,10 @@ test("cli prepare llama al flujo de idu_prepare", async () => {
 
 test("cli preflight cambia login devuelve riesgo high", async () => {
 	await withRuntime(async (runtime) => {
-		const result = await runCliCommand(["preflight", "cambia login"], runtime);
+		const result = await runCliCommand(
+			["idu-preflight", "cambia login"],
+			runtime,
+		);
 
 		assert.equal(result.exitCode, 0);
 		assert.match(result.stdout, /Preflight Idu-pi/u);
@@ -1232,7 +1235,10 @@ test("cli preflight cambia login devuelve riesgo high", async () => {
 
 test("cli advisory cambia login devuelve advisory", async () => {
 	await withRuntime(async (runtime) => {
-		const result = await runCliCommand(["advisory", "cambia login"], runtime);
+		const result = await runCliCommand(
+			["idu-advisory", "cambia login"],
+			runtime,
+		);
 
 		assert.equal(result.exitCode, 0);
 		assert.match(result.stdout, /Idu-pi Advisory/u);
@@ -1245,7 +1251,7 @@ test("cli postflight funciona sin escribir archivos", async () => {
 		const before = existsSync(join(workspaceRoot, "reports"))
 			? readdirSync(join(workspaceRoot, "reports"))
 			: [];
-		const result = await runCliCommand(["postflight"], runtime);
+		const result = await runCliCommand(["idu-postflight"], runtime);
 
 		assert.equal(result.exitCode, 0);
 		assert.match(result.stdout, /Postflight Idu-pi/u);
@@ -1259,7 +1265,7 @@ test("cli postflight funciona sin escribir archivos", async () => {
 test("cli lab-review-plan postflight prepara plan sin AgentLabs", async () => {
 	await withRuntime(async (runtime) => {
 		const result = await runCliCommand(
-			["lab-review-plan", "postflight"],
+			["idu-lab-review-plan", "postflight"],
 			runtime,
 		);
 
@@ -1272,11 +1278,11 @@ test("cli lab-review-plan postflight prepara plan sin AgentLabs", async () => {
 test("CLI agentlab request commands funcionan", async () => {
 	await withRuntime(async (runtime) => {
 		const createPostflight = await runCliCommand(
-			["agentlab-request-create", "postflight"],
+			["idu-agentlab-request-create", "postflight"],
 			runtime,
 		);
 		const createSkillDraft = await runCliCommand(
-			["agentlab-request-create", "skill-draft", "latest"],
+			["idu-agentlab-request-create", "skill-draft", "latest"],
 			runtime,
 		);
 		const review = await runCliCommand(
@@ -1296,7 +1302,10 @@ test("CLI agentlab request commands funcionan", async () => {
 
 test("CLI agentlab review run/status commands funcionan", async () => {
 	await withRuntime(async (runtime) => {
-		const run = await runCliCommand(["agentlab-review-run", "latest"], runtime);
+		const run = await runCliCommand(
+			["idu-agentlab-review-run", "latest"],
+			runtime,
+		);
 		const status = await runCliCommand(
 			["idu-agentlab-review-status", "latest"],
 			runtime,
@@ -1312,7 +1321,7 @@ test("CLI agentlab review run/status commands funcionan", async () => {
 
 test("CLI semantic-audit-status funciona", async () => {
 	await withRuntime(async (runtime) => {
-		const result = await runCliCommand(["semantic-audit-status"], runtime);
+		const result = await runCliCommand(["idu-semantic-audit-status"], runtime);
 
 		assert.equal(result.exitCode, 0);
 		assert.match(result.stdout, /Semantic Audit Status/u);
@@ -1322,7 +1331,7 @@ test("CLI semantic-audit-status funciona", async () => {
 
 test("CLI semantic-audit-run funciona", async () => {
 	await withRuntime(async (runtime) => {
-		const result = await runCliCommand(["semantic-audit-run"], runtime);
+		const result = await runCliCommand(["idu-semantic-audit-run"], runtime);
 
 		assert.equal(result.exitCode, 0);
 		assert.match(result.stdout, /Semantic Audit Run/u);
@@ -1332,7 +1341,7 @@ test("CLI semantic-audit-run funciona", async () => {
 
 test("CLI semantic-compact-draft funciona", async () => {
 	await withRuntime(async (runtime) => {
-		const result = await runCliCommand(["semantic-compact-draft"], runtime);
+		const result = await runCliCommand(["idu-semantic-compact-draft"], runtime);
 
 		assert.equal(result.exitCode, 0);
 		assert.match(result.stdout, /Semantic Compaction Draft/u);
@@ -1344,7 +1353,7 @@ test("CLI semantic-compact-draft funciona", async () => {
 test("CLI semantic-compact-review latest funciona", async () => {
 	await withRuntime(async (runtime) => {
 		const result = await runCliCommand(
-			["semantic-compact-review", "latest"],
+			["idu-semantic-compact-review", "latest"],
 			runtime,
 		);
 
@@ -1358,7 +1367,7 @@ test("CLI semantic-compact-review latest funciona", async () => {
 test("CLI semantic-agent-tasks-review latest funciona", async () => {
 	await withRuntime(async (runtime) => {
 		const result = await runCliCommand(
-			["semantic-agent-tasks-review", "latest"],
+			["idu-semantic-agent-tasks-review", "latest"],
 			runtime,
 		);
 
@@ -1372,7 +1381,7 @@ test("CLI semantic-agent-tasks-review latest funciona", async () => {
 test("CLI semantic-agent-tasks-create latest funciona", async () => {
 	await withRuntime(async (runtime) => {
 		const result = await runCliCommand(
-			["semantic-agent-tasks-create", "latest"],
+			["idu-semantic-agent-tasks-create", "latest"],
 			runtime,
 		);
 

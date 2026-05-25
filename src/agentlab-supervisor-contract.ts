@@ -46,6 +46,7 @@ export type AgentLabReviewRequest = {
 	rulesToCheck: string[];
 	projectCoreSummary?: string;
 	constitutionSummary?: string;
+	sourceSkillDraftPath?: string;
 	constraints: string[];
 	allowedActions: string[];
 	forbiddenActions: string[];
@@ -153,6 +154,7 @@ export type BuildAgentLabReviewRequestInput = {
 	rulesToCheck?: string[];
 	projectCoreSummary?: string;
 	constitutionSummary?: string;
+	sourceSkillDraftPath?: string;
 	constraints?: string[];
 	allowedActions?: string[];
 	forbiddenActions?: string[];
@@ -270,6 +272,9 @@ export function buildAgentLabReviewRequest(
 		...(input.constitutionSummary
 			? { constitutionSummary: input.constitutionSummary.trim() }
 			: {}),
+		...(input.sourceSkillDraftPath
+			? { sourceSkillDraftPath: input.sourceSkillDraftPath.trim() }
+			: {}),
 		constraints: dedupe([
 			...(input.constraints ?? []),
 			"AgentLab inspecciona y reporta; Idu-pi consolida; humano decide.",
@@ -351,6 +356,11 @@ export function validateAgentLabReviewRequest(
 	const constitutionSummary = optionalString(
 		request.constitutionSummary,
 		"constitutionSummary",
+		errors,
+	);
+	const sourceSkillDraftPath = optionalString(
+		request.sourceSkillDraftPath,
+		"sourceSkillDraftPath",
 		errors,
 	);
 	const constraints = stringArray(request.constraints, "constraints", errors);
@@ -451,6 +461,7 @@ export function validateAgentLabReviewRequest(
 			rulesToCheck,
 			...(projectCoreSummary ? { projectCoreSummary } : {}),
 			...(constitutionSummary ? { constitutionSummary } : {}),
+			...(sourceSkillDraftPath ? { sourceSkillDraftPath } : {}),
 			constraints,
 			allowedActions,
 			forbiddenActions,
@@ -778,6 +789,17 @@ export function formatAgentLabReviewRequestForPrompt(
 		"Flows a revisar:",
 		formatList(request.flowsToCheck),
 		"",
+		...(request.sourceSkillDraftPath
+			? ["Skill draft source:", request.sourceSkillDraftPath, ""]
+			: []),
+		...(request.trigger === "skill_draft"
+			? [
+					"Instrucción skill_draft:",
+					"No busques SKILL.md real; todavía no existe. Revisa el JSON de draft.",
+					"No apliques skills reales ni modifiques .agents/.atl.",
+					"",
+				]
+			: []),
 		"Reglas:",
 		formatList(request.rulesToCheck),
 		"",

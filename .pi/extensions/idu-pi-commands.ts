@@ -143,26 +143,26 @@ export default function (pi: ExtensionAPI) {
 
 	registerIduCommand("idu-prepare", {
 		description: "Ejecutar prepare seguro de Idu-pi",
-		cliArgs: () => ["prepare"],
+		cliArgs: () => ["idu-prepare"],
 	});
 
 	registerIduCommand("idu-preflight", {
 		description: "Evaluar riesgo preflight para una solicitud",
-		cliArgs: (args) => ["preflight", args],
+		cliArgs: (args) => ["idu-preflight", args],
 		requiresArgs: true,
 		usage: "/idu-preflight <solicitud>",
 	});
 
 	registerIduCommand("idu-advisory", {
 		description: "Mostrar advisory manual para una solicitud",
-		cliArgs: (args) => ["advisory", args],
+		cliArgs: (args) => ["idu-advisory", args],
 		requiresArgs: true,
 		usage: "/idu-advisory <solicitud>",
 	});
 
 	registerIduCommand("idu-postflight", {
 		description: "Analizar cambios actuales con postflight",
-		cliArgs: () => ["postflight"],
+		cliArgs: () => ["idu-postflight"],
 	});
 
 	registerIduCommand("idu-supervisor-tick", {
@@ -172,14 +172,14 @@ export default function (pi: ExtensionAPI) {
 
 	registerIduCommand("idu-lab-review-plan", {
 		description: "Preparar plan de revisión Lab sin ejecutar AgentLabs",
-		cliArgs: (args) => ["lab-review-plan", args || "postflight"],
+		cliArgs: (args) => ["idu-lab-review-plan", args || "postflight"],
 		usage: "/idu-lab-review-plan [postflight|preflight <solicitud>]",
 	});
 
 	registerIduCommand("idu-agentlab-request-create", {
 		description: "Crear solicitud AgentLab sin ejecutar revisión",
 		cliArgs: (args) => [
-			"agentlab-request-create",
+			"idu-agentlab-request-create",
 			...args.split(/\s+/u).filter(Boolean),
 		],
 		usage: "/idu-agentlab-request-create [postflight|skill-draft latest]",
@@ -187,19 +187,19 @@ export default function (pi: ExtensionAPI) {
 
 	registerIduCommand("idu-agentlab-request-review", {
 		description: "Revisar solicitud AgentLab sin ejecutarla",
-		cliArgs: (args) => ["agentlab-request-review", args || "latest"],
+		cliArgs: (args) => ["idu-agentlab-request-review", args || "latest"],
 		usage: "/idu-agentlab-request-review [latest|ruta]",
 	});
 
 	registerIduCommand("idu-agentlab-review-run", {
 		description: "Ejecutar revisión AgentLab review-only",
-		cliArgs: (args) => ["agentlab-review-run", args || "latest"],
+		cliArgs: (args) => ["idu-agentlab-review-run", args || "latest"],
 		usage: "/idu-agentlab-review-run [latest|ruta]",
 	});
 
 	registerIduCommand("idu-agentlab-review-status", {
 		description: "Ver informe AgentLab review-only",
-		cliArgs: (args) => ["agentlab-review-status", args || "latest"],
+		cliArgs: (args) => ["idu-agentlab-review-status", args || "latest"],
 		usage: "/idu-agentlab-review-status [latest|ruta]",
 	});
 
@@ -271,26 +271,26 @@ export default function (pi: ExtensionAPI) {
 	registerIduCommand("idu-supervisor-improvements-review", {
 		description:
 			"Revisar propuestas de mejora del supervisor sin aplicar cambios",
-		cliArgs: (args) => ["supervisor-improvements-review", args || "latest"],
+		cliArgs: (args) => ["idu-supervisor-improvements-review", args || "latest"],
 		usage: "/idu-supervisor-improvements-review [latest|ruta]",
 	});
 
 	registerIduCommand("idu-supervisor-improvements-create", {
 		description: "Crear propuestas review-only del supervisor en reports",
-		cliArgs: (args) => ["supervisor-improvements-create", args || "latest"],
+		cliArgs: (args) => ["idu-supervisor-improvements-create", args || "latest"],
 		usage: "/idu-supervisor-improvements-create [latest|ruta]",
 	});
 
 	registerIduCommand("idu-supervisor-improvements-status", {
 		description: "Ver estados de propuestas de mejora del supervisor",
-		cliArgs: (args) => ["supervisor-improvements-status", args || "latest"],
+		cliArgs: (args) => ["idu-supervisor-improvements-status", args || "latest"],
 		usage: "/idu-supervisor-improvements-status [latest|ruta]",
 	});
 
 	registerIduCommand("idu-supervisor-improvements-approve", {
 		description: "Aprobar propuestas de mejora sin aplicarlas",
 		cliArgs: (args) => [
-			"supervisor-improvements-approve",
+			"idu-supervisor-improvements-approve",
 			...args.split(/\s+/u).filter(Boolean),
 		],
 		requiresArgs: true,
@@ -300,7 +300,7 @@ export default function (pi: ExtensionAPI) {
 	registerIduCommand("idu-supervisor-improvements-reject", {
 		description: "Rechazar propuestas de mejora sin borrarlas",
 		cliArgs: (args) => [
-			"supervisor-improvements-reject",
+			"idu-supervisor-improvements-reject",
 			...args.split(/\s+/u).filter(Boolean),
 		],
 		requiresArgs: true,
@@ -311,7 +311,7 @@ export default function (pi: ExtensionAPI) {
 	registerIduCommand("idu-supervisor-improvements-defer", {
 		description: "Diferir propuestas de mejora sin aplicarlas",
 		cliArgs: (args) => [
-			"supervisor-improvements-defer",
+			"idu-supervisor-improvements-defer",
 			...args.split(/\s+/u).filter(Boolean),
 		],
 		requiresArgs: true,
@@ -321,32 +321,32 @@ export default function (pi: ExtensionAPI) {
 
 	registerIduCommand("idu-supervisor-improvements-apply", {
 		description: "Aplicar sólo propuestas aprobadas como reglas dinámicas",
-		cliArgs: (args) => ["supervisor-improvements-apply", args || "latest"],
+		cliArgs: (args) => ["idu-supervisor-improvements-apply", args || "latest"],
 		usage: "/idu-supervisor-improvements-apply [latest|ruta]",
 	});
 
 	registerIduCommand("idu-skill-improvements-review", {
 		description: "Revisar propuestas de mejora de skills sin aplicar cambios",
-		cliArgs: (args) => ["skill-improvements-review", args || "latest"],
+		cliArgs: (args) => ["idu-skill-improvements-review", args || "latest"],
 		usage: "/idu-skill-improvements-review [latest|ruta]",
 	});
 
 	registerIduCommand("idu-skill-improvements-create", {
 		description: "Crear propuestas review-only de skills en reports",
-		cliArgs: (args) => ["skill-improvements-create", args || "latest"],
+		cliArgs: (args) => ["idu-skill-improvements-create", args || "latest"],
 		usage: "/idu-skill-improvements-create [latest|ruta]",
 	});
 
 	registerIduCommand("idu-skill-improvements-status", {
 		description: "Ver estados de propuestas de mejora de skills",
-		cliArgs: (args) => ["skill-improvements-status", args || "latest"],
+		cliArgs: (args) => ["idu-skill-improvements-status", args || "latest"],
 		usage: "/idu-skill-improvements-status [latest|ruta]",
 	});
 
 	registerIduCommand("idu-skill-improvements-approve", {
 		description: "Aprobar propuesta de mejora de skill sin aplicarla",
 		cliArgs: (args) => [
-			"skill-improvements-approve",
+			"idu-skill-improvements-approve",
 			...args.split(/\s+/u).filter(Boolean),
 		],
 		requiresArgs: true,
@@ -356,7 +356,7 @@ export default function (pi: ExtensionAPI) {
 	registerIduCommand("idu-skill-improvements-reject", {
 		description: "Rechazar propuesta de mejora de skill sin borrarla",
 		cliArgs: (args) => [
-			"skill-improvements-reject",
+			"idu-skill-improvements-reject",
 			...args.split(/\s+/u).filter(Boolean),
 		],
 		requiresArgs: true,
@@ -366,7 +366,7 @@ export default function (pi: ExtensionAPI) {
 	registerIduCommand("idu-skill-improvements-defer", {
 		description: "Diferir propuesta de mejora de skill sin aplicarla",
 		cliArgs: (args) => [
-			"skill-improvements-defer",
+			"idu-skill-improvements-defer",
 			...args.split(/\s+/u).filter(Boolean),
 		],
 		requiresArgs: true,
@@ -375,32 +375,32 @@ export default function (pi: ExtensionAPI) {
 
 	registerIduCommand("idu-skill-drafts-create", {
 		description: "Crear borradores de skills desde propuestas aprobadas",
-		cliArgs: (args) => ["skill-drafts-create", args || "latest"],
+		cliArgs: (args) => ["idu-skill-drafts-create", args || "latest"],
 		usage: "/idu-skill-drafts-create [latest|ruta]",
 	});
 
 	registerIduCommand("idu-skill-drafts-review", {
 		description: "Revisar borrador de skill sin aplicar cambios",
-		cliArgs: (args) => ["skill-drafts-review", args || "latest"],
+		cliArgs: (args) => ["idu-skill-drafts-review", args || "latest"],
 		usage: "/idu-skill-drafts-review [latest|ruta]",
 	});
 
 	registerIduCommand("idu-supervisor-learning-rules-status", {
 		description: "Ver reglas dinámicas del supervisor",
-		cliArgs: () => ["supervisor-learning-rules-status"],
+		cliArgs: () => ["idu-supervisor-learning-rules-status"],
 		usage: "/idu-supervisor-learning-rules-status",
 	});
 
 	registerIduCommand("idu-supervisor-learning-rules-test", {
 		description: "Probar reglas dinámicas del supervisor",
-		cliArgs: () => ["supervisor-learning-rules-test"],
+		cliArgs: () => ["idu-supervisor-learning-rules-test"],
 		usage: "/idu-supervisor-learning-rules-test",
 	});
 
 	registerIduCommand("idu-supervisor-learning-rules-disable", {
 		description: "Desactivar una regla dinámica del supervisor",
 		cliArgs: (args) => [
-			"supervisor-learning-rules-disable",
+			"idu-supervisor-learning-rules-disable",
 			...args.split(/\s+/u).filter(Boolean),
 		],
 		requiresArgs: true,
@@ -410,7 +410,7 @@ export default function (pi: ExtensionAPI) {
 	registerIduCommand("idu-supervisor-learning-rules-enable", {
 		description: "Reactivar una regla dinámica del supervisor",
 		cliArgs: (args) => [
-			"supervisor-learning-rules-enable",
+			"idu-supervisor-learning-rules-enable",
 			...args.split(/\s+/u).filter(Boolean),
 		],
 		requiresArgs: true,
@@ -419,7 +419,10 @@ export default function (pi: ExtensionAPI) {
 
 	registerIduCommand("idu-supervisor-learning-rules-rollback", {
 		description: "Restaurar backup de reglas dinámicas del supervisor",
-		cliArgs: (args) => ["supervisor-learning-rules-rollback", args || "latest"],
+		cliArgs: (args) => [
+			"idu-supervisor-learning-rules-rollback",
+			args || "latest",
+		],
 		usage: "/idu-supervisor-learning-rules-rollback [latest|backup]",
 	});
 }
