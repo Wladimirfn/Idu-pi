@@ -30,7 +30,7 @@ Pi slash commands ─┘        │
 | --- | --- |
 | Adaptadores | Traducen comandos de CLI, Telegram, MCP o Pi slash hacia funciones core. |
 | Core | Implementa reglas, validaciones, reportes, propuestas y consolidación. |
-| Persistencia | Guarda reports JSON/JSONL y DB SQLite local. |
+| Persistencia | Guarda reports JSON/JSONL y DB SQLite local, aislados por proyecto enrolado. |
 | Workspaces | Aíslan AgentLabs y perfiles no-default en clones. |
 | Pi RPC | Mantiene sesión de agente local y reenvía UI requests. |
 
@@ -103,9 +103,25 @@ Telegram es una interfaz. No es el núcleo de Idu-pi.
 
 Cuando se agrega un comando visible, el catálogo y `src/telegram-command-registry.ts` deben mantenerse alineados.
 
+## Installer y estado por proyecto
+
+`idu-pi setup` configura adapters globales como MCP. `idu-pi project enroll <path>` registra un proyecto y crea estado aislado bajo:
+
+```text
+AGENT_WORKSPACE_ROOT/projects/<safeProjectId>/
+```
+
+Guía: [Instalador y estado por proyecto](installer.md).
+
 ## Reports
 
-Los artifacts revisables se guardan bajo:
+Para proyectos enrolados, los artifacts revisables se guardan bajo:
+
+```text
+AGENT_WORKSPACE_ROOT/projects/<safeProjectId>/reports/
+```
+
+Por compatibilidad, proyectos existentes sin `stateRoot` siguen usando:
 
 ```text
 AGENT_WORKSPACE_ROOT/reports/
@@ -129,7 +145,13 @@ Ejemplos:
 
 ## SQLite / lab DB
 
-La DB local vive normalmente en:
+La DB local vive normalmente en estado aislado:
+
+```text
+AGENT_WORKSPACE_ROOT/projects/<safeProjectId>/lab.db
+```
+
+Por compatibilidad, proyectos existentes sin estado enrolado pueden seguir usando:
 
 ```text
 AGENT_WORKSPACE_ROOT/reports/lab.db

@@ -27,6 +27,20 @@ Ningún adapter debe duplicar lógica del core.
 
 ## Cómo correr
 
+Recomendado: primero configurar el adapter MCP en Pi:
+
+```bash
+corepack pnpm cli -- setup mcp-init
+# o
+idu-pi setup mcp-init
+```
+
+Para imprimir la configuración sin escribir:
+
+```bash
+idu-pi setup mcp-print
+```
+
 Desde el repo Idu-pi:
 
 ```bash
@@ -71,6 +85,12 @@ Ejemplo conceptual:
 `TELEGRAM_BOT_TOKEN` y `ALLOWED_USER_ID` no son necesarios para el MCP adapter.
 
 ## Resolución de proyecto
+
+Antes de usar un proyecto externo, enrolalo para aislar estado:
+
+```bash
+idu-pi project enroll "C:\\Users\\elmas\\OneDrive\\Escritorio\\Mis proyectos\\Sistema_de_mantencion"
+```
 
 Cada herramienta acepta `projectPath` opcional.
 

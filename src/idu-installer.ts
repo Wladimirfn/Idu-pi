@@ -1,0 +1,499 @@
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { canonicalDirectory, isAllowedCwd } from "./config.js";
+import {
+	addProject,
+	loadRegistry,
+	saveRegistry,
+	slugifyProjectId,
+	type ProjectEntry,
+} from "./projects.js";
+import {
+	ensureProjectStateDirs,
+	formatProjectStatePaths,
+	resolveProjectStatePaths,
+	type ProjectStatePaths,
+} from "./project-state.js";
+
+export type ToolStatus = {
+	found: boolean;
+	version?: string;
+};
+
+export type SystemDetection = {
+	os: NodeJS.Platform | string;
+	shell: string;
+	node: ToolStatus;
+	packageManagers: {
+		npm: ToolStatus;
+		pnpm: ToolStatus;
+	};
+	git: ToolStatus;
+	curl: ToolStatus;
+	mcpBasicSupport: boolean;
+};
+
+export type AgentConfigDetection = {
+	pi: AgentConfigStatus;
+	claudeCode: AgentConfigStatus;
+	opencode: AgentConfigStatus;
+	codex: AgentConfigStatus;
+	cursor: AgentConfigStatus;
+	windsurf: AgentConfigStatus;
+};
+
+export type AgentConfigStatus = {
+	present: boolean;
+	path: string;
+};
+
+export type DetectOptions = {
+	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+	homeDir?: string;
+	platform?: NodeJS.Platform | string;
+	exists?: (path: string) => boolean;
+	runner?: (command: string, args: string[]) => string | undefined;
+};
+
+export type IduMcpServerConfig = {
+	command: "node";
+	args: string[];
+	lifecycle: "lazy";
+};
+
+export type InstallIduMcpConfigInput = {
+	agentDir: string;
+	mcpServerPath: string;
+	force?: boolean;
+	dryRun?: boolean;
+	now?: () => Date;
+};
+
+export type InstallIduMcpConfigResult = {
+	status: "installed" | "exists" | "dry_run";
+	mcpConfigPath: string;
+	backupPath?: string;
+	config: { mcpServers: Record<string, unknown> };
+	summary: string;
+};
+
+export type ProjectEnrollInput = {
+	projectPath: string;
+	projectId?: string;
+	workspaceRoot: string;
+	allowedRoots: string[];
+	registryPath?: string;
+};
+
+export type ProjectEnrollResult = {
+	project: ProjectEntry;
+	statePaths: ProjectStatePaths;
+	created: string[];
+	safeNotes: string[];
+};
+
+export type ProjectInstallStatus = {
+	projectId: string;
+	projectPath: string;
+	registered: boolean;
+	stateRoot: string;
+	labDbPath: string;
+	reportsDir: string;
+	mcpAvailable: boolean;
+	recommendedNext: string;
+};
+
+export type ProjectInstallStatusInput = {
+	projectPath: string;
+	workspaceRoot: string;
+	allowedRoots: string[];
+	registryPath?: string;
+	mcpAvailable?: boolean;
+};
+
+export type IduSetupStatusInput = {
+	system: SystemDetection;
+	tools: SystemDetection;
+	agentConfigs: AgentConfigDetection;
+	mcpInstalled: boolean;
+};
+
+export function detectSystem(options: DetectOptions = {}): SystemDetection {
+	const env = options.env ?? process.env;
+	const platform = options.platform ?? process.platform;
+	const shell =
+		env.SHELL ??
+		env.ComSpec ??
+		(env.PSModulePath ? "powershell/cmd" : "unknown");
+	const tools = detectTools(options);
+	return {
+		os: platform,
+		shell,
+		node: tools.node,
+		packageManagers: tools.packageManagers,
+		git: tools.git,
+		curl: tools.curl,
+		mcpBasicSupport: tools.node.found,
+	};
+}
+
+export function detectTools(options: DetectOptions = {}): SystemDetection {
+	const runner = options.runner ?? defaultRunner;
+	const node = detectCommand("node", ["--version"], runner);
+	const npm = detectCommand("npm", ["--version"], runner);
+	const pnpm = detectCommand("pnpm", ["--version"], runner);
+	const git = detectCommand("git", ["--version"], runner);
+	const curl = detectCommand("curl", ["--version"], runner);
+	return {
+		os: options.platform ?? process.platform,
+		shell: "",
+		node,
+		packageManagers: { npm, pnpm },
+		git,
+		curl,
+		mcpBasicSupport: node.found,
+	};
+}
+
+export function resolvePiAgentDir(options: DetectOptions = {}): string {
+	const env = options.env ?? process.env;
+	return resolve(
+		env.PI_CODING_AGENT_DIR?.trim() ||
+			join(options.homeDir ?? homedir(), ".pi", "agent"),
+	);
+}
+
+export function detectAgentConfigs(
+	options: DetectOptions = {},
+): AgentConfigDetection {
+	const home = options.homeDir ?? homedir();
+	const exists = options.exists ?? existsSync;
+	const piPath = resolvePiAgentDir(options);
+	return {
+		pi: status(piPath, exists),
+		claudeCode: status(join(home, ".claude"), exists),
+		opencode: status(join(home, ".config", "opencode"), exists),
+		codex: status(join(home, ".codex"), exists),
+		cursor: status(join(home, ".cursor"), exists),
+		windsurf: status(join(home, ".windsurf"), exists),
+	};
+}
+
+export function buildIduMcpConfig(mcpServerPath: string): IduMcpServerConfig {
+	return {
+		command: "node",
+		args: [resolve(mcpServerPath)],
+		lifecycle: "lazy",
+	};
+}
+
+export function installIduMcpConfig(
+	input: InstallIduMcpConfigInput,
+): InstallIduMcpConfigResult {
+	const agentDir = resolve(input.agentDir);
+	const mcpConfigPath = join(agentDir, "mcp.json");
+	const existing = readMcpConfig(mcpConfigPath);
+	const iduConfig = buildIduMcpConfig(input.mcpServerPath);
+	const hasExistingIdu = Boolean(existing.mcpServers["idu-pi"]);
+	const next = {
+		...existing,
+		mcpServers: {
+			...existing.mcpServers,
+			...(hasExistingIdu && !input.force ? {} : { "idu-pi": iduConfig }),
+		},
+	};
+	if (input.dryRun) {
+		return {
+			status: "dry_run",
+			mcpConfigPath,
+			config: next,
+			summary: "Dry-run: no escribí mcp.json.",
+		};
+	}
+	if (hasExistingIdu && !input.force) {
+		return {
+			status: "exists",
+			mcpConfigPath,
+			config: existing,
+			summary: "idu-pi ya existe en mcp.json; usá --force para reemplazar.",
+		};
+	}
+	mkdirSync(agentDir, { recursive: true });
+	const backupPath = backupAgentConfigFile(mcpConfigPath, input.now);
+	writeFileSync(mcpConfigPath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+	return {
+		status: "installed",
+		mcpConfigPath,
+		backupPath,
+		config: next,
+		summary: "MCP idu-pi configurado.",
+	};
+}
+
+export function printIduMcpConfig(input: { mcpServerPath: string }): string {
+	return `${JSON.stringify(
+		{ mcpServers: { "idu-pi": buildIduMcpConfig(input.mcpServerPath) } },
+		null,
+		2,
+	)}\n`;
+}
+
+export function backupAgentConfigFile(
+	mcpConfigPath: string,
+	now: () => Date = () => new Date(),
+): string | undefined {
+	if (!existsSync(mcpConfigPath)) return undefined;
+	const backupPath = join(
+		dirname(mcpConfigPath),
+		`mcp.backup-${timestamp(now())}.json`,
+	);
+	writeFileSync(backupPath, readFileSync(mcpConfigPath, "utf8"), "utf8");
+	return backupPath;
+}
+
+export function projectEnroll(input: ProjectEnrollInput): ProjectEnrollResult {
+	const projectPath = canonicalDirectory(input.projectPath);
+	if (!isAllowedCwd(projectPath, input.allowedRoots)) {
+		throw new Error(`Ruta fuera de ALLOWED_ROOTS: ${projectPath}`);
+	}
+	const projectId = slugifyProjectId(
+		input.projectId?.trim() || projectPath.split(/[\\/]/u).at(-1) || "project",
+	);
+	const registry = loadRegistry(projectPath, input.allowedRoots, {
+		registryPath: input.registryPath,
+		createIfMissing: false,
+	});
+	const project = addProject(
+		registry,
+		projectId,
+		projectPath,
+		input.allowedRoots,
+	);
+	const statePaths = resolveProjectStatePaths({
+		workspaceRoot: input.workspaceRoot,
+		projectId: project.id,
+		projectPath,
+	});
+	const created: string[] = [];
+	for (const directory of [
+		statePaths.stateRoot,
+		statePaths.reportsDir,
+		statePaths.semanticAuditDir,
+		statePaths.agentLabReportsDir,
+		statePaths.workspacesDir,
+	]) {
+		if (!existsSync(directory)) created.push(directory);
+	}
+	ensureProjectStateDirs(statePaths);
+	project.stateRoot = statePaths.stateRoot;
+	saveRegistry(registry, input.registryPath);
+	return {
+		project,
+		statePaths,
+		created,
+		safeNotes: [
+			"No creé Project Core automáticamente.",
+			"No ejecuté scan pesado.",
+			"No toqué código del proyecto.",
+		],
+	};
+}
+
+export function projectInstallStatus(
+	input: ProjectInstallStatusInput,
+): ProjectInstallStatus {
+	const projectPath = canonicalDirectory(input.projectPath);
+	if (!isAllowedCwd(projectPath, input.allowedRoots)) {
+		throw new Error(`Ruta fuera de ALLOWED_ROOTS: ${projectPath}`);
+	}
+	const registry = loadRegistry(projectPath, input.allowedRoots, {
+		registryPath: input.registryPath,
+		createIfMissing: false,
+	});
+	const project = registry.projects.find((entry) =>
+		samePath(entry.path, projectPath),
+	);
+	const projectId =
+		project?.id ??
+		slugifyProjectId(projectPath.split(/[\\/]/u).at(-1) ?? "project");
+	const statePaths = resolveProjectStatePaths({
+		workspaceRoot: input.workspaceRoot,
+		projectId,
+		projectPath,
+	});
+	return {
+		projectId,
+		projectPath,
+		registered: Boolean(project),
+		stateRoot: project?.stateRoot ?? statePaths.stateRoot,
+		labDbPath: statePaths.labDbPath,
+		reportsDir: statePaths.reportsDir,
+		mcpAvailable: input.mcpAvailable ?? false,
+		recommendedNext: project
+			? "Usá idu-pi setup status o idu-pi idu-status."
+			: "Registrá con idu-pi project enroll <projectPath>.",
+	};
+}
+
+export function formatIduSetupStatus(input: IduSetupStatusInput): string {
+	const configs = input.agentConfigs;
+	return [
+		"Idu-pi Setup",
+		"",
+		"Sistema:",
+		`- OS: ${input.system.os}`,
+		`- shell: ${input.system.shell}`,
+		`- node: ${found(input.tools.node)}`,
+		`- git: ${found(input.tools.git)}`,
+		`- curl: ${found(input.tools.curl)}`,
+		`- MCP básico: ${input.system.mcpBasicSupport ? "yes" : "no"}`,
+		"",
+		"Configs detectadas:",
+		`- Pi: ${configs.pi.present ? "present" : "missing"} (${configs.pi.path})`,
+		`- Claude Code: ${configs.claudeCode.present ? "present" : "missing"}`,
+		`- OpenCode: ${configs.opencode.present ? "present" : "missing"}`,
+		`- Codex: ${configs.codex.present ? "present" : "missing"}`,
+		`- Cursor: ${configs.cursor.present ? "present" : "missing"}`,
+		`- Windsurf: ${configs.windsurf.present ? "present" : "missing"}`,
+		`- MCP idu-pi: ${input.mcpInstalled ? "present" : "missing"}`,
+		"",
+		"Acciones recomendadas:",
+		"1. idu-pi setup mcp-init",
+		"2. idu-pi project enroll <path>",
+		"3. idu-pi setup status",
+	].join("\n");
+}
+
+export function formatInstallIduMcpConfigResult(
+	result: InstallIduMcpConfigResult,
+): string {
+	return [
+		"Idu-pi MCP setup",
+		"",
+		"status:",
+		result.status,
+		"",
+		"mcpConfigPath:",
+		result.mcpConfigPath,
+		"",
+		"backupPath:",
+		result.backupPath ?? "—",
+		"",
+		"summary:",
+		result.summary,
+	].join("\n");
+}
+
+export function formatProjectEnrollResult(result: ProjectEnrollResult): string {
+	return [
+		"Proyecto enrolado",
+		"",
+		`projectId: ${result.project.id}`,
+		`projectPath: ${result.project.path}`,
+		"",
+		formatProjectStatePaths(result.statePaths),
+		"",
+		"Rutas creadas:",
+		...(result.created.length
+			? result.created.map((path) => `- ${path}`)
+			: ["- ninguna"]),
+		"",
+		"Notas seguras:",
+		...result.safeNotes.map((note) => `- ${note}`),
+	].join("\n");
+}
+
+export function formatProjectInstallStatus(
+	status: ProjectInstallStatus,
+): string {
+	return [
+		"Idu-pi project status",
+		"",
+		`projectId: ${status.projectId}`,
+		`projectPath: ${status.projectPath}`,
+		`registered: ${status.registered ? "registered" : "unregistered"}`,
+		`stateRoot: ${status.stateRoot}`,
+		`labDbPath: ${status.labDbPath}`,
+		`reportsDir: ${status.reportsDir}`,
+		`MCP available: ${status.mcpAvailable ? "yes" : "no"}`,
+		"",
+		`recommendedNext: ${status.recommendedNext}`,
+	].join("\n");
+}
+
+function readMcpConfig(path: string): { mcpServers: Record<string, unknown> } {
+	if (!existsSync(path)) return { mcpServers: {} };
+	try {
+		const parsed = JSON.parse(readFileSync(path, "utf8")) as unknown;
+		if (isRecord(parsed) && isRecord(parsed.mcpServers)) {
+			return { ...parsed, mcpServers: parsed.mcpServers } as {
+				mcpServers: Record<string, unknown>;
+			};
+		}
+	} catch {
+		// Invalid existing config is preserved via backup before writing a valid one.
+	}
+	return { mcpServers: {} };
+}
+
+function detectCommand(
+	command: string,
+	args: string[],
+	runner: (command: string, args: string[]) => string | undefined,
+): ToolStatus {
+	try {
+		const version = runner(command, args)?.trim().split(/\r?\n/u)[0];
+		return version ? { found: true, version } : { found: false };
+	} catch {
+		return { found: false };
+	}
+}
+
+function defaultRunner(command: string, args: string[]): string | undefined {
+	try {
+		return execFileSync(command, args, {
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "ignore"],
+		}).trim();
+	} catch {
+		return undefined;
+	}
+}
+
+function status(
+	path: string,
+	exists: (path: string) => boolean,
+): AgentConfigStatus {
+	return { present: exists(path), path };
+}
+
+function timestamp(date: Date): string {
+	const pad = (value: number) => String(value).padStart(2, "0");
+	return [
+		date.getFullYear(),
+		pad(date.getMonth() + 1),
+		pad(date.getDate()),
+		"-",
+		pad(date.getHours()),
+		pad(date.getMinutes()),
+		pad(date.getSeconds()),
+	].join("");
+}
+
+function found(status: ToolStatus): string {
+	return status.found
+		? `found${status.version ? ` (${status.version})` : ""}`
+		: "missing";
+}
+
+function samePath(left: string, right: string): boolean {
+	const normalize = (path: string) =>
+		process.platform === "win32" ? path.toLowerCase() : path;
+	return normalize(left) === normalize(right);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}

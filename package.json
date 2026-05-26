@@ -11,6 +11,7 @@
   "scripts": {
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true}); require('fs').rmSync('.pi-lens',{recursive:true,force:true})\"",
     "setup": "node scripts/setup-env.mjs",
+    "setup:idu": "tsc -p tsconfig.json && node dist/src/cli.js setup",
     "serve": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-bridge.ps1",
     "dev": "tsc -p tsconfig.json && node dist/src/index.js",
     "cli": "tsc -p tsconfig.json && node dist/src/cli.js",

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { randomUUID } from "node:crypto";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
 	canonicalDirectory,
 	isAllowedCwd,
@@ -8,6 +8,10 @@ import {
 	type BridgeConfig,
 } from "./config.js";
 import { AgentRouter } from "./agent-router.js";
+import {
+	formatProjectStatePaths,
+	resolveProjectStatePaths,
+} from "./project-state.js";
 import { formatCommandCatalog } from "./command-catalog.js";
 import { initProjectConfig, inspectProjectMap } from "./config-wizard.js";
 import {
@@ -73,6 +77,20 @@ import {
 	type ProjectEntry,
 	type ProjectRegistry,
 } from "./projects.js";
+import {
+	detectAgentConfigs,
+	detectSystem,
+	detectTools,
+	formatIduSetupStatus,
+	formatInstallIduMcpConfigResult,
+	formatProjectEnrollResult,
+	formatProjectInstallStatus,
+	installIduMcpConfig,
+	printIduMcpConfig,
+	projectEnroll,
+	projectInstallStatus,
+	resolvePiAgentDir,
+} from "./idu-installer.js";
 import {
 	buildSemanticAuditStatus,
 	formatSemanticAuditRunResult,
@@ -208,7 +226,7 @@ import {
 	type TaskTemplateKind,
 } from "./task-templates.js";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 export type CliResult = {
 	exitCode: number;
@@ -220,6 +238,7 @@ export type CliRuntime = {
 	projectId: string;
 	projectPath: string;
 	workspaceRoot: string;
+	sessionStatePath?: string;
 	inspectConnection: () => ProjectConnectionReport;
 	formatConnection: (report: ProjectConnectionReport) => string;
 	formatDashboard: (report: ProjectConnectionReport) => string;
@@ -397,6 +416,9 @@ type RuntimeContext = {
 	registry: ProjectRegistry;
 	activeProject: ProjectEntry;
 	structuredTaskQueue: StructuredTaskQueue;
+	runtimeWorkspaceRoot: string;
+	reportsPath: string;
+	labDbPath: string;
 };
 
 function resolveRuntimeProject(
@@ -432,7 +454,6 @@ export function createCliRuntime(
 		requireTelegram: options.requireTelegramConfig ?? true,
 	});
 	process.env.AGENT_WORKSPACE_ROOT ??= config.agentWorkspaceRoot;
-	configureIduSessionStore({ workspaceRoot: config.agentWorkspaceRoot });
 	const registry = loadRegistry(config.defaultCwd, config.allowedRoots);
 	const activeProject = resolveRuntimeProject(
 		registry,
@@ -444,39 +465,71 @@ export function createCliRuntime(
 			"No hay proyecto activo. Usá /addproject <id> <ruta> en Telegram o configurá DEFAULT_CWD.",
 		);
 	}
-	const structuredTaskQueue = new StructuredTaskQueue({
-		workspaceRoot: config.agentWorkspaceRoot,
-	});
-	const labDbRepository = new LabDbRepository(
-		join(config.agentWorkspaceRoot, "reports", "lab.db"),
-		{
-			enableSemanticAuditTrigger: true,
-			onSemanticAuditTrigger: (semanticTrigger) => {
-				maybeRunSupervisorAfterSemanticTrigger({
-					projectId: activeProject.id,
-					projectPath: activeProject.path,
-					workspaceRoot: config.agentWorkspaceRoot,
-					repository: labDbRepository,
-					queue: structuredTaskQueue,
-					semanticTrigger,
-				});
-			},
-		},
+	const projectStatePaths = activeProject.stateRoot
+		? resolveProjectStatePaths({
+				workspaceRoot: config.agentWorkspaceRoot,
+				projectId: activeProject.id,
+				projectPath: activeProject.path,
+			})
+		: undefined;
+	const runtimeWorkspaceRoot =
+		projectStatePaths?.stateRoot ?? config.agentWorkspaceRoot;
+	const reportsPath =
+		projectStatePaths?.reportsDir ?? join(config.agentWorkspaceRoot, "reports");
+	const labDbPath =
+		projectStatePaths?.labDbPath ??
+		join(config.agentWorkspaceRoot, "reports", "lab.db");
+	configureIduSessionStore(
+		projectStatePaths
+			? {
+					workspaceRoot: runtimeWorkspaceRoot,
+					filePath: projectStatePaths.sessionStatePath,
+				}
+			: { workspaceRoot: runtimeWorkspaceRoot },
 	);
+	const structuredTaskQueue = new StructuredTaskQueue(
+		projectStatePaths
+			? { filePath: projectStatePaths.taskQueuePath }
+			: { workspaceRoot: runtimeWorkspaceRoot },
+	);
+	const labDbRepository = new LabDbRepository(labDbPath, {
+		enableSemanticAuditTrigger: true,
+		onSemanticAuditTrigger: (semanticTrigger) => {
+			maybeRunSupervisorAfterSemanticTrigger({
+				projectId: activeProject.id,
+				projectPath: activeProject.path,
+				workspaceRoot: runtimeWorkspaceRoot,
+				repository: labDbRepository,
+				queue: structuredTaskQueue,
+				semanticTrigger,
+			});
+		},
+	});
 	const agentRouter = new AgentRouter({
 		piBin: config.piBin,
 		basePiArgs: config.piArgs,
 		profiles: config.agentProfiles,
 		defaultProjectId: activeProject.id,
 		defaultCwd: activeProject.path,
-		workspaceRoot: config.agentWorkspaceRoot,
+		workspaceRoot: runtimeWorkspaceRoot,
 		workspaceMode: config.agentWorkspaceMode,
 	});
-	const context = { config, registry, activeProject, structuredTaskQueue };
+	const context = {
+		config,
+		registry,
+		activeProject,
+		structuredTaskQueue,
+		runtimeWorkspaceRoot,
+		reportsPath,
+		labDbPath,
+	};
 	return {
 		projectId: activeProject.id,
 		projectPath: activeProject.path,
-		workspaceRoot: config.agentWorkspaceRoot,
+		workspaceRoot: runtimeWorkspaceRoot,
+		...(projectStatePaths?.sessionStatePath
+			? { sessionStatePath: projectStatePaths.sessionStatePath }
+			: {}),
 		inspectConnection: () => inspectConnection(context),
 		formatConnection: formatProjectConnectionReport,
 		formatDashboard: (report) => formatDashboard(report),
@@ -490,7 +543,7 @@ export function createCliRuntime(
 			maybeRunSupervisorAfterPostflight({
 				projectId: activeProject.id,
 				projectPath: activeProject.path,
-				workspaceRoot: config.agentWorkspaceRoot,
+				workspaceRoot: runtimeWorkspaceRoot,
 				repository: labDbRepository,
 				queue: structuredTaskQueue,
 				risk: report.risk,
@@ -521,28 +574,22 @@ export function createCliRuntime(
 		semanticCompactionDraft: () =>
 			saveSemanticCompactionDraft({
 				projectId: activeProject.id,
-				dbPath: join(config.agentWorkspaceRoot, "reports", "lab.db"),
-				reportsPath: join(config.agentWorkspaceRoot, "reports"),
-				workspaceRoot: config.agentWorkspaceRoot,
+				dbPath: labDbPath,
+				reportsPath: reportsPath,
+				workspaceRoot: runtimeWorkspaceRoot,
 				...semanticCompactionProjectContext(activeProject.path),
 			}),
 		formatSemanticCompactionDraft,
 		semanticCompactionReview: (pathOrLatest) =>
-			reviewSemanticCompactionDraft(
-				pathOrLatest,
-				join(config.agentWorkspaceRoot, "reports"),
-			),
+			reviewSemanticCompactionDraft(pathOrLatest, reportsPath),
 		formatSemanticCompactionReview,
 		semanticAgentTaskPlan: (pathOrLatest) =>
-			buildSemanticAgentTaskPlan(
-				pathOrLatest,
-				join(config.agentWorkspaceRoot, "reports"),
-			),
+			buildSemanticAgentTaskPlan(pathOrLatest, reportsPath),
 		formatSemanticAgentTaskPlan,
 		semanticAgentTasksCreate: (pathOrLatest) =>
 			createSemanticAgentTasks({
 				pathOrLatest,
-				reportsPath: join(config.agentWorkspaceRoot, "reports"),
+				reportsPath: reportsPath,
 				queue: structuredTaskQueue,
 				projectId: activeProject.id,
 			}),
@@ -551,7 +598,7 @@ export function createCliRuntime(
 			runIduSupervisorLoop({
 				projectId: activeProject.id,
 				projectPath: activeProject.path,
-				workspaceRoot: config.agentWorkspaceRoot,
+				workspaceRoot: runtimeWorkspaceRoot,
 				trigger: "manual",
 				options: {
 					allowSemanticDraft: options.allowSemanticDraft ?? true,
@@ -566,149 +613,106 @@ export function createCliRuntime(
 			maybeRunSupervisorOnIduActivation({
 				projectId: activeProject.id,
 				projectPath: activeProject.path,
-				workspaceRoot: config.agentWorkspaceRoot,
+				workspaceRoot: runtimeWorkspaceRoot,
 				repository: labDbRepository,
 				queue: structuredTaskQueue,
 			});
 		},
 		supervisorImprovementPlan: (pathOrLatest) =>
-			buildSupervisorImprovementPlan(
-				pathOrLatest,
-				join(config.agentWorkspaceRoot, "reports"),
-			),
+			buildSupervisorImprovementPlan(pathOrLatest, reportsPath),
 		formatSupervisorImprovementPlan,
 		supervisorImprovementCreate: (pathOrLatest) =>
-			createSupervisorImprovementProposals(
-				pathOrLatest,
-				join(config.agentWorkspaceRoot, "reports"),
-			),
+			createSupervisorImprovementProposals(pathOrLatest, reportsPath),
 		formatSupervisorImprovementCreationResult,
 		supervisorImprovementStatus: (pathOrLatest) =>
-			getSupervisorImprovementStatus(
-				pathOrLatest,
-				join(config.agentWorkspaceRoot, "reports"),
-			),
+			getSupervisorImprovementStatus(pathOrLatest, reportsPath),
 		formatSupervisorImprovementStatus,
 		supervisorImprovementApprove: (pathOrLatest, proposalIdOrAll, reason) =>
-			approveSupervisorImprovement(
-				pathOrLatest,
-				proposalIdOrAll,
-				join(config.agentWorkspaceRoot, "reports"),
-				{ source: "cli", reason },
-			),
+			approveSupervisorImprovement(pathOrLatest, proposalIdOrAll, reportsPath, {
+				source: "cli",
+				reason,
+			}),
 		supervisorImprovementReject: (pathOrLatest, proposalIdOrAll, reason) =>
-			rejectSupervisorImprovement(
-				pathOrLatest,
-				proposalIdOrAll,
-				join(config.agentWorkspaceRoot, "reports"),
-				{ source: "cli", reason },
-			),
+			rejectSupervisorImprovement(pathOrLatest, proposalIdOrAll, reportsPath, {
+				source: "cli",
+				reason,
+			}),
 		supervisorImprovementDefer: (pathOrLatest, proposalIdOrAll, reason) =>
-			deferSupervisorImprovement(
-				pathOrLatest,
-				proposalIdOrAll,
-				join(config.agentWorkspaceRoot, "reports"),
-				{ source: "cli", reason },
-			),
+			deferSupervisorImprovement(pathOrLatest, proposalIdOrAll, reportsPath, {
+				source: "cli",
+				reason,
+			}),
 		formatSupervisorImprovementDecisionResult,
 		supervisorImprovementsApply: (pathOrLatest) =>
-			applySupervisorLearningRules(
-				pathOrLatest,
-				join(config.agentWorkspaceRoot, "reports"),
-			),
+			applySupervisorLearningRules(pathOrLatest, reportsPath),
 		formatSupervisorLearningRulesApplyResult,
 		supervisorLearningRulesStatus: () =>
-			getSupervisorLearningRulesStatus(
-				join(config.agentWorkspaceRoot, "reports"),
-			),
+			getSupervisorLearningRulesStatus(reportsPath),
 		formatSupervisorLearningRulesStatus,
-		supervisorLearningRulesTest: () =>
-			testSupervisorLearningRules(join(config.agentWorkspaceRoot, "reports")),
+		supervisorLearningRulesTest: () => testSupervisorLearningRules(reportsPath),
 		formatSupervisorLearningRulesTest,
 		supervisorLearningRulesDisable: (ruleId, reason) =>
-			disableSupervisorLearningRule(
-				ruleId,
-				join(config.agentWorkspaceRoot, "reports"),
-				{ source: "cli", reason },
-			),
+			disableSupervisorLearningRule(ruleId, reportsPath, {
+				source: "cli",
+				reason,
+			}),
 		supervisorLearningRulesEnable: (ruleId, reason) =>
-			enableSupervisorLearningRule(
-				ruleId,
-				join(config.agentWorkspaceRoot, "reports"),
-				{ source: "cli", reason },
-			),
+			enableSupervisorLearningRule(ruleId, reportsPath, {
+				source: "cli",
+				reason,
+			}),
 		formatSupervisorLearningRuleDecision,
 		supervisorLearningRulesRollback: (backupPathOrLatest) =>
-			rollbackSupervisorLearningRules(
-				backupPathOrLatest,
-				join(config.agentWorkspaceRoot, "reports"),
-			),
+			rollbackSupervisorLearningRules(backupPathOrLatest, reportsPath),
 		formatSupervisorLearningRulesRollback,
 		skillImprovementPlan: (pathOrLatest) =>
-			buildSkillImprovementPlan(
-				pathOrLatest,
-				join(config.agentWorkspaceRoot, "reports"),
-				{
-					workspaceRoot: activeProject.path,
-					dbPath: join(config.agentWorkspaceRoot, "reports", "lab.db"),
-				},
-			),
+			buildSkillImprovementPlan(pathOrLatest, reportsPath, {
+				workspaceRoot: activeProject.path,
+				dbPath: labDbPath,
+			}),
 		formatSkillImprovementPlan,
 		skillImprovementCreate: (pathOrLatest) =>
-			createSkillImprovementProposals(
-				pathOrLatest,
-				join(config.agentWorkspaceRoot, "reports"),
-				{
-					workspaceRoot: activeProject.path,
-					dbPath: join(config.agentWorkspaceRoot, "reports", "lab.db"),
-				},
-			),
+			createSkillImprovementProposals(pathOrLatest, reportsPath, {
+				workspaceRoot: activeProject.path,
+				dbPath: labDbPath,
+			}),
 		formatSkillImprovementCreationResult,
 		skillImprovementStatus: (pathOrLatest) =>
-			getSkillImprovementStatus(
-				pathOrLatest,
-				join(config.agentWorkspaceRoot, "reports"),
-			),
+			getSkillImprovementStatus(pathOrLatest, reportsPath),
 		formatSkillImprovementStatus,
 		skillImprovementApprove: (pathOrLatest, proposalIdOrAll, reason) =>
 			approveSkillImprovementProposal(
 				pathOrLatest,
 				proposalIdOrAll,
-				join(config.agentWorkspaceRoot, "reports"),
+				reportsPath,
 				{ source: "cli", reason },
 			),
 		skillImprovementReject: (pathOrLatest, proposalIdOrAll, reason) =>
 			rejectSkillImprovementProposal(
 				pathOrLatest,
 				proposalIdOrAll,
-				join(config.agentWorkspaceRoot, "reports"),
+				reportsPath,
 				{ source: "cli", reason },
 			),
 		skillImprovementDefer: (pathOrLatest, proposalIdOrAll, reason) =>
 			deferSkillImprovementProposal(
 				pathOrLatest,
 				proposalIdOrAll,
-				join(config.agentWorkspaceRoot, "reports"),
+				reportsPath,
 				{ source: "cli", reason },
 			),
 		formatSkillImprovementDecisionResult,
 		skillDraftsCreate: (pathOrLatest) =>
-			createSkillDraftsFromApprovedProposals(
-				pathOrLatest,
-				join(config.agentWorkspaceRoot, "reports"),
-			),
+			createSkillDraftsFromApprovedProposals(pathOrLatest, reportsPath),
 		formatSkillDraftCreationResult,
 		skillDraftReview: (pathOrLatest) =>
-			reviewSkillDraft(
-				pathOrLatest,
-				join(config.agentWorkspaceRoot, "reports"),
-			),
+			reviewSkillDraft(pathOrLatest, reportsPath),
 		formatSkillDraftReview,
 		agentLabRequestCreate: (source, pathOrLatest) => {
 			if (source === "postflight") {
 				return createAgentLabReviewRequests({
 					source: "postflight",
-					reportsPath: join(config.agentWorkspaceRoot, "reports"),
+					reportsPath: reportsPath,
 					projectId: activeProject.id,
 					projectPath: activeProject.path,
 					postflightReport: buildPostflightReport(context),
@@ -717,7 +721,7 @@ export function createCliRuntime(
 			if (source === "skill-draft") {
 				return createAgentLabReviewRequests({
 					source: "skill_draft",
-					reportsPath: join(config.agentWorkspaceRoot, "reports"),
+					reportsPath: reportsPath,
 					projectId: activeProject.id,
 					projectPath: activeProject.path,
 					skillDraftPathOrLatest: pathOrLatest ?? "latest",
@@ -729,43 +733,31 @@ export function createCliRuntime(
 		},
 		formatAgentLabReviewRequestPlan,
 		agentLabRequestReview: (pathOrLatest) =>
-			reviewAgentLabReviewRequest(
-				pathOrLatest,
-				join(config.agentWorkspaceRoot, "reports"),
-			),
+			reviewAgentLabReviewRequest(pathOrLatest, reportsPath),
 		formatAgentLabReviewRequestReview,
 		agentLabReviewRun: (pathOrLatest) =>
 			runAgentLabReviewRequestFile({
 				pathOrLatest,
-				reportsPath: join(config.agentWorkspaceRoot, "reports"),
+				reportsPath: reportsPath,
 				projectId: activeProject.id,
 				projectPath: activeProject.path,
 				router: agentRouter,
 			}),
 		formatAgentLabReviewRunResult,
 		agentLabReviewStatus: (pathOrLatest) =>
-			getAgentLabReviewStatus(
-				pathOrLatest,
-				join(config.agentWorkspaceRoot, "reports"),
-			),
+			getAgentLabReviewStatus(pathOrLatest, reportsPath),
 		formatAgentLabReviewStatus,
 		agentLabReportConsolidate: (pathOrLatest) =>
-			consolidateAgentLabReviewRun(
-				pathOrLatest,
-				join(config.agentWorkspaceRoot, "reports"),
-			),
+			consolidateAgentLabReviewRun(pathOrLatest, reportsPath),
 		formatAgentLabConsolidationResult,
 		agentLabReportConsolidationStatus: (pathOrLatest) =>
-			getAgentLabConsolidationStatus(
-				pathOrLatest,
-				join(config.agentWorkspaceRoot, "reports"),
-			),
+			getAgentLabConsolidationStatus(pathOrLatest, reportsPath),
 		formatAgentLabConsolidationStatus,
 		createTask: (kind, details) =>
 			createCliTask(kind, details, {
 				projectId: activeProject.id,
 				projectPath: activeProject.path,
-				workspaceRoot: config.agentWorkspaceRoot,
+				workspaceRoot: runtimeWorkspaceRoot,
 				structuredTaskQueue,
 				labDbRepository,
 				preflight: (request) => buildPreflightReport(request, context),
@@ -799,8 +791,19 @@ export async function runCliCommand(
 			return ok(helpText());
 		}
 		if (command === "comandos") return ok(formatCommandCatalog());
+		if (command === "setup" || command === "install" || command === "init") {
+			return ok(handleSetupCommand(rest));
+		}
+		if (command === "project") return ok(handleProjectCommand(rest));
 		const activeRuntime = runtime ?? createCliRuntime();
-		configureIduSessionStore({ workspaceRoot: activeRuntime.workspaceRoot });
+		configureIduSessionStore(
+			activeRuntime.sessionStatePath
+				? {
+						workspaceRoot: activeRuntime.workspaceRoot,
+						filePath: activeRuntime.sessionStatePath,
+					}
+				: { workspaceRoot: activeRuntime.workspaceRoot },
+		);
 		switch (command) {
 			case "status":
 				return ok(
@@ -1212,12 +1215,98 @@ export async function runCliCommand(
 	}
 }
 
+function handleSetupCommand(rest: string[]): string {
+	const subcommand = rest[0] ?? "status";
+	const agentDir = resolvePiAgentDir();
+	const mcpServerPath = join(
+		dirname(fileURLToPath(import.meta.url)),
+		"mcp-server.js",
+	);
+	if (subcommand === "status") {
+		const mcpInstalled = existsSync(join(agentDir, "mcp.json"));
+		return formatIduSetupStatus({
+			system: detectSystem(),
+			tools: detectTools(),
+			agentConfigs: detectAgentConfigs(),
+			mcpInstalled,
+		});
+	}
+	if (subcommand === "mcp-print") {
+		return printIduMcpConfig({ mcpServerPath });
+	}
+	if (subcommand === "mcp-init") {
+		const force = rest.includes("--force");
+		const dryRun = rest.includes("--dry-run");
+		const result = installIduMcpConfig({
+			agentDir,
+			mcpServerPath,
+			force,
+			dryRun,
+		});
+		return formatInstallIduMcpConfigResult(result);
+	}
+	throw new Error(
+		"Uso: idu-pi setup [status|mcp-init|mcp-print] [--force] [--dry-run]",
+	);
+}
+
+function handleProjectCommand(rest: string[]): string {
+	const subcommand = rest[0];
+	const config = loadConfig({ requireTelegram: false });
+	if (subcommand === "enroll") {
+		const projectPath = rest[1];
+		if (!projectPath)
+			throw new Error("Uso: idu-pi project enroll <projectPath> [projectId]");
+		return formatProjectEnrollResult(
+			projectEnroll({
+				projectPath,
+				projectId: rest[2],
+				workspaceRoot: config.agentWorkspaceRoot,
+				allowedRoots: config.allowedRoots,
+			}),
+		);
+	}
+	if (subcommand === "status") {
+		const projectPath = rest[1];
+		if (!projectPath)
+			throw new Error("Uso: idu-pi project status <projectPath>");
+		return formatProjectInstallStatus(
+			projectInstallStatus({
+				projectPath,
+				workspaceRoot: config.agentWorkspaceRoot,
+				allowedRoots: config.allowedRoots,
+				mcpAvailable: existsSync(join(resolvePiAgentDir(), "mcp.json")),
+			}),
+		);
+	}
+	if (subcommand === "state-path") {
+		const projectPath = rest[1];
+		if (!projectPath)
+			throw new Error("Uso: idu-pi project state-path <projectPath>");
+		const status = projectInstallStatus({
+			projectPath,
+			workspaceRoot: config.agentWorkspaceRoot,
+			allowedRoots: config.allowedRoots,
+		});
+		return formatProjectStatePaths(
+			resolveProjectStatePaths({
+				workspaceRoot: config.agentWorkspaceRoot,
+				projectId: status.projectId,
+				projectPath: status.projectPath,
+			}),
+		);
+	}
+	throw new Error(
+		"Uso: idu-pi project [enroll|status|state-path] <projectPath> [projectId]",
+	);
+}
+
 function inspectConnection(context: RuntimeContext): ProjectConnectionReport {
 	return inspectProjectConnection({
 		registry: context.registry,
 		defaultCwd: context.config.defaultCwd,
 		allowedRoots: context.config.allowedRoots,
-		workspaceRoot: context.config.agentWorkspaceRoot,
+		workspaceRoot: context.runtimeWorkspaceRoot,
 	});
 }
 
@@ -1288,7 +1377,7 @@ function buildPostflightReport(
 }
 
 function runPrepare(context: RuntimeContext): IduPrepareResult {
-	const reportsPath = join(context.config.agentWorkspaceRoot, "reports");
+	const reportsPath = context.reportsPath;
 	const projectId = context.activeProject.id;
 	const projectPath = context.activeProject.path;
 	return runIduPrepare({

@@ -6,6 +6,7 @@ export type ProjectEntry = {
 	id: string;
 	name: string;
 	path: string;
+	stateRoot?: string | null;
 	lastSessionFile?: string | null;
 };
 
@@ -18,6 +19,8 @@ const REGISTRY_PATH = join(process.cwd(), "data", "projects.json");
 
 export function slugifyProjectId(input: string): string {
 	return input
+		.normalize("NFD")
+		.replace(/[\u0300-\u036f]/gu, "")
 		.trim()
 		.toLowerCase()
 		.replace(/[^a-z0-9._-]+/gu, "-")
@@ -26,6 +29,7 @@ export function slugifyProjectId(input: string): string {
 
 export type LoadRegistryOptions = {
 	createIfMissing?: boolean;
+	registryPath?: string;
 };
 
 export function loadRegistry(
@@ -34,7 +38,8 @@ export function loadRegistry(
 	options: LoadRegistryOptions = {},
 ): ProjectRegistry {
 	const createIfMissing = options.createIfMissing ?? true;
-	if (!existsSync(REGISTRY_PATH)) {
+	const registryPath = options.registryPath ?? REGISTRY_PATH;
+	if (!existsSync(registryPath)) {
 		const initial: ProjectRegistry = {
 			activeProjectId: "default",
 			projects: [
@@ -46,12 +51,12 @@ export function loadRegistry(
 				},
 			],
 		};
-		if (createIfMissing) saveRegistry(initial);
+		if (createIfMissing) saveRegistry(initial, registryPath);
 		return createIfMissing ? initial : { activeProjectId: null, projects: [] };
 	}
 
 	const parsed = JSON.parse(
-		readFileSync(REGISTRY_PATH, "utf8"),
+		readFileSync(registryPath, "utf8"),
 	) as ProjectRegistry;
 	const projects = (Array.isArray(parsed.projects) ? parsed.projects : [])
 		.map((project) => {
@@ -74,13 +79,12 @@ export function loadRegistry(
 	return { activeProjectId, projects };
 }
 
-export function saveRegistry(registry: ProjectRegistry): void {
-	mkdirSync(dirname(REGISTRY_PATH), { recursive: true });
-	writeFileSync(
-		REGISTRY_PATH,
-		`${JSON.stringify(registry, null, 2)}\n`,
-		"utf8",
-	);
+export function saveRegistry(
+	registry: ProjectRegistry,
+	registryPath = REGISTRY_PATH,
+): void {
+	mkdirSync(dirname(registryPath), { recursive: true });
+	writeFileSync(registryPath, `${JSON.stringify(registry, null, 2)}\n`, "utf8");
 }
 
 export function getActiveProject(
@@ -112,6 +116,7 @@ export function addProject(
 		id,
 		name: idInput.trim(),
 		path,
+		stateRoot: existing?.stateRoot ?? null,
 		lastSessionFile: existing?.lastSessionFile ?? null,
 	};
 

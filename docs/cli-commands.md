@@ -8,7 +8,7 @@ Usá `idu-pi <comando>` si instalaste el binario. Desde el repo, el equivalente 
 corepack pnpm cli -- <comando>
 ```
 
-El CLI usa el mismo `AGENT_WORKSPACE_ROOT`, registro de proyectos y `reports/idu-session-state.json` que Telegram. No es un sistema separado.
+El CLI usa `AGENT_WORKSPACE_ROOT` y el registro de proyectos. Los proyectos enrolados guardan estado aislado en `AGENT_WORKSPACE_ROOT/projects/<projectId>/`; proyectos antiguos sin `stateRoot` conservan el fallback `AGENT_WORKSPACE_ROOT/reports/`.
 
 Para uso universal desde orquestadores, el binario MCP es `idu-pi-mcp` o, desde el repo:
 
@@ -17,6 +17,21 @@ corepack pnpm mcp
 ```
 
 Ver [MCP Server](mcp-server.md).
+
+## Setup e instalación
+
+| Comando | Uso |
+| --- | --- |
+| `idu-pi setup` | Muestra estado de sistema/config y acciones recomendadas. |
+| `idu-pi setup status` | Igual que `setup`. |
+| `idu-pi setup mcp-print` | Imprime config MCP sin escribir. |
+| `idu-pi setup mcp-init` | Instala `idu-pi` en el `mcp.json` del agente Pi. |
+| `idu-pi setup mcp-init --force` | Reemplaza entrada `idu-pi` existente con backup. |
+| `idu-pi project enroll <projectPath> [projectId]` | Registra proyecto y crea estado aislado. |
+| `idu-pi project status <projectPath>` | Muestra estado/rutas del proyecto. |
+| `idu-pi project state-path <projectPath>` | Imprime rutas aisladas esperadas. |
+
+Guía: [Instalador y estado por proyecto](installer.md).
 
 ## Estado y activación
 

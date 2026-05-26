@@ -70,6 +70,18 @@ Más detalle: [MCP Server](docs/mcp-server.md).
 
 Las interfaces llaman al core. El core no depende de Telegram.
 
+## Instalación / configuración
+
+Para configurar MCP y enrolar proyectos externos:
+
+```text
+idu-pi setup status
+idu-pi setup mcp-init
+idu-pi project enroll <projectPath> [projectId]
+```
+
+Guía: [Instalador y estado por proyecto](docs/installer.md).
+
 ## Cómo se activa
 
 Desde Telegram:
