@@ -1,6 +1,6 @@
-# Instalador y estado por proyecto
+# Instalador, home CLI y estado por proyecto
 
-`idu-pi setup` configura adapters globales y prepara estado aislado por proyecto. No es el núcleo: Idu-pi Core sigue siendo el supervisor; CLI, Telegram y MCP son adapters.
+`idu-pi` abre una entrada terminal simple para ver estado y elegir acciones sin memorizar comandos. `idu-pi setup` configura adapters globales y prepara estado aislado por proyecto. No es el núcleo: Idu-pi Core sigue siendo el supervisor; CLI, Telegram y MCP son adapters.
 
 ## Global config vs Project state
 
@@ -49,12 +49,49 @@ AGENT_WORKSPACE_ROOT/
 
 Esto evita mezclar DB, reports, cola, sesión o memoria semántica entre proyectos.
 
-## Setup status
+## Home CLI
+
+```bash
+idu-pi
+# o desde el repo
+corepack pnpm cli
+```
+
+Muestra:
+
+- versión de Idu-pi;
+- `cwd`/proyecto candidato;
+- estado de `node`, `git` y MCP `idu-pi`;
+- si el proyecto actual está enrolado;
+- `stateRoot` cuando existe;
+- supervisor `active/inactive` cuando hay estado local;
+- estado básico de Project Core;
+- comandos recomendados;
+- ayuda si el bin global de pnpm no está en `PATH`.
+
+Si stdin/stdout son interactivos, muestra menú numerado:
+
+1. Setup status
+2. Instalar/actualizar MCP
+3. Enrolar proyecto actual
+4. Ver estado del proyecto actual
+5. Activar Idu-pi
+6. Preparar proyecto
+7. Ver comandos útiles
+8. Salir
+
+Si stdin no es interactivo, imprime resumen y termina sin esperar input.
+
+## Setup status y wizard
 
 ```bash
 corepack pnpm cli -- setup status
+corepack pnpm cli -- setup wizard
+corepack pnpm cli -- setup path-help
 # o
 idu-pi setup status
+idu-pi setup wizard
+idu-pi setup path-help
 ```
 
 Muestra:
@@ -65,7 +102,7 @@ Muestra:
 - si MCP `idu-pi` parece configurado;
 - acciones recomendadas.
 
-`idu-pi setup` sin subcomando equivale a `setup status`.
+`idu-pi setup` sin subcomando equivale a `setup status`. `idu-pi setup wizard` en modo no interactivo no espera input ni escribe archivos.
 
 ## Montar MCP
 
@@ -154,7 +191,31 @@ idu-pi project state-path "C:\\...\\Sistema_de_mantencion"
 - disponibilidad MCP;
 - siguiente paso recomendado.
 
+## PATH / instalación global
+
+Si `corepack pnpm link --global` falla con:
+
+```text
+The configured global bin directory ... is not in PATH
+```
+
+usá:
+
+```bash
+idu-pi setup path-help
+```
+
+La ayuda explica:
+
+1. `corepack pnpm setup`
+2. cerrar y abrir una terminal nueva
+3. `corepack pnpm link --global`
+
+Idu-pi no modifica `PATH` automáticamente.
+
 ## Seguridad
+
+El home y el wizard no ejecutan acciones destructivas por mostrarse. Sólo escriben si elegís explícitamente una acción como instalar MCP o enrolar proyecto, y el menú interactivo pide confirmación antes de esas escrituras.
 
 El instalador no ejecuta Telegram, AgentLabs, IA externa, scans pesados, commits ni pushes. Sólo configura adapters globales y prepara estado de proyecto.
 

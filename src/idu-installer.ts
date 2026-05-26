@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { delimiter, dirname, join, resolve } from "node:path";
 import { canonicalDirectory, isAllowedCwd } from "./config.js";
 import {
 	addProject,
@@ -118,6 +118,16 @@ export type IduSetupStatusInput = {
 	tools: SystemDetection;
 	agentConfigs: AgentConfigDetection;
 	mcpInstalled: boolean;
+};
+
+export type GlobalIduInstallStatus = {
+	argvPath: string;
+	executionMode: "global-bin" | "repo-dist" | "unknown";
+	pnpmHome?: string;
+	pnpmGlobalBin?: string;
+	pnpmGlobalBinInPath: boolean;
+	iduPiLikelyGlobal: boolean;
+	recommendedAction?: string;
 };
 
 export function detectSystem(options: DetectOptions = {}): SystemDetection {
@@ -238,6 +248,69 @@ export function printIduMcpConfig(input: { mcpServerPath: string }): string {
 		null,
 		2,
 	)}\n`;
+}
+
+export function detectGlobalIduInstall(
+	options: DetectOptions & { argvPath?: string } = {},
+): GlobalIduInstallStatus {
+	const env = options.env ?? process.env;
+	const platform = options.platform ?? process.platform;
+	const argvPath = options.argvPath ?? process.argv[1] ?? "";
+	const normalizedArgv = argvPath.replace(/\\/gu, "/");
+	const executionMode = /\/dist\/src\/cli\.js$/u.test(normalizedArgv)
+		? "repo-dist"
+		: /idu-pi(?:\.cmd|\.ps1)?$/iu.test(normalizedArgv)
+			? "global-bin"
+			: "unknown";
+	const pnpmHome = env.PNPM_HOME?.trim() || undefined;
+	const pnpmGlobalBin =
+		pnpmHome ?? defaultPnpmGlobalBin(options.homeDir ?? homedir(), platform);
+	const pathEntries = (env.PATH ?? env.Path ?? "")
+		.split(delimiter)
+		.map((entry) => normalizePath(entry))
+		.filter(Boolean);
+	const pnpmGlobalBinInPath = pathEntries.includes(
+		normalizePath(pnpmGlobalBin),
+	);
+	const iduPiLikelyGlobal =
+		executionMode === "global-bin" && pnpmGlobalBinInPath;
+	return {
+		argvPath,
+		executionMode,
+		...(pnpmHome ? { pnpmHome } : {}),
+		pnpmGlobalBin,
+		pnpmGlobalBinInPath,
+		iduPiLikelyGlobal,
+		...(pnpmGlobalBinInPath
+			? {}
+			: {
+					recommendedAction:
+						"corepack pnpm setup; cerrar y abrir terminal; corepack pnpm link --global",
+				}),
+	};
+}
+
+export function formatPnpmPathHelp(
+	status: GlobalIduInstallStatus = detectGlobalIduInstall(),
+): string {
+	return [
+		"Idu-pi global PATH help",
+		"",
+		"Estado:",
+		`- modo ejecución: ${status.executionMode}`,
+		`- argv: ${status.argvPath || "—"}`,
+		`- PNPM_HOME: ${status.pnpmHome ?? "no configurado"}`,
+		`- pnpm global bin: ${status.pnpmGlobalBin ?? "no detectado"}`,
+		`- pnpm global bin en PATH: ${status.pnpmGlobalBinInPath ? "sí" : "no"}`,
+		`- idu-pi global: ${status.iduPiLikelyGlobal ? "disponible" : "no disponible"}`,
+		"",
+		"Si el bin global de pnpm no está en PATH:",
+		"1. corepack pnpm setup",
+		"2. Cerrá y abrí una terminal nueva",
+		"3. corepack pnpm link --global",
+		"",
+		"No modifico PATH automáticamente.",
+	].join("\n");
 }
 
 export function backupAgentConfigFile(
@@ -492,6 +565,20 @@ function samePath(left: string, right: string): boolean {
 	const normalize = (path: string) =>
 		process.platform === "win32" ? path.toLowerCase() : path;
 	return normalize(left) === normalize(right);
+}
+
+function defaultPnpmGlobalBin(
+	home: string,
+	platform: NodeJS.Platform | string,
+): string {
+	return platform === "win32"
+		? join(home, "AppData", "Local", "pnpm", "bin")
+		: join(home, ".local", "share", "pnpm");
+}
+
+function normalizePath(path: string): string {
+	const resolved = resolve(path.trim());
+	return process.platform === "win32" ? resolved.toLowerCase() : resolved;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

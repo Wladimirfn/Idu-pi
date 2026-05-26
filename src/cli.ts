@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { randomUUID } from "node:crypto";
+import { createInterface } from "node:readline/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
 	canonicalDirectory,
@@ -8,6 +9,14 @@ import {
 	type BridgeConfig,
 } from "./config.js";
 import { AgentRouter } from "./agent-router.js";
+import {
+	applyPackageEnvDefaults,
+	buildCliHomeStatus,
+	formatCliHome,
+	formatSetupPathHelp,
+	formatSetupWizardNonInteractive,
+	resolveCliPackageRoot,
+} from "./cli-home.js";
 import {
 	formatProjectStatePaths,
 	resolveProjectStatePaths,
@@ -779,19 +788,30 @@ export async function runCliCommand(
 	args: string[],
 	runtime?: CliRuntime,
 ): Promise<CliResult> {
+	applyPackageEnvDefaults();
 	const normalizedArgs = args[0] === "--" ? args.slice(1) : args;
 	const [command, ...rest] = normalizedArgs;
 	try {
-		if (
-			command === "help" ||
-			command === "--help" ||
-			command === "-h" ||
-			command === undefined
-		) {
+		if (command === "help" || command === "--help" || command === "-h") {
 			return ok(helpText());
 		}
+		if (command === undefined || command === "home") {
+			return ok(
+				formatCliHome(
+					buildCliHomeStatus({
+						argvPath: process.argv[1],
+						stdinInteractive: Boolean(process.stdin.isTTY),
+					}),
+				),
+			);
+		}
 		if (command === "comandos") return ok(formatCommandCatalog());
-		if (command === "setup" || command === "install" || command === "init") {
+		if (command === "install" || command === "init") {
+			return ok(
+				rest.length ? handleSetupCommand(rest) : handleSetupCommand(["wizard"]),
+			);
+		}
+		if (command === "setup") {
 			return ok(handleSetupCommand(rest));
 		}
 		if (command === "project") return ok(handleProjectCommand(rest));
@@ -1231,6 +1251,17 @@ function handleSetupCommand(rest: string[]): string {
 			mcpInstalled,
 		});
 	}
+	if (subcommand === "wizard") {
+		return formatSetupWizardNonInteractive(
+			buildCliHomeStatus({
+				argvPath: process.argv[1],
+				stdinInteractive: false,
+			}),
+		);
+	}
+	if (subcommand === "path-help") {
+		return formatSetupPathHelp();
+	}
 	if (subcommand === "mcp-print") {
 		return printIduMcpConfig({ mcpServerPath });
 	}
@@ -1246,13 +1277,14 @@ function handleSetupCommand(rest: string[]): string {
 		return formatInstallIduMcpConfigResult(result);
 	}
 	throw new Error(
-		"Uso: idu-pi setup [status|mcp-init|mcp-print] [--force] [--dry-run]",
+		"Uso: idu-pi setup [status|wizard|path-help|mcp-init|mcp-print] [--force] [--dry-run]",
 	);
 }
 
 function handleProjectCommand(rest: string[]): string {
 	const subcommand = rest[0];
 	const config = loadConfig({ requireTelegram: false });
+	const registryPath = join(resolveCliPackageRoot(), "data", "projects.json");
 	if (subcommand === "enroll") {
 		const projectPath = rest[1];
 		if (!projectPath)
@@ -1263,6 +1295,7 @@ function handleProjectCommand(rest: string[]): string {
 				projectId: rest[2],
 				workspaceRoot: config.agentWorkspaceRoot,
 				allowedRoots: config.allowedRoots,
+				registryPath,
 			}),
 		);
 	}
@@ -1276,6 +1309,7 @@ function handleProjectCommand(rest: string[]): string {
 				workspaceRoot: config.agentWorkspaceRoot,
 				allowedRoots: config.allowedRoots,
 				mcpAvailable: existsSync(join(resolvePiAgentDir(), "mcp.json")),
+				registryPath,
 			}),
 		);
 	}
@@ -1287,6 +1321,7 @@ function handleProjectCommand(rest: string[]): string {
 			projectPath,
 			workspaceRoot: config.agentWorkspaceRoot,
 			allowedRoots: config.allowedRoots,
+			registryPath,
 		});
 		return formatProjectStatePaths(
 			resolveProjectStatePaths({
@@ -1742,10 +1777,110 @@ export function helpText(): string {
 }
 
 async function main(): Promise<void> {
-	const result = await runCliCommand(process.argv.slice(2));
+	const args = process.argv.slice(2);
+	const normalizedArgs = args[0] === "--" ? args.slice(1) : args;
+	if (shouldRunInteractiveHome(normalizedArgs)) {
+		const output = await runInteractiveHome();
+		if (output) console.log(output);
+		return;
+	}
+	const result = await runCliCommand(args);
 	if (result.stdout) console.log(result.stdout);
 	if (result.stderr) console.error(result.stderr);
 	process.exitCode = result.exitCode;
+}
+
+function shouldRunInteractiveHome(args: string[]): boolean {
+	if (!process.stdin.isTTY || !process.stdout.isTTY) return false;
+	const [command, subcommand] = args;
+	return (
+		command === undefined ||
+		command === "home" ||
+		((command === "setup" || command === "install" || command === "init") &&
+			subcommand === "wizard") ||
+		((command === "install" || command === "init") && subcommand === undefined)
+	);
+}
+
+async function runInteractiveHome(): Promise<string> {
+	const rl = createInterface({ input: process.stdin, output: process.stdout });
+	try {
+		console.log(
+			formatCliHome(
+				buildCliHomeStatus({
+					argvPath: process.argv[1],
+					stdinInteractive: true,
+				}),
+			),
+		);
+		const choice = (await rl.question("\nElegí una opción [1-8]: ")).trim();
+		if (choice === "8" || /^salir$/iu.test(choice))
+			return "Salida sin cambios.";
+		if (choice === "1") return handleSetupCommand(["status"]);
+		if (choice === "2") {
+			if (
+				!(await confirmAction(rl, "Esto puede escribir mcp.json. ¿Continuar?"))
+			) {
+				return "Cancelado sin cambios.";
+			}
+			return handleSetupCommand(["mcp-init"]);
+		}
+		if (choice === "3") {
+			if (
+				!(await confirmAction(
+					rl,
+					"Esto puede crear estado Idu-pi para el cwd. ¿Continuar?",
+				))
+			) {
+				return "Cancelado sin cambios.";
+			}
+			return handleProjectCommand(["enroll", process.cwd()]);
+		}
+		if (choice === "4") return handleProjectCommand(["status", process.cwd()]);
+		if (choice === "5") {
+			if (
+				!(await confirmAction(
+					rl,
+					"Esto activa guardrails locales para el proyecto. ¿Continuar?",
+				))
+			) {
+				return "Cancelado sin cambios.";
+			}
+			return (await runCliCommand(["idu"])).stdout;
+		}
+		if (choice === "6") {
+			if (
+				!(await confirmAction(
+					rl,
+					"Esto puede preparar contexto local del proyecto. ¿Continuar?",
+				))
+			) {
+				return "Cancelado sin cambios.";
+			}
+			return (await runCliCommand(["prepare"])).stdout;
+		}
+		if (choice === "7") return formatCommandCatalog();
+		return [
+			"Opción no reconocida. No ejecuté acciones.",
+			"Usá `idu-pi home` o `idu-pi setup status`.",
+		].join("\n");
+	} finally {
+		rl.close();
+	}
+}
+
+async function confirmAction(
+	rl: ReturnType<typeof createInterface>,
+	message: string,
+): Promise<boolean> {
+	const answer = (await rl.question(`${message} [y/N]: `)).trim().toLowerCase();
+	return (
+		answer === "y" ||
+		answer === "yes" ||
+		answer === "s" ||
+		answer === "si" ||
+		answer === "sí"
+	);
 }
 
 if (

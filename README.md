@@ -72,15 +72,25 @@ Las interfaces llaman al core. El core no depende de Telegram.
 
 ## Instalación / configuración
 
+Para entrar sin memorizar comandos:
+
+```text
+idu-pi
+```
+
+El home muestra estado del sistema, MCP, proyecto actual, supervisor, rutas de estado y acciones recomendadas. Si la terminal es interactiva, muestra un menú; si no, imprime el resumen y sale.
+
 Para configurar MCP y enrolar proyectos externos:
 
 ```text
 idu-pi setup status
+idu-pi setup wizard
+idu-pi setup path-help
 idu-pi setup mcp-init
 idu-pi project enroll <projectPath> [projectId]
 ```
 
-Guía: [Instalador y estado por proyecto](docs/installer.md).
+Guía: [Instalador, home CLI y estado por proyecto](docs/installer.md).
 
 ## Cómo se activa
 

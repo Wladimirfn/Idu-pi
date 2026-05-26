@@ -2,9 +2,10 @@
 
 El CLI es un adaptador local para usar el mismo core de Idu-pi sin Telegram.
 
-Usá `idu-pi <comando>` si instalaste el binario. Desde el repo, el equivalente es:
+Usá `idu-pi` para abrir el home CLI con estado y acciones recomendadas. Usá `idu-pi <comando>` si querés ejecutar un comando directo. Desde el repo, el equivalente es:
 
 ```text
+corepack pnpm cli
 corepack pnpm cli -- <comando>
 ```
 
@@ -22,8 +23,12 @@ Ver [MCP Server](mcp-server.md).
 
 | Comando | Uso |
 | --- | --- |
+| `idu-pi` | Muestra home CLI; en terminal interactiva abre menú seguro. |
+| `idu-pi home` | Muestra el mismo home CLI. |
 | `idu-pi setup` | Muestra estado de sistema/config y acciones recomendadas. |
 | `idu-pi setup status` | Igual que `setup`. |
+| `idu-pi setup wizard` | Abre/describe el asistente; en modo no interactivo no espera input. |
+| `idu-pi setup path-help` | Explica cómo arreglar `PNPM_HOME`/bin global fuera de `PATH`. |
 | `idu-pi setup mcp-print` | Imprime config MCP sin escribir. |
 | `idu-pi setup mcp-init` | Instala `idu-pi` en el `mcp.json` del agente Pi. |
 | `idu-pi setup mcp-init --force` | Reemplaza entrada `idu-pi` existente con backup. |
