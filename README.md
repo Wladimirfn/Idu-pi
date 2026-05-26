@@ -1,91 +1,148 @@
 # Idu-pi
 
-Bridge privado de Telegram para operar Pi localmente: elegís proyecto, agente/modelo, workspaces de laboratorio, reportes y acciones seguras sin salir del chat.
+Idu-pi es un cerebelo supervisor de proyecto: ayuda a definir el plano, vigila la obra y coordina laboratorios de revisión sin reemplazar la decisión humana.
 
-## Camino rápido
+Telegram no es Idu-pi. Telegram es una interfaz. El CLI es otra interfaz. El núcleo real es el supervisor que lee contexto del proyecto, aplica guardrails, registra reportes y prepara decisiones revisables.
 
-### 1. Instalar y arrancar
+## Qué problema resuelve
+
+Idu-pi evita que un proyecto avance sin objetivo claro, sin reglas, sin memoria operativa o con riesgos invisibles de calidad, tiempo, costo/tokens y seguridad.
+
+Sirve para responder preguntas como:
+
+- ¿Este cambio coincide con el objetivo del proyecto?
+- ¿Toca login, datos, seguridad o arquitectura?
+- ¿Necesita confirmación humana antes de seguir?
+- ¿Hay reportes o aprendizajes previos que deberían compactarse?
+- ¿Conviene pedir una revisión AgentLab en sandbox?
+
+## Qué NO es
+
+- No es un bot de Telegram como núcleo del sistema.
+- No es una autonomía que aplica cambios críticos sola.
+- No reemplaza al humano ni al orquestador.
+- No convierte propuestas de IA en verdad automáticamente.
+- No ejecuta AgentLabs ni aplica reglas sólo por existir un reporte.
+
+Nada crítico se aplica sin confirmación humana.
+
+## Cómo funciona en 30 segundos
+
+1. Activás Idu-pi con `/idu` o `idu-pi idu`.
+2. Idu-pi revisa Project Core, Constitution, flows, reportes y memoria disponible.
+3. Interpreta la intención humana con señales deterministas.
+4. Bloquea o pide confirmación cuando detecta riesgo alto.
+5. Audita eventos y compacta conocimiento en drafts revisables.
+6. Propone mejoras, reglas, skills o tareas futuras sin aplicarlas sola.
+7. AgentLabs revisan en sandbox/clone y devuelven evidencia.
+8. El humano/orquestador decide qué aplicar, encolar, ignorar o guardar.
+
+## Arquitectura simple
+
+```text
+Humano ↔ Orquestador ↔ Idu-pi Supervisor ↔ AgentLabs ↔ reports / DB / memoria
+                         ↑
+                  CLI / Telegram / futuras UI
+```
+
+Roles:
+
+| Rol | Responsabilidad |
+| --- | --- |
+| Humano | Define intención, aprueba decisiones críticas, commits, pushes y cambios de verdad. |
+| Orquestador | Ejecuta trabajo, coordina subagentes, aplica decisiones aprobadas. |
+| Idu-pi | Supervisa riesgo, contexto, memoria, reportes, propuestas y gates. |
+| AgentLabs | Inspeccionan en sandbox como especialistas y reportan evidencia. |
+| Subagentes | Ejecutan tareas acotadas bajo coordinación del orquestador. |
+
+## Interfaces
+
+Idu-pi puede usarse por varias superficies:
+
+| Interfaz | Para qué sirve |
+| --- | --- |
+| CLI | Uso local, scripts, validación rápida, integración con Pi. |
+| Telegram | Operación cómoda desde chat, comandos slash, estado y confirmaciones. |
+| Futuras UI/dashboard | Visualizar cola, reportes, propuestas y estado del supervisor. |
+
+Las interfaces llaman al core. El core no depende de Telegram.
+
+## Cómo se activa
+
+Desde Telegram:
+
+```text
+/idu
+/idu_status
+/idu_off
+```
+
+Desde CLI:
+
+```text
+idu-pi idu
+idu-pi idu-status
+idu-pi idu-off
+```
+
+`/idu` activa guardrails automáticos para el proyecto actual. Desde ese momento, Idu-pi puede revisar intención, riesgo, Project Core, Constitution y cola antes de que el orquestador avance.
+
+`/idu_off` apaga esos guardrails automáticos. Los comandos manuales siguen disponibles.
+
+## Conceptos principales
+
+### Project Core
+
+Project Core es el plano maestro: objetivo, alcance, usuarios, stack, sensibilidad de datos, restricciones y criterios de éxito. Puede nacer como draft, pero sólo es fuente de verdad cuando el humano lo confirma.
+
+### Constitution
+
+Constitution son las normas técnicas derivadas del Project Core confirmado. Traducen alcance, stack, seguridad, datos y aprobaciones humanas a reglas operativas.
+
+### Gates
+
+Los gates son validadores deterministas. Revisan intención, archivos cambiados y riesgos. Si aparece riesgo `high` o `blocker`, Idu-pi pide confirmación humana.
+
+### AgentLabs
+
+AgentLabs son especialistas de revisión. Inspeccionan en workspaces aislados, producen reportes con evidencia y no aplican cambios al repo real. Idu-pi consolida esos reportes en hallazgos, recomendaciones y candidates; el humano/orquestador decide.
+
+### Supervisor loop
+
+El supervisor loop observa señales, audita eventos, compacta memoria, propone mejoras y prepara tareas. No reemplaza el criterio humano.
+
+## Qué protege
+
+| Pilar | Cómo ayuda Idu-pi |
+| --- | --- |
+| Calidad | Pide contexto, tests, evidencia y revisión antes de avanzar. |
+| Tiempo | Prioriza señales humanas, evita loops y reduce retrabajo. |
+| Costo/tokens | Compacta contexto y propone mejoras de flujo cuando hay ruido. |
+| Seguridad | Bloquea cambios sensibles y exige aprobación en zonas críticas. |
+| Reportes | Guarda salidas revisables en `reports/` y DB local. |
+| Recursos | Usa labs/sandbox para revisar sin contaminar el repo real. |
+| Aprendizaje | Convierte reportes en propuestas, reglas, skills y memoria candidata. |
+
+Nada crítico se aplica sin confirmación humana.
+
+## Instalación rápida
+
+En Windows:
 
 ```text
 setup-pi-telegram-bridge.bat
 start-pi-telegram-bridge.bat
 ```
 
-### 2. Inicializar desde Telegram
-
-Ejecutá estos comandos en orden:
-
-```text
-/config
-/config init_workspace
-/config init_assets
-/config skills_sync
-/config db_init
-/config sync_commands
-/agents
-/testlab quick
-/reports
-```
-
-### 3. Verificar estado
-
-```text
-/status
-/dashboard
-/config doctor
-```
-
-## Qué hace
-
-| Área        | Qué resuelve                                                                                                                     |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Seguridad   | Acepta mensajes solo desde `ALLOWED_USER_ID` y mantiene secretos fuera de Git.                                                   |
-| Pi RPC      | Envía prompts a Pi en modo RPC con sesión persistente.                                                                           |
-| Proyectos   | Permite cambiar proyecto activo y retomar trabajos recientes.                                                                    |
-| Agentes     | Permite elegir perfiles/modelos y muestra qué modelo usa cada agente.                                                            |
-| Laboratorio | Ejecuta agentes no-default en clones aislados.                                                                                   |
-| Reportes    | Guarda corridas en `reports/lab-runs.jsonl`; `/config db_init` prepara la DB SQLite `reports/lab.db` para tracking estructurado. |
-| Engram      | Puede buscar contexto y sincronizar reportes aprobados cuando Engram está disponible.                                            |
-| Telegram UI | Reenvía confirmaciones y selecciones interactivas de Pi al chat.                                                                 |
-
-## Requisitos
-
-- Node.js con Corepack habilitado.
-- Pi CLI instalado localmente.
-- Token de bot creado con BotFather.
-- Tu id numérico de Telegram desde `@userinfobot`.
-- Windows para scripts `.bat` / PowerShell incluidos.
-
-## Instalación
-
-### Instalación rápida en Windows
-
-```text
-setup-pi-telegram-bridge.bat
-```
-
-Arranque normal:
-
-```text
-start-pi-telegram-bridge.bat
-```
-
-Apagado manual:
-
-```text
-stop-pi-telegram-bridge.bat
-```
-
-El script de arranque valida `.env`, instala dependencias si faltan, compila el proyecto e inicia el bot. El script de apagado solo cierra bridges abiertos de este proyecto.
-
-### Instalación manual
+Instalación manual:
 
 ```bash
 corepack pnpm install
 cp .env.example .env
+corepack pnpm dev
 ```
 
-Editá `.env` con tus valores reales:
+Variables mínimas en `.env`:
 
 ```env
 TELEGRAM_BOT_TOKEN=token_de_botfather
@@ -93,424 +150,44 @@ ALLOWED_USER_ID=123456789
 DEFAULT_CWD=/ruta/absoluta/a/tu/proyecto
 ALLOWED_ROOTS=/ruta/absoluta/a/tu/proyecto
 PI_BIN=pi
-PI_EXTRA_ARGS=--no-skill-registry --no-lens
-PI_AGENT_PROFILES=default|Pi default
 AGENT_WORKSPACE_ROOT=/ruta/absoluta/a/bridge-agents
 AGENT_WORKSPACE_MODE=clone
 ```
 
-Después ejecutá:
+## Camino inicial recomendado
 
-```bash
-corepack pnpm dev
-```
-
-## Configuración guiada desde Telegram
-
-`/config` es el instalador/mantenedor desde Telegram. Primero muestra diagnóstico; después podés ejecutar acciones puntuales.
-
-| Comando                                            | Resultado                                                                                                                        |
-| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `/config`                                          | Checklist del proyecto activo.                                                                                                   |
-| `/config doctor`                                   | Diagnóstico detallado.                                                                                                           |
-| `/config init_workspace`                           | Crea/verifica `reports/` y `workspaces/` bajo `AGENT_WORKSPACE_ROOT`.                                                            |
-| `/config init_assets`                              | Crea assets project-local mínimos.                                                                                               |
-| `/config init_project_config`                      | Crea `config/project-blueprint.json` y `config/project-flows.json` desde defaults si faltan; no sobreescribe configs existentes. |
-| `/config inspect_project_map`                      | Inspecciona el mapa funcional cargado y reporta vacíos/inconsistencias sin escribir archivos ni usar IA.                         |
-| `/config scan_project_map`                         | Escanea código real en modo read-only y compara elementos detectados contra `project-flows`.                                     |
-| `/config suggest_project_flows`                    | Genera un borrador JSON parcial sugerido desde el escaneo, sin escribir `project-flows`.                                         |
-| `/config draft_project_flows`                      | Guarda el borrador sugerido en `AGENT_WORKSPACE_ROOT/reports/` sin tocar `config/project-flows.json`.                            |
-| `/config review_project_flows_draft [latest/ruta]` | Revisa un borrador guardado contra el `project-flows` actual sin aplicar cambios.                                                |
-| `/config apply_project_flows_draft <ruta>`         | Aplica un borrador con ruta explícita, backup y validación final de `project-flows`.                                             |
-| `/config ai_draft_project_blueprint`               | Pide a Pi un borrador seguro de `project-blueprint` y lo guarda en `reports/`; no aplica cambios.                                |
-| `/config ai_draft_project_flows`                   | Pide a Pi un borrador seguro de `project-flows` usando scan/contexto resumido; no aplica cambios.                                |
-| `/config review_ai_blueprint_draft [latest/ruta]`  | Revisa un borrador IA de blueprint contra schema/warning y config actual; solo lectura.                                          |
-| `/config review_ai_flows_draft [latest/ruta]`      | Revisa un borrador IA de flows contra schema parcial/conflictos; solo lectura.                                                   |
-| `/config skills_sync`                              | Copia solo skills necesarias desde el proyecto fuente registrado.                                                                |
-| `/config db_init`                                  | Crea/actualiza `AGENT_WORKSPACE_ROOT/reports/lab.db`.                                                                            |
-| `/config sync_commands`                            | Actualiza el menú de comandos de Telegram con `setMyCommands`.                                                                   |
-
-Assets creados por `/config init_assets`:
+Desde Telegram:
 
 ```text
-.agents/skills/.gitkeep
-.atl/skill-registry.md
-.mcp/config.json
+/config
+/config init_workspace
+/config init_assets
+/config init_project_config
+/config skills_sync
+/config db_init
+/config sync_commands
+/idu
+/idu_status
 ```
 
-Config project-local creada por `/config init_project_config` si falta:
-
-```text
-config/project-blueprint.json
-config/project-flows.json
-```
-
-### Project blueprint y project flows
-
-`/config init_project_config` crea dos archivos project-local cuando faltan:
-
-| Archivo                         | Rol                                                                                                |
-| ------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `config/project-blueprint.json` | Define objetivo del proyecto, reglas maestras y jerarquía humano/orquestador/AgentLabs/subagentes. |
-| `config/project-flows.json`     | Define módulos, pantallas, UI elements, dataStores, flows y moduleConnections del proyecto real.   |
-
-`project-flows es el mapa funcional del proyecto real, no el mapa interno de Idu-pi.`
-
-Flujo seguro recomendado:
-
-```text
-scan → suggest → draft → review → apply con backup
-```
-
-| Etapa     | Comando                                            | Garantía                                                                       |
-| --------- | -------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Scan      | `/config scan_project_map`                         | Lee archivos estáticos; no ejecuta código del proyecto.                        |
-| Suggest   | `/config suggest_project_flows`                    | No escribe archivos ni usa IA.                                                 |
-| Draft     | `/config draft_project_flows`                      | Escribe solo en `AGENT_WORKSPACE_ROOT/reports/`.                               |
-| Review    | `/config review_project_flows_draft [latest/ruta]` | No escribe archivos; compara draft vs mapa actual.                             |
-| Apply     | `/config apply_project_flows_draft <ruta>`         | Requiere ruta explícita, rechaza `latest`, crea backup y fusiona solo aditivo. |
-| IA Draft  | `/config ai_draft_project_blueprint`               | Envía resumen seguro a Pi y guarda borrador IA en `reports/`; no aplica.       |
-| IA Draft  | `/config ai_draft_project_flows`                   | Usa scan + flows resumidos; guarda borrador IA en `reports/`; no aplica.       |
-| IA Review | `/config review_ai_blueprint_draft [latest/ruta]`  | Solo lectura; valida warning/schema y compara contra blueprint actual.         |
-| IA Review | `/config review_ai_flows_draft [latest/ruta]`      | Solo lectura; valida warning/schema parcial y detecta conflictos de IDs.       |
-
-Los AgentLabs reciben contexto resumido de `project-blueprint`, `project-flows` y el scan estático. El `rule-validator` funciona como validador interno del Orquestador; no reemplaza al AgentLab ni a la aprobación humana.
-
-Guía completa: [`docs/project-map-workflow.md`](docs/project-map-workflow.md).
-
-### CLI Idu-pi
-
-El bridge también expone un adaptador CLI mínimo para usar el mismo core sin Telegram:
+Desde CLI:
 
 ```text
 idu-pi status
 idu-pi idu
-idu-pi idu-off
 idu-pi idu-status
-idu-pi prepare
-idu-pi preflight "solicitud"
-idu-pi advisory "solicitud"
-idu-pi postflight
-idu-pi lab-review-plan postflight
+idu-pi idu-prepare
 ```
 
-Uso desde el repo:
-
-```text
-corepack pnpm cli -- status
-corepack pnpm cli -- preflight "cambia login"
-```
-
-Comandos slash en Pi, con la extensión local `.pi/extensions/idu-pi-commands.ts` cargada y luego `/reload`:
-
-```text
-/idu
-/idu-status
-/idu-off
-/idu-prepare
-/idu-preflight cambia login
-/idu-advisory usa JS embebido
-/idu-postflight
-/idu-lab-review-plan postflight
-```
-
-El CLI usa el mismo `AGENT_WORKSPACE_ROOT`, el mismo registro de proyectos y el mismo `reports/idu-session-state.json` que Telegram. No usa IA, no ejecuta AgentLabs y no aplica `project-flows` automáticamente.
-
-Reglas de seguridad:
-
-- No ejecuta MCP automáticamente.
-- No copia secretos.
-- No commitea ni pushea.
-- `skills_sync` copia solo skills necesarias/generalistas, no todo el proyecto fuente.
-- `suggest_project_flows` no escribe archivos.
-- `draft_project_flows` escribe solo bajo `AGENT_WORKSPACE_ROOT/reports/`.
-- `review_project_flows_draft` no escribe archivos.
-- `apply_project_flows_draft` requiere ruta explícita, rechaza `latest`, crea backup, valida antes/después y no borra ni sobrescribe IDs existentes.
-- `ai_draft_project_blueprint` y `ai_draft_project_flows` leen solo contexto seguro resumido; no leen `.env`, `reports/` ni `workspaces/`, no ejecutan código del proyecto y no modifican `config/`.
-- `review_ai_blueprint_draft` y `review_ai_flows_draft` son solo lectura, no usan IA y no aplican cambios.
-
-## Agentes y modelos
-
-Configurá perfiles seleccionables con `PI_AGENT_PROFILES`:
-
-```env
-PI_AGENT_PROFILES=default|Pi default;codex|GPT Codex|--model openai-codex/gpt-5.3-codex-spark;spark|Spark|--model openai-codex/gpt-5.3-codex-spark
-```
-
-Formato:
-
-```text
-id|Nombre visible|argumentos extra opcionales;otro_id|Otro nombre|argumentos extra
-```
-
-En Telegram:
-
-```text
-/agents
-```
-
-La salida muestra label, id, provider y modelo:
-
-```text
-1. Pi default ✅
-   id: default
-   provider: pi
-   model: Pi default
-
-2. GPT Codex
-   id: codex
-   provider: pi
-   model: openai-codex/gpt-5.3-codex-spark
-```
-
-Notas:
-
-- El perfil 1/default trabaja directo sobre el repo real.
-- Los perfiles no-default pueden correr como laboratorios en clones aislados si `AGENT_WORKSPACE_MODE=clone`.
-- Cada perfil mantiene su propia sesión RPC persistente por proyecto.
-
-## Laboratorios de tests
-
-Los agentes lab corren en workspaces clone bajo:
-
-```text
-AGENT_WORKSPACE_ROOT/workspaces
-```
-
-Reportes y DB quedan bajo:
-
-```text
-AGENT_WORKSPACE_ROOT/reports
-```
-
-Comandos principales:
-
-```text
-/testlab quick
-/testlab 3tests
-/testlab 5tests
-/testlab full
-/testlab2 quick
-/testlab3 quick
-/gentest_model_lab
-/reports
-/report <id>
-/triagereports
-/syncreports
-```
-
-Profundidades:
-
-| Profundidad | Uso recomendado                   |
-| ----------- | --------------------------------- |
-| `quick`     | Smoke test rápido.                |
-| `3tests`    | Señal media sin gastar demasiado. |
-| `5tests`    | Verificación más fuerte.          |
-| `full`      | Revisión amplia, más lenta.       |
-
-Decisiones sobre reportes:
-
-```text
-/report <id> defer
-/report <id> work
-/report <id> ignore
-/report <id> save
-```
-
-`/syncreports` usa el orquestador para guardar hallazgos aprobados en Engram cuando Engram está disponible.
-
-## Comandos operativos
-
-### Estado y servidor RPC
-
-```text
-/status
-/dashboard
-/doctor
-/config doctor
-/server status
-/server run
-/server restart
-/server off
-```
-
-`/server` controla la sesión Pi RPC activa, no el proceso del bot de Telegram:
-
-| Comando           | Acción                                         |
-| ----------------- | ---------------------------------------------- |
-| `/server status`  | Muestra bridge, RPC, proyecto y agente activo. |
-| `/server run`     | Inicia o deja listo el RPC activo.             |
-| `/server restart` | Reinicia solo la sesión RPC activa.            |
-| `/server off`     | Detiene solo la sesión RPC activa.             |
-
-`/doctor` es el atajo operativo para el diagnóstico local; `/config doctor` muestra el diagnóstico dentro del flujo guiado de configuración.
-
-Si el bot de Telegram está caído, no puede recibir comandos. Para recuperación completa usá el supervisor Windows o `start-pi-telegram-bridge.bat`.
-
-### Proyectos
-
-```text
-/projects
-/where
-/addproject <id> <ruta>
-/useproject <id>
-/cwd <ruta>
-/new <ruta>
-```
-
-| Comando       | Uso                                                                |
-| ------------- | ------------------------------------------------------------------ |
-| `/projects`   | Lista proyectos registrados.                                       |
-| `/where`      | Muestra el proyecto activo y cwd actual.                           |
-| `/addproject` | Agrega y activa un proyecto permitido; también acepta modo guiado. |
-| `/useproject` | Cambia al proyecto registrado por id o selector.                   |
-| `/cwd`        | Cambia directo a una ruta permitida.                               |
-| `/new`        | Alias de `/cwd` para empezar trabajo en una ruta permitida.        |
-
-### Trabajo diario
-
-```text
-/review
-/fix_tests
-/audit
-/safe_push
-/task bug <detalle>
-/task feature <detalle>
-/task refactor <detalle>
-/task docs <detalle>
-```
-
-| Comando      | Uso                                                    |
-| ------------ | ------------------------------------------------------ |
-| `/review`    | Revisa cambios actuales sin commitear ni pushear.      |
-| `/fix_tests` | Corre tests, identifica fallas y aplica fixes mínimos. |
-| `/audit`     | Revisa repo público, secretos, artefactos y calidad.   |
-| `/safe_push` | Checklist antes de push; no commitea ni pushea.        |
-| `/task`      | Arma prompts operativos por tipo de tarea.             |
-
-### Cola y cancelación
-
-Si mandás mensajes mientras Pi está ocupado, Idu-pi los guarda en cola FIFO.
-
-```text
-/queue
-/queue_detail
-/queue_clear
-/cancel
-```
-
-`/queue` mantiene la cola legacy visible sin cambiar su comportamiento. `/queue_detail` muestra la cola estructurada persistida como espejo secundario: id corto, estado, prioridad, categoría, emoción detectada, fecha y texto resumido.
-
-La prioridad/emoción se calcula localmente con `user-signal` por keywords, sin IA. Se usa solo como señal de orden/prioridad operativa; no decide cambios críticos ni reemplaza la decisión humana. Cuando SQLite está disponible, el evento se registra en `user_signal_events`; si SQLite falla, Telegram, `/queue` y la cola estructurada siguen funcionando.
-
-`/cancel` cancela la tarea actual y limpia la cola.
-
-### Trabajos recientes
-
-```text
-/trabajos
-/ver T1
-/nametrabajo T1 mantenimiento
-/resume T1
-/last
-/resumen
-```
-
-Los trabajos usan selectores explícitos `T1`, `T2`, etc. También podés responder `A`, `activo` o `esta sesión` cuando el menú lo indique.
-
-Aliases y compatibilidad:
-
-```text
-/work
-/sessions
-/use
-/approve
-/reject
-/model
-/mode interactive
-/mode auto
-/mode clear
-/testlab1
-/testlab2 quick
-/testlab3 quick
-```
-
-- `/work` es alias de `/trabajos`.
-- `/sessions`, `/use`, `/approve` y `/reject` quedan reservados como compatibilidad legacy.
-- `/model` muestra el modelo del agente activo.
-- `/mode` define o limpia el prefijo operativo del agente activo.
-- `/testlab1` explica por qué el agente 1/default no usa lab aislado.
-- `/testlab2` y `/testlab3` ejecutan labs por selector rápido.
-
-### Catálogo de comandos
-
-```text
-/comandos
-/config sync_commands
-```
-
-- `/comandos` muestra el catálogo completo desde `src/command-catalog.ts`.
-- `/config sync_commands` actualiza el menú nativo de Telegram desde esa misma fuente.
-
-## Engram y memoria
-
-Engram no viene de este repo; depende de que Pi tenga la herramienta/memoria disponible.
-
-Cuando está disponible:
-
-```text
-/mem <query>
-/syncreports
-```
-
-| Comando           | Uso                                                  |
-| ----------------- | ---------------------------------------------------- |
-| `/mem login auth` | Busca contexto histórico vía Pi/Engram.              |
-| `/syncreports`    | Guarda reportes aprobados como memoria estructurada. |
-
-Si Engram no está disponible, el bridge debe seguir funcionando con archivos locales (`lab-runs.jsonl`, `lab.db`, `.agents`, `.atl`, `.mcp`).
-
-## Decisiones interactivas
-
-Si Pi emite una solicitud de UI en RPC, el bridge la reenvía a Telegram.
-
-Ejemplos:
-
-- Confirmación: respondé `sí` o `no`.
-- Selección: respondé `U1`, `U2`, etc.
-- Texto libre: respondé con el texto solicitado.
-
-Esto cubre aprobaciones tipo guarded command cuando Pi las expone como eventos RPC `extension_ui_request`.
-
-## Supervisor Windows / auto-restart
-
-Instalar e iniciar tarea programada:
-
-```text
-install-idu-pi-task.bat
-```
-
-Ver estado:
-
-```text
-status-idu-pi-task.bat
-```
-
-Desinstalar:
-
-```text
-uninstall-idu-pi-task.bat
-```
-
-La tarea se registra como `Idu-pi Telegram Bridge`, arranca al iniciar sesión y reintenta si el proceso falla. Los logs quedan en `logs/bridge.log`, ignorado por Git.
-
-## Seguridad
+## Seguridad operativa
 
 - Nunca subas `.env`.
-- Nunca subas tokens de bot, API keys, registros locales de proyectos ni estado runtime.
-- Mantené `ALLOWED_ROOTS` lo más limitado posible.
-- Usá `/mode interactive` para operaciones riesgosas.
-- Pedí confirmación humana antes de push, copiar cambios desde labs o ejecutar MCP.
+- Mantené `ALLOWED_ROOTS` limitado.
+- No subas tokens, API keys, registros locales ni estado runtime.
+- Usá workspaces clone para AgentLabs.
+- No copies cambios desde labs sin revisión humana.
+- No hagas commit/push sin aprobación humana explícita.
+- Nada crítico se aplica sin confirmación humana.
 
 ## Desarrollo
 
@@ -519,21 +196,11 @@ corepack pnpm build
 corepack pnpm test
 ```
 
-Comandos locales útiles:
-
-```text
-corepack pnpm install
-corepack pnpm run setup
-corepack pnpm dev
-corepack pnpm serve
-corepack pnpm start
-corepack pnpm clean
-```
-
 ## Documentación
 
-Este README sigue una estructura de baja carga cognitiva: camino rápido primero, detalles después, tablas para reconocimiento rápido y comandos copiables. Para futuras mejoras de documentación, usá la skill `cognitive-doc-design`.
-
-Guías adicionales:
-
-- `docs/lab-agent-best-practices.md` — reglas operativas para agentes lab Codex/Spark.
+- [`docs/cli-commands.md`](docs/cli-commands.md) — comandos CLI por grupo.
+- [`docs/telegram-commands.md`](docs/telegram-commands.md) — comandos Telegram por grupo.
+- [`docs/supervisor-model.md`](docs/supervisor-model.md) — modelo conceptual del supervisor.
+- [`docs/architecture.md`](docs/architecture.md) — arquitectura técnica y módulos core.
+- [`docs/project-map-workflow.md`](docs/project-map-workflow.md) — workflow de Project Core, blueprint y flows.
+- [`docs/lab-agent-best-practices.md`](docs/lab-agent-best-practices.md) — checklist operativo para AgentLabs.
