@@ -1,9 +1,13 @@
 import { config as loadDotenv } from "dotenv";
 import { existsSync, mkdirSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-loadDotenv({ quiet: true });
+loadDotenv({
+	path: resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", ".env"),
+	quiet: true,
+});
 
 export type AgentProfile = {
 	id: string;

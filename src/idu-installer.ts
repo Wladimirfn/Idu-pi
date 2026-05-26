@@ -60,7 +60,9 @@ export type DetectOptions = {
 export type IduMcpServerConfig = {
 	command: "node";
 	args: string[];
+	cwd: string;
 	lifecycle: "lazy";
+	directTools: true;
 };
 
 export type InstallIduMcpConfigInput = {
@@ -192,10 +194,13 @@ export function detectAgentConfigs(
 }
 
 export function buildIduMcpConfig(mcpServerPath: string): IduMcpServerConfig {
+	const resolvedServerPath = resolve(mcpServerPath);
 	return {
 		command: "node",
-		args: [resolve(mcpServerPath)],
+		args: [resolvedServerPath],
+		cwd: resolve(dirname(resolvedServerPath), "..", ".."),
 		lifecycle: "lazy",
+		directTools: true,
 	};
 }
 

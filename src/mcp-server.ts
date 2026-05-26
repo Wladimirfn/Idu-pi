@@ -3,6 +3,7 @@ import { stdin, stdout } from "node:process";
 import { pathToFileURL } from "node:url";
 import { canonicalDirectory, isAllowedCwd, loadConfig } from "./config.js";
 import { createCliRuntime, type CliRuntime } from "./cli.js";
+import { applyPackageEnvDefaults, resolveIduRegistryPath } from "./cli-home.js";
 import { inferTaskTemplateKind } from "./task-templates.js";
 import {
 	activateIduSession,
@@ -201,9 +202,11 @@ export function resolveMcpProjectContext(
 	inputProjectPath?: string,
 ): IduMcpProjectResolution {
 	try {
+		applyPackageEnvDefaults();
 		const config = loadConfig({ requireTelegram: false });
 		const registry = loadRegistry(config.defaultCwd, config.allowedRoots, {
 			createIfMissing: false,
+			registryPath: resolveIduRegistryPath(),
 		});
 		if (inputProjectPath?.trim()) {
 			const projectPath = canonicalDirectory(inputProjectPath.trim());

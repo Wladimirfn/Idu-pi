@@ -220,9 +220,7 @@ function detectHomeProjectStatus(
 			workspaceRoot,
 			allowedRoots,
 			mcpAvailable: false,
-			registryPath:
-				options.registryPath ??
-				join(resolveCliPackageRoot(), "data", "projects.json"),
+			registryPath: options.registryPath ?? resolveIduRegistryPath(options.env),
 		});
 		return {
 			candidatePath: canonicalCandidate,
@@ -354,6 +352,15 @@ export function applyPackageEnvDefaults(): void {
 
 export function resolveCliPackageRoot(): string {
 	return resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+}
+
+export function resolveIduRegistryPath(
+	env: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env,
+): string {
+	return resolve(
+		env.IDU_PI_REGISTRY_PATH?.trim() ||
+			join(resolveCliPackageRoot(), "data", "projects.json"),
+	);
 }
 
 function mergedPackageEnv(): Record<string, string | undefined> {

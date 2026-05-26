@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
+	applyPackageEnvDefaults,
 	buildCliHomeStatus,
 	formatCliHome,
 	formatSetupPathHelp,
@@ -193,6 +194,19 @@ test("setup wizard in non-interactive mode does not wait", async () => {
 	const result = await runCliCommand(["setup", "wizard"]);
 	assert.equal(result.exitCode, 0);
 	assert.match(result.stdout, /stdin no es interactivo/u);
+});
+
+test("package env defaults fill core config without external cwd", () => {
+	const previous = snapshotEnv();
+	try {
+		delete process.env.DEFAULT_CWD;
+		delete process.env.ALLOWED_ROOTS;
+		applyPackageEnvDefaults();
+		assert.ok(process.env.DEFAULT_CWD);
+		assert.ok(process.env.ALLOWED_ROOTS);
+	} finally {
+		restoreEnv(previous);
+	}
 });
 
 test("setup path-help shows pnpm setup and global link steps", async () => {

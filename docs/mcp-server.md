@@ -62,6 +62,8 @@ node dist/src/mcp-server.js
 
 El servidor usa stdio JSON-RPC/MCP. No levanta Telegram y no importa el entrypoint de Telegram.
 
+`setup mcp-init` configura el servidor con `cwd` apuntando al repo Idu-pi y `directTools: true`, para que Pi pueda cachear/exponer sus herramientas aunque el orquestador esté abierto en otro proyecto.
+
 ## Configuración conceptual del orquestador
 
 Ejemplo conceptual:
@@ -70,19 +72,17 @@ Ejemplo conceptual:
 {
   "mcpServers": {
     "idu-pi": {
-      "command": "idu-pi-mcp",
-      "args": [],
-      "env": {
-        "DEFAULT_CWD": "C:\\Users\\elmas\\Sistema_de_mantencion",
-        "ALLOWED_ROOTS": "C:\\Users\\elmas",
-        "AGENT_WORKSPACE_ROOT": "C:\\Users\\elmas\\Documents\\bridge-agents"
-      }
+      "command": "node",
+      "args": ["C:\\Users\\elmas\\pi-telegram-bridge\\dist\\src\\mcp-server.js"],
+      "cwd": "C:\\Users\\elmas\\pi-telegram-bridge",
+      "lifecycle": "lazy",
+      "directTools": true
     }
   }
 }
 ```
 
-`TELEGRAM_BOT_TOKEN` y `ALLOWED_USER_ID` no son necesarios para el MCP adapter.
+`TELEGRAM_BOT_TOKEN` y `ALLOWED_USER_ID` no son necesarios para el MCP adapter. El adapter carga la `.env` y el registry del paquete Idu-pi, no del proyecto externo que tenga abierto el orquestador.
 
 ## Resolución de proyecto
 

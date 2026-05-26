@@ -73,9 +73,14 @@ test("mcp-init creates mcp.json when missing", () => {
 	assert.equal(result.status, "installed");
 	assert.equal(existsSync(join(root, "mcp.json")), true);
 	const parsed = JSON.parse(readFileSync(join(root, "mcp.json"), "utf8")) as {
-		mcpServers: Record<string, { args: string[] }>;
+		mcpServers: Record<
+			string,
+			{ args: string[]; cwd?: string; directTools?: boolean }
+		>;
 	};
 	assert.equal(parsed.mcpServers["idu-pi"].args[0], mcpServerPath);
+	assert.equal(parsed.mcpServers["idu-pi"].directTools, true);
+	assert.equal(parsed.mcpServers["idu-pi"].cwd, root);
 	rmSync(root, { recursive: true, force: true });
 });
 
@@ -162,6 +167,8 @@ test("buildIduMcpConfig uses node lazy server config", () => {
 	assert.equal(config.command, "node");
 	assert.match(config.args[0], /idu[\\/]dist[\\/]src[\\/]mcp-server\.js$/u);
 	assert.equal(config.lifecycle, "lazy");
+	assert.equal(config.directTools, true);
+	assert.match(config.cwd, /idu$/u);
 });
 
 test("project enroll registers project and creates isolated state dirs", () => {
@@ -327,6 +334,7 @@ function snapshotEnv(): EnvSnapshot {
 		ALLOWED_ROOTS: process.env.ALLOWED_ROOTS,
 		AGENT_WORKSPACE_ROOT: process.env.AGENT_WORKSPACE_ROOT,
 		PI_CODING_AGENT_DIR: process.env.PI_CODING_AGENT_DIR,
+		IDU_PI_REGISTRY_PATH: process.env.IDU_PI_REGISTRY_PATH,
 		TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
 		ALLOWED_USER_ID: process.env.ALLOWED_USER_ID,
 	};
@@ -349,6 +357,7 @@ function setCliEnv(input: {
 	process.env.ALLOWED_ROOTS = input.allowedRoot;
 	process.env.AGENT_WORKSPACE_ROOT = input.workspaceRoot;
 	process.env.PI_CODING_AGENT_DIR = input.agentDir;
+	process.env.IDU_PI_REGISTRY_PATH = join(input.workspaceRoot, "projects.json");
 	delete process.env.TELEGRAM_BOT_TOKEN;
 	delete process.env.ALLOWED_USER_ID;
 }

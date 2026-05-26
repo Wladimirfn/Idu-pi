@@ -15,7 +15,7 @@ import {
 	formatCliHome,
 	formatSetupPathHelp,
 	formatSetupWizardNonInteractive,
-	resolveCliPackageRoot,
+	resolveIduRegistryPath,
 } from "./cli-home.js";
 import {
 	formatProjectStatePaths,
@@ -459,11 +459,14 @@ export type CreateCliRuntimeOptions = {
 export function createCliRuntime(
 	options: CreateCliRuntimeOptions = {},
 ): CliRuntime {
+	applyPackageEnvDefaults();
 	const config = loadConfig({
 		requireTelegram: options.requireTelegramConfig ?? true,
 	});
 	process.env.AGENT_WORKSPACE_ROOT ??= config.agentWorkspaceRoot;
-	const registry = loadRegistry(config.defaultCwd, config.allowedRoots);
+	const registry = loadRegistry(config.defaultCwd, config.allowedRoots, {
+		registryPath: resolveIduRegistryPath(),
+	});
 	const activeProject = resolveRuntimeProject(
 		registry,
 		config,
@@ -1284,7 +1287,7 @@ function handleSetupCommand(rest: string[]): string {
 function handleProjectCommand(rest: string[]): string {
 	const subcommand = rest[0];
 	const config = loadConfig({ requireTelegram: false });
-	const registryPath = join(resolveCliPackageRoot(), "data", "projects.json");
+	const registryPath = resolveIduRegistryPath();
 	if (subcommand === "enroll") {
 		const projectPath = rest[1];
 		if (!projectPath)
