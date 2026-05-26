@@ -311,6 +311,22 @@ AGENT_WORKSPACE_ROOT/workspaces/
 
 Los labs deben inspeccionar y reportar desde clones. No deben commitear, pushear ni copiar cambios al repo real.
 
+## Prueba E2E del supervisor
+
+La aceptación integral vive en:
+
+```text
+test/idu-supervisor-e2e.test.ts
+```
+
+Esa prueba corre sin Telegram real, red ni IA externa. Usa temporales, mocks y reportes seguros para validar el ciclo:
+
+```text
+/idu → intención humana → guarded queue → semantic draft → proposals → learning rule → skill draft → AgentLab request/run → consolidation → loop inactive
+```
+
+También verifica que no se modifiquen repo real, `.agents`, `.atl`, Project Core, Constitution, blueprint/flows, `labPrompt` ni `AgentRouter`.
+
 ## Reglas para futuras extensiones
 
 - Agregar lógica en módulos core, no dentro de handlers Telegram.
