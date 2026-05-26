@@ -15,6 +15,7 @@ Telegram no debe contener lógica de negocio duplicada.
 ```text
 CLI adapter ───────┐
 Telegram adapter ──┼── Core Idu-pi ── reports/ ── lab.db
+MCP adapter ───────┤        │
 Pi slash commands ─┘        │
                             ├── Project Core / Constitution / Flows
                             ├── Supervisor Loop / Hooks
@@ -27,7 +28,7 @@ Pi slash commands ─┘        │
 
 | Capa | Responsabilidad |
 | --- | --- |
-| Adaptadores | Traducen comandos de CLI, Telegram o Pi slash hacia funciones core. |
+| Adaptadores | Traducen comandos de CLI, Telegram, MCP o Pi slash hacia funciones core. |
 | Core | Implementa reglas, validaciones, reportes, propuestas y consolidación. |
 | Persistencia | Guarda reports JSON/JSONL y DB SQLite local. |
 | Workspaces | Aíslan AgentLabs y perfiles no-default en clones. |
@@ -51,6 +52,24 @@ Responsabilidades:
 - compartir `AGENT_WORKSPACE_ROOT` y registry con Telegram.
 
 El CLI no debe duplicar lógica de negocio. Debe llamar módulos como `project-preflight`, `semantic-audit-command`, `agentlab-review-runner` o `agentlab-report-consolidation`.
+
+## Adaptador MCP
+
+Archivo principal:
+
+```text
+src/mcp-server.ts
+```
+
+Responsabilidades:
+
+- exponer herramientas MCP stdio para el orquestador;
+- resolver `projectPath` explícito o proyecto activo;
+- reutilizar el runtime/core del CLI sin importar Telegram;
+- devolver JSON estructurado con `ok`, `tool`, `projectId`, `summary`, `data`, `safeNotes` y `errors`;
+- mantener seguridad: sin commit/push, sin cambios críticos automáticos y sin AgentLabs salvo `idu_agentlab_review_run` explícito.
+
+Guía: [MCP Server](mcp-server.md).
 
 ## Adaptador Telegram
 

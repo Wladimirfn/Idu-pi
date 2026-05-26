@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
 
-loadDotenv();
+loadDotenv({ quiet: true });
 
 export type AgentProfile = {
 	id: string;
@@ -91,7 +91,12 @@ function parseWorkspaceMode(raw?: string): AgentWorkspaceMode {
 	throw new Error("AGENT_WORKSPACE_MODE must be direct or clone");
 }
 
-export function loadConfig(): BridgeConfig {
+export type LoadConfigOptions = {
+	requireTelegram?: boolean;
+};
+
+export function loadConfig(options: LoadConfigOptions = {}): BridgeConfig {
+	const requireTelegram = options.requireTelegram ?? true;
 	const defaultCwd = canonicalDirectory(required("DEFAULT_CWD"));
 	const allowedRootsRaw = process.env.ALLOWED_ROOTS?.trim();
 	const allowedRoots = (
@@ -111,8 +116,10 @@ export function loadConfig(): BridgeConfig {
 	);
 
 	return {
-		telegramBotToken: required("TELEGRAM_BOT_TOKEN"),
-		allowedUserId: parseRequiredPositiveInteger("ALLOWED_USER_ID"),
+		telegramBotToken: requireTelegram ? required("TELEGRAM_BOT_TOKEN") : "",
+		allowedUserId: requireTelegram
+			? parseRequiredPositiveInteger("ALLOWED_USER_ID")
+			: 0,
 		defaultCwd,
 		allowedRoots,
 		piBin: process.env.PI_BIN?.trim() || (piCliJs ? "node" : "pi"),

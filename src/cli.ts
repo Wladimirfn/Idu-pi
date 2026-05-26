@@ -1,7 +1,12 @@
 #!/usr/bin/env node
 import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
-import { loadConfig, type BridgeConfig } from "./config.js";
+import {
+	canonicalDirectory,
+	isAllowedCwd,
+	loadConfig,
+	type BridgeConfig,
+} from "./config.js";
 import { AgentRouter } from "./agent-router.js";
 import { formatCommandCatalog } from "./command-catalog.js";
 import { initProjectConfig, inspectProjectMap } from "./config-wizard.js";
@@ -246,7 +251,10 @@ export type CliRuntime = {
 	formatSemanticAgentTaskCreationResult: (
 		result: SemanticAgentTaskCreationResult,
 	) => string;
-	supervisorTick: () => IduSupervisorLoopResult;
+	supervisorTick: (options?: {
+		allowSemanticDraft?: boolean;
+		allowAgentTaskPlan?: boolean;
+	}) => IduSupervisorLoopResult;
 	formatSupervisorTick: (result: IduSupervisorLoopResult) => string;
 	supervisorOnIduActivation: () => void;
 	supervisorImprovementPlan: (
@@ -378,6 +386,7 @@ export type CliRuntime = {
 	createTask: (kind: TaskTemplateKind, details: string) => StructuredTask;
 	formatTask: (task: StructuredTask) => string;
 	queueDetail: () => string;
+	listTasks?: () => StructuredTask[];
 	queueClearStructured: () => number;
 	queueApprove: (idOrPrefix: string) => StructuredTask | undefined;
 	queueReject: (idOrPrefix: string) => StructuredTask | undefined;
@@ -390,12 +399,46 @@ type RuntimeContext = {
 	structuredTaskQueue: StructuredTaskQueue;
 };
 
-export function createCliRuntime(): CliRuntime {
-	const config = loadConfig();
+function resolveRuntimeProject(
+	registry: ProjectRegistry,
+	config: BridgeConfig,
+	projectPath?: string,
+): ProjectEntry | undefined {
+	if (!projectPath?.trim()) return getActiveProject(registry);
+	const path = canonicalDirectory(projectPath.trim());
+	if (!isAllowedCwd(path, config.allowedRoots)) {
+		throw new Error(`Ruta fuera de ALLOWED_ROOTS: ${path}`);
+	}
+	return registry.projects.find((project) =>
+		sameRuntimePath(project.path, path),
+	);
+}
+
+function sameRuntimePath(left: string, right: string): boolean {
+	const normalize = (value: string) =>
+		process.platform === "win32" ? value.toLowerCase() : value;
+	return normalize(left) === normalize(right);
+}
+
+export type CreateCliRuntimeOptions = {
+	projectPath?: string;
+	requireTelegramConfig?: boolean;
+};
+
+export function createCliRuntime(
+	options: CreateCliRuntimeOptions = {},
+): CliRuntime {
+	const config = loadConfig({
+		requireTelegram: options.requireTelegramConfig ?? true,
+	});
 	process.env.AGENT_WORKSPACE_ROOT ??= config.agentWorkspaceRoot;
 	configureIduSessionStore({ workspaceRoot: config.agentWorkspaceRoot });
 	const registry = loadRegistry(config.defaultCwd, config.allowedRoots);
-	const activeProject = getActiveProject(registry);
+	const activeProject = resolveRuntimeProject(
+		registry,
+		config,
+		options.projectPath,
+	);
 	if (!activeProject) {
 		throw new Error(
 			"No hay proyecto activo. Usá /addproject <id> <ruta> en Telegram o configurá DEFAULT_CWD.",
@@ -504,15 +547,15 @@ export function createCliRuntime(): CliRuntime {
 				projectId: activeProject.id,
 			}),
 		formatSemanticAgentTaskCreationResult,
-		supervisorTick: () =>
+		supervisorTick: (options = {}) =>
 			runIduSupervisorLoop({
 				projectId: activeProject.id,
 				projectPath: activeProject.path,
 				workspaceRoot: config.agentWorkspaceRoot,
 				trigger: "manual",
 				options: {
-					allowSemanticDraft: true,
-					allowAgentTaskPlan: true,
+					allowSemanticDraft: options.allowSemanticDraft ?? true,
+					allowAgentTaskPlan: options.allowAgentTaskPlan ?? true,
 					dryRun: false,
 				},
 				repository: labDbRepository,
@@ -733,6 +776,7 @@ export function createCliRuntime(): CliRuntime {
 				approveCommand: (id) => `idu-pi idu-queue-approve ${id}`,
 				rejectCommand: (id) => `idu-pi idu-queue-reject ${id}`,
 			}),
+		listTasks: () => structuredTaskQueue.listTasks(),
 		queueClearStructured: () => structuredTaskQueue.clearPersisted(),
 		queueApprove: (id) => approveStructuredTaskById(structuredTaskQueue, id),
 		queueReject: (id) => rejectStructuredTaskById(structuredTaskQueue, id),

@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "bin": {
-    "idu-pi": "dist/src/cli.js"
+    "idu-pi": "dist/src/cli.js",
+    "idu-pi-mcp": "dist/src/mcp-server.js"
   },
   "packageManager": "pnpm@11.1.3",
   "scripts": {
@@ -13,6 +14,7 @@
     "serve": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-bridge.ps1",
     "dev": "tsc -p tsconfig.json && node dist/src/index.js",
     "cli": "tsc -p tsconfig.json && node dist/src/cli.js",
+    "mcp": "tsc -p tsconfig.json && node dist/src/mcp-server.js",
     "start": "node dist/src/index.js",
     "build": "tsc -p tsconfig.json",
     "test": "tsc -p tsconfig.json && node --test dist/test/*.test.js"

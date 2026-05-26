@@ -24,10 +24,16 @@ export function slugifyProjectId(input: string): string {
 		.replace(/^-+|-+$/gu, "");
 }
 
+export type LoadRegistryOptions = {
+	createIfMissing?: boolean;
+};
+
 export function loadRegistry(
 	defaultCwd: string,
 	allowedRoots: string[],
+	options: LoadRegistryOptions = {},
 ): ProjectRegistry {
+	const createIfMissing = options.createIfMissing ?? true;
 	if (!existsSync(REGISTRY_PATH)) {
 		const initial: ProjectRegistry = {
 			activeProjectId: "default",
@@ -40,8 +46,8 @@ export function loadRegistry(
 				},
 			],
 		};
-		saveRegistry(initial);
-		return initial;
+		if (createIfMissing) saveRegistry(initial);
+		return createIfMissing ? initial : { activeProjectId: null, projects: [] };
 	}
 
 	const parsed = JSON.parse(

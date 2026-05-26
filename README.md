@@ -63,7 +63,10 @@ Idu-pi puede usarse por varias superficies:
 | --- | --- |
 | CLI | Uso local, scripts, validación rápida, integración con Pi. |
 | Telegram | Operación cómoda desde chat, comandos slash, estado y confirmaciones. |
+| MCP Server | Herramientas stdio para que el orquestador consulte Idu-pi desde cualquier proyecto. |
 | Futuras UI/dashboard | Visualizar cola, reportes, propuestas y estado del supervisor. |
+
+Más detalle: [MCP Server](docs/mcp-server.md).
 
 Las interfaces llaman al core. El core no depende de Telegram.
 

@@ -10,6 +10,14 @@ corepack pnpm cli -- <comando>
 
 El CLI usa el mismo `AGENT_WORKSPACE_ROOT`, registro de proyectos y `reports/idu-session-state.json` que Telegram. No es un sistema separado.
 
+Para uso universal desde orquestadores, el binario MCP es `idu-pi-mcp` o, desde el repo:
+
+```text
+corepack pnpm mcp
+```
+
+Ver [MCP Server](mcp-server.md).
+
 ## Estado y activación
 
 | Comando | Uso |
