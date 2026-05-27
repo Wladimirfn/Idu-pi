@@ -51,11 +51,12 @@ Dry-run muestra:
 ## Flags
 
 ```text
---yes          acepta confirmaciones del instalador; no modifica PATH automáticamente
+--yes          acepta confirmaciones del instalador; para PATH requiere --add-path
 --dry-run      muestra plan sin escribir
 --no-mcp       omite setup mcp-init
 --no-shim      omite shim local idu-pi
 --open-wizard  abre node dist/src/cli.js al final
+--add-path     agrega el shim al PATH de usuario si falta; con --yes no pregunta
 --help         muestra ayuda
 ```
 
@@ -67,6 +68,7 @@ En PowerShell usá los equivalentes:
 -NoMcp
 -NoShim
 -OpenWizard
+-AddPath
 -Help
 ```
 
@@ -111,12 +113,31 @@ idu-pi.backup-YYYYMMDD-HHMMSS.ps1
 
 Si el contenido ya es igual, no crea backup.
 
+## PATH
+
+Si la carpeta del shim ya está en `PATH`, el instalador informa:
+
+```text
+PATH ya contiene: C:\Users\<user>\AppData\Local\idu-pi\bin
+PATH no modificado porque ya estaba configurado.
+```
+
+Si falta, en modo interactivo pregunta si querés agregarla al `PATH` de usuario. Para hacerlo sin segunda pregunta:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/install.ps1 -Yes -AddPath
+# o
+node scripts/install.mjs --yes --add-path
+```
+
+Después de actualizar el `PATH` de usuario, cerrá y abrí una terminal nueva antes de ejecutar `idu-pi`.
+
 ## Garantías de seguridad
 
 - No ejecuta bootstrap remoto opaco ni scripts de dependencias.
 - Usa `pnpm-lock.yaml` con `--frozen-lockfile --ignore-scripts`; pnpm puede descargar paquetes fijados desde el registry/cache configurado.
 - No usa `irm | iex`.
-- No modifica `PATH` automáticamente, incluso con `--yes`.
+- No modifica `PATH` sin confirmación interactiva o `--add-path` explícito.
 - No lee ni muestra secretos de `.env`.
 - No ejecuta Telegram.
 - No ejecuta AgentLabs.

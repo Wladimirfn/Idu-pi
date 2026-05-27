@@ -4,6 +4,7 @@ param(
     [switch]$NoMcp,
     [switch]$NoShim,
     [switch]$OpenWizard,
+    [switch]$AddPath,
     [switch]$Help
 )
 
@@ -24,6 +25,7 @@ if ($DryRun) { $nodeArgs += "--dry-run" }
 if ($NoMcp) { $nodeArgs += "--no-mcp" }
 if ($NoShim) { $nodeArgs += "--no-shim" }
 if ($OpenWizard) { $nodeArgs += "--open-wizard" }
+if ($AddPath) { $nodeArgs += "--add-path" }
 if ($Help) { $nodeArgs += "--help" }
 
 & node @nodeArgs

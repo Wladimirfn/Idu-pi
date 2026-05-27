@@ -1,6 +1,6 @@
 # Comandos CLI de Idu-pi
 
-El CLI es un adaptador local para usar el mismo core de Idu-pi sin Telegram.
+El CLI es la superficie principal para usar el core de Idu-pi. Telegram es una interfaz remota opcional para ejecutar comandos, revisar estado y confirmar decisiones sin estar en la terminal.
 
 Usá `idu-pi` para abrir el home CLI con estado y acciones recomendadas. Usá `idu-pi <comando>` si querés ejecutar un comando directo. Desde el repo, el equivalente es:
 
@@ -34,11 +34,11 @@ powershell -ExecutionPolicy Bypass -File scripts/install.ps1 -DryRun
 node scripts/install.mjs --dry-run
 ```
 
-El bootstrap installer no modifica `PATH` automáticamente; crea un shim local con confirmación y muestra la ruta a agregar si hace falta.
+El bootstrap installer crea un shim local. Si falta en `PATH`, pregunta antes de agregarlo al `PATH` de usuario; para aceptarlo sin segunda pregunta usá `-Yes -AddPath` o `--yes --add-path`.
 
 | Comando | Uso |
 | --- | --- |
-| `idu-pi` | Muestra home CLI; en terminal interactiva abre wizard visual con Instalación/Estado/Proyecto/PATH/Exit. |
+| `idu-pi` | Muestra home CLI; en terminal interactiva abre wizard visual con Instalación/Estado/Proyecto/Configuración/PATH/Exit. |
 | `idu-pi home` | Muestra el mismo home CLI. |
 | `idu-pi setup` | Muestra estado de sistema/config y acciones recomendadas. |
 | `idu-pi setup status` | Igual que `setup`. |

@@ -45,6 +45,10 @@ function runInstall(
 	});
 }
 
+function escapeRegex(value: string): string {
+	return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+}
+
 test("install.mjs --dry-run no escribe archivos", () => {
 	const root = tempDir();
 	try {
@@ -126,7 +130,7 @@ test("crea shim .cmd y .ps1 en temp dir", () => {
 			readFileSync(ps1Path, "utf8"),
 			/node .*dist[\\/]src[\\/]cli\.js/u,
 		);
-		assert.match(output, /No modifiqué PATH automáticamente/u);
+		assert.match(output, /PATH no modificado porque ya estaba configurado/u);
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}
@@ -197,17 +201,59 @@ test("--no-shim omite shim", () => {
 	}
 });
 
-test("--yes no modifica PATH", () => {
+test("--yes sin --add-path no modifica PATH", () => {
 	const root = tempDir();
 	try {
 		const shimDir = join(root, "bin");
+		const userPathFile = join(root, "user-path.txt");
 		const originalPath = process.env.PATH ?? "";
 		const output = runInstall(["--yes", "--no-mcp"], {
 			IDU_PI_INSTALL_SHIM_DIR: shimDir,
 			IDU_PI_INSTALL_TEST_SKIP_COMMANDS: "1",
+			IDU_PI_INSTALL_TEST_USER_PATH_FILE: userPathFile,
 		});
 		assert.equal(process.env.PATH ?? "", originalPath);
+		assert.equal(existsSync(userPathFile), false);
 		assert.match(output, /No modifiqué PATH automáticamente/u);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("--yes --add-path agrega shim al PATH de usuario simulado", () => {
+	const root = tempDir();
+	try {
+		const shimDir = join(root, "bin");
+		const userPathFile = join(root, "user-path.txt");
+		const output = runInstall(["--yes", "--add-path", "--no-mcp"], {
+			IDU_PI_INSTALL_SHIM_DIR: shimDir,
+			IDU_PI_INSTALL_TEST_SKIP_COMMANDS: "1",
+			IDU_PI_INSTALL_TEST_USER_PATH: join(root, "existing"),
+			IDU_PI_INSTALL_TEST_USER_PATH_FILE: userPathFile,
+		});
+		assert.match(output, /PATH de usuario actualizado/u);
+		assert.match(
+			readFileSync(userPathFile, "utf8"),
+			new RegExp(escapeRegex(shimDir), "u"),
+		);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("si shim ya está en PATH no modifica PATH", () => {
+	const root = tempDir();
+	try {
+		const shimDir = join(root, "bin");
+		const userPathFile = join(root, "user-path.txt");
+		const output = runInstall(["--yes", "--add-path", "--no-mcp"], {
+			IDU_PI_INSTALL_SHIM_DIR: shimDir,
+			IDU_PI_INSTALL_TEST_SKIP_COMMANDS: "1",
+			IDU_PI_INSTALL_TEST_USER_PATH_FILE: userPathFile,
+			PATH: [shimDir, process.env.PATH ?? ""].join(delimiter),
+		});
+		assert.match(output, /PATH ya contiene/u);
+		assert.equal(existsSync(userPathFile), false);
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}
@@ -222,16 +268,14 @@ test("scripts no contienen bootstrap remoto opaco ni irm iex", () => {
 	assert.match(combined, /--ignore-scripts/u);
 });
 
-test("docs mencionan que no se modifica PATH automáticamente", () => {
+test("docs mencionan que PATH requiere confirmación o --add-path", () => {
 	const docs = [
 		readFileSync(quickstartDoc, "utf8"),
 		readFileSync(join(repoRoot, "docs", "installer.md"), "utf8"),
 		readFileSync(join(repoRoot, "README.md"), "utf8"),
 	].join("\n");
-	assert.match(
-		docs,
-		/No modifiqué PATH automáticamente|no modifica `PATH` automáticamente/u,
-	);
+	assert.match(docs, /--add-path|-AddPath/u);
+	assert.match(docs, /PATH.*confirm/u);
 });
 
 test("scripts y quickstart están versionables según gitignore", () => {

@@ -95,16 +95,38 @@ export function buildCliHomeStatus(
 	};
 }
 
+const ANSI_RESET = "\x1b[0m";
+const ANSI_DARK_PURPLE = "\x1b[35m";
+const ANSI_BRIGHT_PURPLE = "\x1b[95m";
+const ANSI_DIM = "\x1b[2m";
+
 export function formatIduLogo(): string {
-	return [
-		"██╗██████╗ ██╗   ██╗       ██████╗  ██╗",
-		"██║██╔══██╗██║   ██║       ██╔═██╗ ██║",
-		"██║██║  ██║██║   ██║████╗██████╝  ██║",
-		"██║██║  ██║██║   ██║╚═══╝██╔═══╝  ██║",
-		"██║██████╔╝╚██████╔╝      ██║       ██║",
-		"╚═╝╚═════╝  ╚═════╝        ╚═╝       ╚═╝",
-		"IDU-PI",
-	].join("\n");
+	return colorBrand(
+		[
+			"██╗██████╗ ██╗   ██╗      ██████╗  ██╗",
+			"██║██╔══██╗██║   ██║      ██╔══██╗ ██║",
+			"██║██║  ██║██║   ██║████╗██████╔╝ ██║",
+			"██║██║  ██║██║   ██║╚═══╝██╔═══╝  ██║",
+			"██║██████╔╝╚██████╔╝     ██║      ██║",
+			"╚═╝╚═════╝  ╚═════╝      ╚═╝      ╚═╝",
+			"IDU-Pi",
+		].join("\n"),
+	);
+}
+
+function colorBrand(text: string): string {
+	return text
+		.split("\n")
+		.map((line, index) => {
+			const color =
+				index < 2
+					? ANSI_BRIGHT_PURPLE
+					: index < 5
+						? ANSI_DARK_PURPLE
+						: ANSI_DIM;
+			return `${color}${line}${ANSI_RESET}`;
+		})
+		.join("\n");
 }
 
 export function formatMainMenu(status: CliHomeStatus): string {
@@ -116,8 +138,9 @@ export function formatMainMenu(status: CliHomeStatus): string {
 		"1. Instalación",
 		"2. Estado",
 		"3. Proyecto actual",
-		"4. Ayuda PATH",
-		"5. Exit",
+		"4. Configuración",
+		"5. Ayuda PATH",
+		"6. Exit",
 	].join("\n");
 }
 
@@ -130,7 +153,8 @@ export function formatInstallationMenu(): string {
 		"3. Instalar/actualizar comandos slash globales",
 		"4. Enrolar proyecto actual",
 		"5. Activar supervisor en este proyecto",
-		"6. Volver",
+		"6. ← Volver",
+		"7. Exit",
 	].join("\n");
 }
 
@@ -149,6 +173,27 @@ export function formatCliSystemStatus(status: CliHomeStatus): string {
 		`Extensión Pi: ${status.commandExtensionInstalled ? "presente" : "ausente"}`,
 		`pnpm global bin en PATH: ${status.globalInstall.pnpmGlobalBinInPath ? "sí" : "no"}`,
 		`recommended action: ${status.globalInstall.recommendedAction ?? "ninguna"}`,
+	].join("\n");
+}
+
+export function formatCliConfigurationStatus(status: CliHomeStatus): string {
+	return [
+		"Configuración Idu-pi",
+		"",
+		`package root: ${status.packageRoot}`,
+		`Pi agent dir: ${status.agentDir}`,
+		`MCP config: ${join(status.agentDir, "mcp.json")}`,
+		`Extensión slash Pi: ${join(status.agentDir, "extensions", "idu-pi-commands.ts")}`,
+		`Registry proyectos: ${resolveIduRegistryPath()}`,
+		`Shim idu-pi recomendado: ${status.globalInstall.pnpmGlobalBin ?? "unknown"}`,
+		`MCP idu-pi: ${status.mcpInstalled ? "presente" : "ausente"}`,
+		`Extensión Pi: ${status.commandExtensionInstalled ? "presente" : "ausente"}`,
+		"",
+		"Comandos de configuración:",
+		"- idu-pi setup status",
+		"- idu-pi setup mcp-init",
+		"- idu-pi setup path-help",
+		"- idu-pi project status .",
 	].join("\n");
 }
 
@@ -200,7 +245,7 @@ export function formatCliHome(status: CliHomeStatus): string {
 		"1. Activar supervisor: idu-pi idu",
 		"2. Preparar proyecto: idu-pi prepare",
 		"3. Ver estado: idu-pi project status .",
-		"4. Setup: idu-pi setup status",
+		"4. Configuración: idu-pi setup status",
 		"",
 		"Comandos recomendados:",
 		status.mcpInstalled ? "- MCP ya está instalado" : "- idu-pi setup mcp-init",

@@ -41,7 +41,7 @@ if (!approved) {
 	process.exit(0);
 }
 
-runInstaller(plan);
+await runInstaller(plan);
 
 function parseArgs(argv) {
 	const parsed = {
@@ -50,6 +50,7 @@ function parseArgs(argv) {
 		noMcp: false,
 		noShim: false,
 		openWizard: false,
+		addPath: false,
 		help: false,
 	};
 	for (const arg of argv) {
@@ -58,6 +59,7 @@ function parseArgs(argv) {
 		else if (arg === "--no-mcp") parsed.noMcp = true;
 		else if (arg === "--no-shim") parsed.noShim = true;
 		else if (arg === "--open-wizard") parsed.openWizard = true;
+		else if (arg === "--add-path") parsed.addPath = true;
 		else if (arg === "--help" || arg === "-h") parsed.help = true;
 		else throw new Error(`Flag no reconocido: ${arg}`);
 	}
@@ -69,14 +71,15 @@ function formatHelp() {
 		"Idu-pi secure bootstrap installer",
 		"",
 		"Uso:",
-		"  node scripts/install.mjs [--yes] [--dry-run] [--no-mcp] [--no-shim] [--open-wizard]",
+		"  node scripts/install.mjs [--yes] [--dry-run] [--no-mcp] [--no-shim] [--open-wizard] [--add-path]",
 		"",
 		"Flags:",
-		"  --yes          acepta confirmaciones del instalador; no modifica PATH automáticamente",
+		"  --yes          acepta confirmaciones del instalador; para PATH requiere --add-path",
 		"  --dry-run      muestra plan, archivos y comandos sin escribir",
 		"  --no-mcp       omite setup mcp-init",
 		"  --no-shim      omite shim local idu-pi",
 		"  --open-wizard  abre node dist/src/cli.js al final",
+		"  --add-path     agrega el shim al PATH de usuario si falta; con --yes no pregunta",
 		"  --help         muestra esta ayuda",
 	].join("\n");
 }
@@ -226,6 +229,7 @@ function formatInstaller(detection, plan) {
 		`- Pi agent dir: ${detection.agentDir}`,
 		`- MCP config: ${detection.mcpPresent ? "present" : "missing"}`,
 		`- idu-pi global: ${detection.iduGlobal.found ? "present" : "missing"}`,
+		`- shim PATH: ${detection.shimInPath ? "present" : "missing"}`,
 		"",
 		"Plan:",
 		...plan.map(
@@ -244,7 +248,9 @@ function formatInstaller(detection, plan) {
 		"- Usa pnpm-lock.yaml con --frozen-lockfile --ignore-scripts; pnpm puede descargar paquetes fijados desde el registry/cache configurado.",
 		"- No ejecuta Telegram ni AgentLabs.",
 		"- No enrola proyectos ni crea Project Core.",
-		"- No modifica PATH automáticamente.",
+		args.addPath
+			? "- PATH de usuario: se actualizará sólo porque pasaste --add-path."
+			: "- PATH de usuario: sólo se modifica si lo confirmás en modo interactivo.",
 		...(detection.node.found
 			? []
 			: ["", "Instalá Node.js LTS y volvé a ejecutar este instalador."]),
@@ -308,7 +314,25 @@ async function askContinue() {
 	}
 }
 
-function runInstaller(plan) {
+async function askAddPath(shimDir) {
+	if (args.addPath) return true;
+	if (!process.stdin.isTTY) return false;
+	const rl = createInterface({ input: process.stdin, output: process.stdout });
+	try {
+		const answer = (
+			await rl.question(
+				`La carpeta del shim no está en PATH:\n${shimDir}\n¿Querés agregarla al PATH de usuario? (s/N) `,
+			)
+		)
+			.trim()
+			.toLowerCase();
+		return ["s", "si", "sí", "y", "yes"].includes(answer);
+	} finally {
+		rl.close();
+	}
+}
+
+async function runInstaller(plan) {
 	for (const step of plan) {
 		if (!step.enabled) {
 			console.log(step.skipReason);
@@ -323,14 +347,77 @@ function runInstaller(plan) {
 		if (!step.command) continue;
 		runCommand(step.command);
 	}
+	if (args.noShim) {
+		console.log("PATH no modificado porque --no-shim omite el shim local.");
+		return;
+	}
+	const state = detectInstallState();
+	if (state.shimInPath) {
+		console.log(`PATH ya contiene: ${state.shimDir}`);
+		console.log("PATH no modificado porque ya estaba configurado.");
+		return;
+	}
+	if (await askAddPath(state.shimDir)) {
+		addShimToUserPath(state.shimDir);
+		console.log("PATH de usuario actualizado.");
+		console.log("Cerrá y abrí una terminal nueva, luego ejecutá: idu-pi");
+		return;
+	}
 	console.log("No modifiqué PATH automáticamente.");
-	if (!detectInstallState().shimInPath) {
-		const shimDir = detectInstallState().shimDir;
-		console.log(`Agrega esta ruta al PATH: ${shimDir}`);
-		console.log(
-			`Mientras tanto usá: node ${join(packageRoot, "dist", "src", "cli.js")}`,
+	console.log(`Agrega esta ruta al PATH: ${state.shimDir}`);
+	console.log(
+		`Mientras tanto usá: node ${join(packageRoot, "dist", "src", "cli.js")}`,
+	);
+}
+
+function addShimToUserPath(shimDir) {
+	const markerFile = process.env.IDU_PI_INSTALL_TEST_USER_PATH_FILE;
+	if (markerFile) {
+		const current = process.env.IDU_PI_INSTALL_TEST_USER_PATH ?? "";
+		const next = appendPathEntry(current, shimDir);
+		writeFileSync(markerFile, next, "utf8");
+		return;
+	}
+	if (process.platform !== "win32") {
+		throw new Error(
+			"La actualización automática de PATH sólo está implementada para Windows.",
 		);
 	}
+	const current = execFileSync(
+		"powershell",
+		[
+			"-NoProfile",
+			"-Command",
+			"[Environment]::GetEnvironmentVariable('Path', 'User')",
+		],
+		{ encoding: "utf8" },
+	).trim();
+	const next = appendPathEntry(current, shimDir);
+	if (next === current) return;
+	execFileSync(
+		"powershell",
+		[
+			"-NoProfile",
+			"-Command",
+			"[Environment]::SetEnvironmentVariable('Path', $env:IDU_PI_INSTALL_NEXT_USER_PATH, 'User')",
+		],
+		{
+			env: { ...process.env, IDU_PI_INSTALL_NEXT_USER_PATH: next },
+			stdio: ["ignore", "ignore", "pipe"],
+		},
+	);
+}
+
+function appendPathEntry(current, entry) {
+	const entries = current
+		.split(delimiter)
+		.map((value) => value.trim())
+		.filter(Boolean);
+	const normalizedEntry = normalizePath(entry);
+	if (entries.some((value) => normalizePath(value) === normalizedEntry)) {
+		return current;
+	}
+	return [...entries, entry].join(delimiter);
 }
 
 function runCommand(commandTuple) {

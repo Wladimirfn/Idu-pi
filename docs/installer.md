@@ -78,11 +78,12 @@ El instalador muestra versión, Node, Git, Corepack, pnpm, Pi agent dir, MCP con
 Flags:
 
 ```text
---yes          acepta confirmaciones; no modifica PATH automáticamente
+--yes          acepta confirmaciones; para PATH requiere --add-path
 --dry-run      muestra plan, comandos y archivos sin escribir
 --no-mcp       omite setup mcp-init
 --no-shim      omite shim idu-pi local
 --open-wizard  abre node dist/src/cli.js al final
+--add-path     agrega el shim al PATH de usuario si falta; con --yes no pregunta
 --help         muestra ayuda
 ```
 
@@ -101,14 +102,22 @@ El shim local se crea en:
 C:\Users\<user>\AppData\Local\idu-pi\bin
 ```
 
-Si esa carpeta ya está en `PATH`, `idu-pi` queda disponible. Si no, el instalador imprime:
+Si esa carpeta ya está en `PATH`, `idu-pi` queda disponible y el instalador informa:
 
 ```text
-Agrega esta ruta al PATH:
-C:\Users\<user>\AppData\Local\idu-pi\bin
-
-No modifiqué PATH automáticamente.
+PATH ya contiene: C:\Users\<user>\AppData\Local\idu-pi\bin
+PATH no modificado porque ya estaba configurado.
 ```
+
+Si falta, el instalador pregunta si querés agregarla al `PATH` de usuario. Para aceptarlo de forma explícita sin segunda pregunta:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/install.ps1 -Yes -AddPath
+# o
+node scripts/install.mjs --yes --add-path
+```
+
+Luego cerrá y abrí una terminal nueva antes de usar `idu-pi`.
 
 Si un shim existente cambiaría, crea backup antes de sobrescribir:
 
@@ -137,6 +146,7 @@ Muestra:
 - supervisor `active/inactive` cuando hay estado local;
 - estado básico de Project Core;
 - comandos recomendados;
+- pantalla de configuración con package root, Pi agent dir, MCP config, extensión slash y registry;
 - ayuda si el bin global de pnpm no está en `PATH`.
 
 Si stdin/stdout son interactivos, muestra el logo y menú principal:
@@ -144,8 +154,9 @@ Si stdin/stdout son interactivos, muestra el logo y menú principal:
 1. Instalación
 2. Estado
 3. Proyecto actual
-4. Ayuda PATH
-5. Exit
+4. Configuración
+5. Ayuda PATH
+6. Exit
 
 La opción **Instalación** abre un submenú seguro:
 
@@ -311,6 +322,6 @@ Idu-pi no modifica `PATH` automáticamente.
 
 El home y el wizard no ejecutan acciones destructivas por mostrarse. Sólo escriben si elegís explícitamente una acción como instalar MCP o enrolar proyecto, y el menú interactivo pide confirmación antes de esas escrituras.
 
-El instalador no ejecuta bootstrap remoto opaco ni scripts de dependencias: usa `pnpm-lock.yaml` con `--frozen-lockfile --ignore-scripts`; pnpm puede descargar paquetes fijados desde el registry/cache configurado. No usa `irm | iex`, no modifica `PATH` automáticamente, no lee ni muestra secretos de `.env`, no ejecuta Telegram, AgentLabs, IA externa, scans pesados, enrolamiento de proyectos, Project Core, commits ni pushes. Sólo configura adapters globales cuando lo confirmás explícitamente.
+El instalador no ejecuta bootstrap remoto opaco ni scripts de dependencias: usa `pnpm-lock.yaml` con `--frozen-lockfile --ignore-scripts`; pnpm puede descargar paquetes fijados desde el registry/cache configurado. No usa `irm | iex`, no modifica `PATH` sin confirmación interactiva o `--add-path`, no lee ni muestra secretos de `.env`, no ejecuta Telegram, AgentLabs, IA externa, scans pesados, enrolamiento de proyectos, Project Core, commits ni pushes. Sólo configura adapters globales cuando lo confirmás explícitamente.
 
 Telegram es un adapter, no el núcleo. MCP también es un adapter. El núcleo es Idu-pi Core.

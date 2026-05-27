@@ -2,7 +2,7 @@
 
 Idu-pi es un cerebelo supervisor de proyecto: ayuda a definir el plano, vigila la obra y coordina laboratorios de revisión sin reemplazar la decisión humana.
 
-Telegram no es Idu-pi. Telegram es una interfaz. El CLI es otra interfaz. El núcleo real es el supervisor que lee contexto del proyecto, aplica guardrails, registra reportes y prepara decisiones revisables.
+Idu-pi se usa principalmente desde CLI. Telegram es una interfaz remota opcional para operar ese mismo flujo cuando no estás en la terminal: comandos, estado y confirmaciones. El núcleo real es el supervisor que lee contexto del proyecto, aplica guardrails, registra reportes y prepara decisiones revisables.
 
 ## Qué problema resuelve
 
@@ -18,7 +18,7 @@ Sirve para responder preguntas como:
 
 ## Qué NO es
 
-- No es un bot de Telegram como núcleo del sistema.
+- No es un bot de Telegram como núcleo del sistema; Telegram es una interfaz remota opcional del flujo CLI/supervisor.
 - No es una autonomía que aplica cambios críticos sola.
 - No reemplaza al humano ni al orquestador.
 - No convierte propuestas de IA en verdad automáticamente.
@@ -42,7 +42,7 @@ Nada crítico se aplica sin confirmación humana.
 ```text
 Humano ↔ Orquestador ↔ Idu-pi Supervisor ↔ AgentLabs ↔ reports / DB / memoria
                          ↑
-                  CLI / Telegram / futuras UI
+                  CLI / Telegram remoto / futuras UI
 ```
 
 Roles:
@@ -61,14 +61,14 @@ Idu-pi puede usarse por varias superficies:
 
 | Interfaz | Para qué sirve |
 | --- | --- |
-| CLI | Uso local, scripts, validación rápida, integración con Pi. |
-| Telegram | Operación cómoda desde chat, comandos slash, estado y confirmaciones. |
+| CLI | Superficie principal para uso local, scripts, validación rápida e integración con Pi. |
+| Telegram | Interfaz remota opcional para usar comandos, estado y confirmaciones del mismo supervisor sin estar en la terminal. |
 | MCP Server | Herramientas stdio para que el orquestador consulte Idu-pi desde cualquier proyecto. |
 | Futuras UI/dashboard | Visualizar cola, reportes, propuestas y estado del supervisor. |
 
 Más detalle: [MCP Server](docs/mcp-server.md).
 
-Las interfaces llaman al core. El core no depende de Telegram.
+Todas las interfaces llaman al mismo core. El core no depende de Telegram.
 
 ## Instalación / configuración
 
@@ -88,7 +88,7 @@ powershell -ExecutionPolicy Bypass -File scripts/install.ps1 -DryRun
 node scripts/install.mjs --dry-run
 ```
 
-El instalador no ejecuta bootstrap remoto opaco ni scripts de dependencias: usa `pnpm-lock.yaml` con `--frozen-lockfile --ignore-scripts`; pnpm puede descargar paquetes fijados desde el registry/cache configurado. No ejecuta Telegram/AgentLabs, no enrola proyectos y no modifica `PATH` automáticamente. Si crea el shim local, informa la ruta a agregar al `PATH` y dice: "No modifiqué PATH automáticamente." Guía: [Instalación rápida segura](docs/quickstart-install.md).
+El instalador no ejecuta bootstrap remoto opaco ni scripts de dependencias: usa `pnpm-lock.yaml` con `--frozen-lockfile --ignore-scripts`; pnpm puede descargar paquetes fijados desde el registry/cache configurado. No ejecuta Telegram/AgentLabs ni enrola proyectos. Si crea el shim local y falta en `PATH`, pregunta antes de agregarlo al `PATH` de usuario; para aceptarlo sin segunda pregunta usá `-Yes -AddPath`. Guía: [Instalación rápida segura](docs/quickstart-install.md).
 
 Para entrar sin memorizar comandos después de instalar:
 
@@ -110,8 +110,9 @@ El home muestra logo, estado del sistema, MCP, proyecto actual, supervisor, ruta
 1. Instalación
 2. Estado
 3. Proyecto actual
-4. Ayuda PATH
-5. Exit
+4. Configuración
+5. Ayuda PATH
+6. Exit
 ```
 
 Si no es interactivo, imprime el resumen y sale sin escribir archivos.

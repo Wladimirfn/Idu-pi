@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { randomUUID } from "node:crypto";
+import { emitKeypressEvents } from "node:readline";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
@@ -13,8 +14,10 @@ import {
 	applyPackageEnvDefaults,
 	buildCliHomeStatus,
 	formatCliHome,
+	formatCliConfigurationStatus,
 	formatCliProjectStatus,
 	formatCliSystemStatus,
+	formatIduLogo,
 	formatInstallationMenu,
 	formatMainMenu,
 	formatSetupPathHelp,
@@ -1858,16 +1861,223 @@ function shouldRunInteractiveHome(args: string[]): boolean {
 type CliQuestion = (message: string) => Promise<string>;
 type CliPrint = (message: string) => void;
 
+type MenuOption = { label: string; value: string };
+
+const ANSI_RESET = "\x1b[0m";
+const ANSI_CLEAR = "\x1b[H\x1b[J";
+const ANSI_ALT_SCREEN_ON = "\x1b[?1049h";
+const ANSI_ALT_SCREEN_OFF = "\x1b[?1049l";
+const ANSI_HIDE_CURSOR = "\x1b[?25l";
+const ANSI_SHOW_CURSOR = "\x1b[?25h";
+const ANSI_WHITE_BG = "\x1b[47m";
+const ANSI_DARK_PURPLE = "\x1b[35m";
+const ANSI_DIM = "\x1b[2m";
+const ANSI_PANEL_WIDTH = 72;
+
 export async function runInteractiveHome(): Promise<string> {
+	while (true) {
+		const status = buildCliHomeStatus({
+			argvPath: process.argv[1],
+			stdinInteractive: true,
+		});
+		const choice = await selectMenu("", mainMenuOptions(), status);
+		if (choice === "exit") return "Salida sin cambios.";
+		if (choice === "install") {
+			const result = await runInstallationMenuTui();
+			if (result === "__back") continue;
+			return result;
+		}
+		if (choice === "status") {
+			const result = await showTextView(
+				"Estado",
+				formatCliSystemStatus(status),
+			);
+			if (result === "back") continue;
+			return "Salida sin cambios.";
+		}
+		if (choice === "project") {
+			const result = await showTextView(
+				"Proyecto actual",
+				formatCliProjectStatus(status),
+			);
+			if (result === "back") continue;
+			return "Salida sin cambios.";
+		}
+		if (choice === "config") {
+			const result = await showTextView(
+				"Configuración",
+				formatCliConfigurationStatus(status),
+			);
+			if (result === "back") continue;
+			return "Salida sin cambios.";
+		}
+		if (choice === "path") {
+			const result = await showTextView("Ayuda PATH", formatSetupPathHelp());
+			if (result === "back") continue;
+			return "Salida sin cambios.";
+		}
+		return "Salida sin cambios.";
+	}
+}
+
+function mainMenuOptions(): MenuOption[] {
+	return [
+		{ label: "Instalación", value: "install" },
+		{ label: "Estado", value: "status" },
+		{ label: "Proyecto actual", value: "project" },
+		{ label: "Configuración", value: "config" },
+		{ label: "Ayuda PATH", value: "path" },
+		{ label: "Exit", value: "exit" },
+	];
+}
+
+function installationMenuOptions(): MenuOption[] {
+	return [
+		{ label: "Verificar sistema", value: "1" },
+		{ label: "Instalar/actualizar MCP en Pi", value: "2" },
+		{ label: "Instalar/actualizar comandos slash globales", value: "3" },
+		{ label: "Enrolar proyecto actual", value: "4" },
+		{ label: "Activar supervisor en este proyecto", value: "5" },
+		{ label: "← Volver", value: "back" },
+		{ label: "Exit", value: "exit" },
+	];
+}
+
+async function runInstallationMenuTui(): Promise<string> {
+	const choice = await selectMenu("Instalación", installationMenuOptions());
+	if (choice === "back") return "__back";
+	if (choice === "exit") return "Salida sin cambios.";
 	const rl = createInterface({ input: process.stdin, output: process.stdout });
 	try {
-		return await runInteractiveHomeWithQuestion(
-			(message) => rl.question(message),
-			(message) => console.log(message),
+		const result = await handleInstallationChoice(choice, (message: string) =>
+			rl.question(message),
 		);
+		await showTextView("Resultado", result);
+		return "__back";
 	} finally {
 		rl.close();
 	}
+}
+
+async function selectMenu(
+	title: string,
+	options: MenuOption[],
+	status?: ReturnType<typeof buildCliHomeStatus>,
+	content?: string,
+): Promise<string> {
+	let selected = 0;
+	emitKeypressEvents(process.stdin);
+	const rawMode = process.stdin.isTTY;
+	if (rawMode) process.stdin.setRawMode(true);
+	process.stdin.resume();
+	process.stdout.write(`${ANSI_ALT_SCREEN_ON}${ANSI_HIDE_CURSOR}`);
+	const render = () => {
+		process.stdout.write(ANSI_CLEAR);
+		const width = ANSI_PANEL_WIDTH;
+		const pageTitle = title || "Menú principal";
+		const contentRows = content
+			? [
+					midBorder(width),
+					...contentLines(content, width).map((line) => panelLine(line, width)),
+				]
+			: [];
+		const header = [
+			...(status
+				? [formatIduLogo(), "", `version: ${status.version}`, ""]
+				: []),
+			topBorder(pageTitle, width),
+			panelLine("↑/↓ navegar · Enter elegir · Esc/q salir", width, ANSI_DIM),
+			...contentRows,
+			midBorder(width),
+		].join("\n");
+		const rows = options
+			.map((option, index) => {
+				const label = option.label.padEnd(width - 4, " ");
+				return index === selected
+					? `${ANSI_DARK_PURPLE}│${ANSI_RESET} ${ANSI_WHITE_BG}${ANSI_DARK_PURPLE}❯ ${label}${ANSI_RESET} ${ANSI_DARK_PURPLE}│${ANSI_RESET}`
+					: `${ANSI_DARK_PURPLE}│${ANSI_RESET}   ${label} ${ANSI_DARK_PURPLE}│${ANSI_RESET}`;
+			})
+			.join("\n");
+		const footer = bottomBorder(width);
+		process.stdout.write(`${header}\n${rows}\n${footer}`);
+	};
+	try {
+		render();
+		return await new Promise<string>((resolve) => {
+			const onKeypress = (_chunk: string, key: { name?: string }) => {
+				if (key.name === "up") {
+					selected = (selected - 1 + options.length) % options.length;
+					render();
+					return;
+				}
+				if (key.name === "down") {
+					selected = (selected + 1) % options.length;
+					render();
+					return;
+				}
+				if (key.name === "return") {
+					resolve(options[selected]?.value ?? options[0].value);
+					return;
+				}
+				if (key.name === "escape" || key.name === "q") resolve("exit");
+			};
+			process.stdin.on("keypress", onKeypress);
+		}).finally(() => process.stdin.removeAllListeners("keypress"));
+	} finally {
+		if (rawMode) process.stdin.setRawMode(false);
+		process.stdout.write(`${ANSI_SHOW_CURSOR}${ANSI_ALT_SCREEN_OFF}`);
+	}
+}
+
+async function showTextView(
+	title: string,
+	content: string,
+): Promise<"back" | "exit"> {
+	const choice = await selectMenu(
+		title,
+		[
+			{ label: "← Volver", value: "back" },
+			{ label: "Exit", value: "exit" },
+		],
+		undefined,
+		content,
+	);
+	return choice === "back" ? "back" : "exit";
+}
+
+function topBorder(title: string, width: number): string {
+	const safeTitle = ` ${title} `;
+	const right = Math.max(width - safeTitle.length - 1, 1);
+	return `${ANSI_DARK_PURPLE}╭─${safeTitle}${"─".repeat(right)}╮${ANSI_RESET}`;
+}
+
+function midBorder(width: number): string {
+	return `${ANSI_DARK_PURPLE}├${"─".repeat(width)}┤${ANSI_RESET}`;
+}
+
+function bottomBorder(width: number): string {
+	return `${ANSI_DARK_PURPLE}╰${"─".repeat(width)}╯${ANSI_RESET}`;
+}
+
+function panelLine(text: string, width: number, color = ""): string {
+	const clean = text.replace(/\r/gu, "");
+	const clipped =
+		clean.length > width - 4 ? `${clean.slice(0, width - 5)}…` : clean;
+	const padded = clipped.padEnd(width - 2, " ");
+	return `${ANSI_DARK_PURPLE}│${ANSI_RESET} ${color}${padded}${ANSI_RESET} ${ANSI_DARK_PURPLE}│${ANSI_RESET}`;
+}
+
+function contentLines(content: string, width: number): string[] {
+	const max = width - 2;
+	const lines = content.replace(/\r/gu, "").split("\n");
+	return lines.flatMap((line) => {
+		if (line.length <= max) return [line];
+		const chunks: string[] = [];
+		for (let index = 0; index < line.length; index += max) {
+			chunks.push(line.slice(index, index + max));
+		}
+		return chunks;
+	});
 }
 
 export async function runInteractiveHomeWithQuestion(
@@ -1879,13 +2089,14 @@ export async function runInteractiveHomeWithQuestion(
 		stdinInteractive: true,
 	});
 	print(formatMainMenu(status));
-	const choice = (await question("\nElegí una opción [1-5]: ")).trim();
-	if (choice === "5" || /^exit|salir$/iu.test(choice))
+	const choice = (await question("\nElegí una opción [1-6]: ")).trim();
+	if (choice === "6" || /^exit|salir$/iu.test(choice))
 		return "Salida sin cambios.";
 	if (choice === "1") return runInstallationMenu(question, print);
 	if (choice === "2") return formatCliSystemStatus(status);
 	if (choice === "3") return formatCliProjectStatus(status);
-	if (choice === "4") return formatSetupPathHelp();
+	if (choice === "4") return formatCliConfigurationStatus(status);
+	if (choice === "5") return formatSetupPathHelp();
 	return [
 		"Opción no reconocida. No ejecuté acciones.",
 		"Usá `idu-pi` o `idu-pi setup wizard`.",
@@ -1897,8 +2108,17 @@ async function runInstallationMenu(
 	print: CliPrint,
 ): Promise<string> {
 	print(formatInstallationMenu());
-	const choice = (await question("\nElegí una opción [1-6]: ")).trim();
+	const choice = (await question("\nElegí una opción [1-7]: ")).trim();
+	return handleInstallationChoice(choice, question);
+}
+
+async function handleInstallationChoice(
+	choice: string,
+	question: CliQuestion,
+): Promise<string> {
 	if (choice === "6" || /^volver$/iu.test(choice)) return "Volver sin cambios.";
+	if (choice === "7" || /^exit|salir$/iu.test(choice))
+		return "Salida sin cambios.";
 	if (choice === "1") return handleSetupCommand(["status"]);
 	if (choice === "2") {
 		if (

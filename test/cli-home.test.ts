@@ -14,6 +14,7 @@ import {
 	applyPackageEnvDefaults,
 	buildCliHomeStatus,
 	formatCliHome,
+	formatCliConfigurationStatus,
 	formatCliProjectStatus,
 	formatCliSystemStatus,
 	formatIduLogo,
@@ -48,8 +49,10 @@ function restoreEnv(snapshot: EnvSnapshot): void {
 	}
 }
 
-test("formatIduLogo contains recognizable IDU-PI mark", () => {
-	assert.match(formatIduLogo(), /IDU-PI/u);
+test("formatIduLogo contains recognizable IDU-Pi mark", () => {
+	assert.match(formatIduLogo(), /IDU-Pi/u);
+	assert.match(formatIduLogo(), /\x1b\[95m/u);
+	assert.match(formatIduLogo(), /\x1b\[35m/u);
 });
 
 test("idu-pi without args shows home", async () => {
@@ -194,7 +197,8 @@ test("main and installation menus render first-run options", () => {
 		version: "0.1.1",
 	});
 	assert.match(formatMainMenu(status), /1\. Instalación/u);
-	assert.match(formatMainMenu(status), /5\. Exit/u);
+	assert.match(formatMainMenu(status), /4\. Configuración/u);
+	assert.match(formatMainMenu(status), /6\. Exit/u);
 	assert.match(formatInstallationMenu(), /Instalar\/actualizar MCP en Pi/u);
 	assert.match(
 		formatInstallationMenu(),
@@ -225,6 +229,10 @@ test("system status renders MCP Pi and PATH diagnostics", () => {
 	assert.match(text, /MCP idu-pi: presente/u);
 	assert.match(text, /Extensión Pi: presente/u);
 	assert.match(text, /pnpm global bin en PATH: no/u);
+	const config = formatCliConfigurationStatus(status);
+	assert.match(config, /Configuración Idu-pi/u);
+	assert.match(config, /MCP config:/u);
+	assert.match(config, /Registry proyectos:/u);
 	rmSync(root, { recursive: true, force: true });
 });
 
