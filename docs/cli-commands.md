@@ -23,11 +23,11 @@ Ver [MCP Server](mcp-server.md).
 
 | Comando | Uso |
 | --- | --- |
-| `idu-pi` | Muestra home CLI; en terminal interactiva abre menú seguro. |
+| `idu-pi` | Muestra home CLI; en terminal interactiva abre wizard visual con Instalación/Estado/Proyecto/PATH/Exit. |
 | `idu-pi home` | Muestra el mismo home CLI. |
 | `idu-pi setup` | Muestra estado de sistema/config y acciones recomendadas. |
 | `idu-pi setup status` | Igual que `setup`. |
-| `idu-pi setup wizard` | Abre/describe el asistente; en modo no interactivo no espera input. |
+| `idu-pi setup wizard` | Abre el asistente interactivo cuando hay TTY; en modo no interactivo muestra instrucciones y no espera input. |
 | `idu-pi setup path-help` | Explica cómo arreglar `PNPM_HOME`/bin global fuera de `PATH`. |
 | `idu-pi setup mcp-print` | Imprime config MCP sin escribir. |
 | `idu-pi setup mcp-init` | Instala `idu-pi` en `mcp.json` y comandos slash globales de Pi. |

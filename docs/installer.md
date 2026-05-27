@@ -69,18 +69,24 @@ Muestra:
 - comandos recomendados;
 - ayuda si el bin global de pnpm no está en `PATH`.
 
-Si stdin/stdout son interactivos, muestra menú numerado:
+Si stdin/stdout son interactivos, muestra el logo y menú principal:
 
-1. Setup status
-2. Instalar/actualizar MCP
-3. Enrolar proyecto actual
-4. Ver estado del proyecto actual
-5. Activar Idu-pi
-6. Preparar proyecto
-7. Ver comandos útiles
-8. Salir
+1. Instalación
+2. Estado
+3. Proyecto actual
+4. Ayuda PATH
+5. Exit
 
-Si stdin no es interactivo, imprime resumen y termina sin esperar input.
+La opción **Instalación** abre un submenú seguro:
+
+1. Verificar sistema
+2. Instalar/actualizar MCP en Pi
+3. Instalar/actualizar comandos slash globales
+4. Enrolar proyecto actual
+5. Activar supervisor en este proyecto
+6. Volver
+
+Las opciones que escriben archivos o activan guardrails piden confirmación antes de ejecutar. Si stdin no es interactivo, imprime resumen y termina sin esperar input ni escribir archivos.
 
 ## Setup status y wizard
 
@@ -102,7 +108,7 @@ Muestra:
 - si MCP `idu-pi` parece configurado;
 - acciones recomendadas.
 
-`idu-pi setup` sin subcomando equivale a `setup status`. `idu-pi setup wizard` en modo no interactivo no espera input ni escribe archivos.
+`idu-pi setup` sin subcomando equivale a `setup status`. `idu-pi setup wizard` abre el mismo wizard si la terminal es interactiva; en modo no interactivo muestra instrucciones, no espera input y no escribe archivos.
 
 ## Montar MCP y comandos Pi
 
@@ -218,7 +224,12 @@ usá:
 idu-pi setup path-help
 ```
 
-La ayuda explica:
+La ayuda explica dos entradas:
+
+- primera vez desde el repo: `corepack pnpm cli` o `node dist/src/cli.js`;
+- uso normal después del link global: `idu-pi`.
+
+También muestra cómo instalar el bin global:
 
 1. `corepack pnpm setup`
 2. cerrar y abrir una terminal nueva

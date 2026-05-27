@@ -10,6 +10,7 @@ import {
 	projectInstallStatus,
 	resolvePiAgentDir,
 	type GlobalIduInstallStatus,
+	type ToolStatus,
 } from "./idu-installer.js";
 import { resolveProjectStatePaths } from "./project-state.js";
 import { slugifyProjectId } from "./projects.js";
@@ -36,15 +37,24 @@ export type CliHomeProjectStatus = {
 	reportsDir?: string;
 	supervisor: "active" | "inactive" | "unknown";
 	projectCore: "confirmed" | "pending" | "missing" | "unknown";
+	constitution: "confirmed" | "draft" | "missing" | "unknown";
+	allowedRoot: boolean | "unknown";
+	recommendedNext: "enroll" | "bootstrap" | "idu" | "prepare";
 	warning?: string;
 };
 
 export type CliHomeStatus = {
 	version: string;
 	cwd: string;
+	packageRoot: string;
+	agentDir: string;
+	node: ToolStatus;
+	git: ToolStatus;
+	pnpm: ToolStatus;
 	nodeFound: boolean;
 	gitFound: boolean;
 	mcpInstalled: boolean;
+	commandExtensionInstalled: boolean;
 	globalInstall: GlobalIduInstallStatus;
 	project: CliHomeProjectStatus;
 	stdinInteractive: boolean;
@@ -59,6 +69,9 @@ export function buildCliHomeStatus(
 	const tools = detectTools({ env, runner: options.runner });
 	const agentDir = resolvePiAgentDir({ env });
 	const mcpInstalled = mcpConfigHasIdu(join(agentDir, "mcp.json"), exists);
+	const commandExtensionInstalled = exists(
+		join(agentDir, "extensions", "idu-pi-commands.ts"),
+	);
 	const globalInstall = detectGlobalIduInstall({
 		env,
 		argvPath: options.argvPath,
@@ -67,18 +80,101 @@ export function buildCliHomeStatus(
 	return {
 		version: options.version ?? readPackageVersion(),
 		cwd,
+		packageRoot: resolveCliPackageRoot(),
+		agentDir,
+		node: tools.node,
+		git: tools.git,
+		pnpm: tools.packageManagers.pnpm,
 		nodeFound: tools.node.found,
 		gitFound: tools.git.found,
 		mcpInstalled,
+		commandExtensionInstalled,
 		globalInstall,
 		project: detectHomeProjectStatus({ ...options, cwd, env, exists }),
 		stdinInteractive: options.stdinInteractive ?? Boolean(process.stdin.isTTY),
 	};
 }
 
+export function formatIduLogo(): string {
+	return [
+		"██╗██████╗ ██╗   ██╗       ██████╗  ██╗",
+		"██║██╔══██╗██║   ██║       ██╔═██╗ ██║",
+		"██║██║  ██║██║   ██║████╗██████╝  ██║",
+		"██║██║  ██║██║   ██║╚═══╝██╔═══╝  ██║",
+		"██║██████╔╝╚██████╔╝      ██║       ██║",
+		"╚═╝╚═════╝  ╚═════╝        ╚═╝       ╚═╝",
+		"IDU-PI",
+	].join("\n");
+}
+
+export function formatMainMenu(status: CliHomeStatus): string {
+	return [
+		formatIduLogo(),
+		"",
+		`version: ${status.version}`,
+		"",
+		"1. Instalación",
+		"2. Estado",
+		"3. Proyecto actual",
+		"4. Ayuda PATH",
+		"5. Exit",
+	].join("\n");
+}
+
+export function formatInstallationMenu(): string {
+	return [
+		"Instalación",
+		"",
+		"1. Verificar sistema",
+		"2. Instalar/actualizar MCP en Pi",
+		"3. Instalar/actualizar comandos slash globales",
+		"4. Enrolar proyecto actual",
+		"5. Activar supervisor en este proyecto",
+		"6. Volver",
+	].join("\n");
+}
+
+export function formatCliSystemStatus(status: CliHomeStatus): string {
+	return [
+		"Estado Idu-pi",
+		"",
+		`version: ${status.version}`,
+		`package root: ${status.packageRoot}`,
+		`ejecución: ${status.globalInstall.executionMode}`,
+		`node: ${formatTool(status.node)}`,
+		`git: ${formatTool(status.git)}`,
+		`pnpm: ${formatTool(status.pnpm)}`,
+		`Pi agent dir: ${status.agentDir}`,
+		`MCP idu-pi: ${status.mcpInstalled ? "presente" : "ausente"}`,
+		`Extensión Pi: ${status.commandExtensionInstalled ? "presente" : "ausente"}`,
+		`pnpm global bin en PATH: ${status.globalInstall.pnpmGlobalBinInPath ? "sí" : "no"}`,
+		`recommended action: ${status.globalInstall.recommendedAction ?? "ninguna"}`,
+	].join("\n");
+}
+
+export function formatCliProjectStatus(status: CliHomeStatus): string {
+	const project = status.project;
+	return [
+		"Proyecto actual",
+		"",
+		`ruta: ${project.candidatePath}`,
+		`git repo: ${project.isGitRepository ? "sí" : "no"}`,
+		`allowedRoots: ${project.allowedRoot === true ? "sí" : project.allowedRoot === false ? "no" : "unknown"}`,
+		`enrolado: ${project.registered ? "sí" : "no"}`,
+		`projectId: ${project.projectId}`,
+		...(project.stateRoot ? [`stateRoot: ${project.stateRoot}`] : []),
+		`session: ${project.supervisor}`,
+		`Project Core: ${project.projectCore}`,
+		`Constitution: ${project.constitution}`,
+		`recommended next: ${project.recommendedNext}`,
+		...(project.warning ? [`aviso: ${project.warning}`] : []),
+	].join("\n");
+}
+
 export function formatCliHome(status: CliHomeStatus): string {
 	const project = status.project;
 	return [
+		...(status.stdinInteractive ? [formatMainMenu(status), ""] : []),
 		"Idu-pi",
 		`version: ${status.version}`,
 		"",
@@ -86,13 +182,17 @@ export function formatCliHome(status: CliHomeStatus): string {
 		project.candidatePath,
 		"",
 		"Estado:",
-		`- node: ${status.nodeFound ? "found" : "missing"}`,
-		`- git: ${status.gitFound ? "found" : "missing"}`,
+		`- node: ${formatTool(status.node)}`,
+		`- git: ${formatTool(status.git)}`,
+		`- pnpm: ${formatTool(status.pnpm)}`,
 		`- MCP idu-pi: ${status.mcpInstalled ? "instalado" : "no instalado"}`,
+		`- Extensión Pi: ${status.commandExtensionInstalled ? "instalada" : "no instalada"}`,
 		`- Proyecto git: ${project.isGitRepository ? "sí" : "no"}`,
 		`- Proyecto enrolado: ${project.registered ? "sí" : "no"}`,
 		`- Supervisor: ${project.supervisor}`,
 		`- Project Core: ${project.projectCore}`,
+		`- Constitution: ${project.constitution}`,
+		`- recommended next: ${project.recommendedNext}`,
 		...(project.stateRoot ? [`- stateRoot: ${project.stateRoot}`] : []),
 		...(project.warning ? [`- aviso: ${project.warning}`] : []),
 		"",
@@ -121,18 +221,7 @@ export function formatCliHome(status: CliHomeStatus): string {
 					"- Acción recomendada: corepack pnpm setup; abrir nueva terminal; corepack pnpm link --global",
 				]),
 		...(status.stdinInteractive
-			? [
-					"",
-					"Menú:",
-					"1. Setup status",
-					"2. Instalar/actualizar MCP",
-					"3. Enrolar proyecto actual",
-					"4. Ver estado del proyecto actual",
-					"5. Activar Idu-pi",
-					"6. Preparar proyecto",
-					"7. Ver comandos útiles",
-					"8. Salir",
-				]
+			? ["", "Elegí una opción del menú superior."]
 			: ["", "Modo no interactivo: mostré resumen y no espero input."]),
 	].join("\n");
 }
@@ -187,6 +276,9 @@ function detectHomeProjectStatus(
 			stateRoot: paths.stateRoot,
 			supervisor: "unknown",
 			projectCore: projectCoreStatus(candidatePath, options.exists),
+			constitution: constitutionStatus(candidatePath, options.exists),
+			allowedRoot: "unknown",
+			recommendedNext: "enroll",
 			warning:
 				"DEFAULT_CWD/ALLOWED_ROOTS no están configurados; usá ruta explícita para enrolar.",
 		};
@@ -211,6 +303,9 @@ function detectHomeProjectStatus(
 				stateRoot: paths.stateRoot,
 				supervisor: "unknown",
 				projectCore: projectCoreStatus(canonicalCandidate, options.exists),
+				constitution: constitutionStatus(canonicalCandidate, options.exists),
+				allowedRoot: false,
+				recommendedNext: "enroll",
 				warning:
 					"cwd fuera de ALLOWED_ROOTS; usá una ruta permitida o ajustá configuración.",
 			};
@@ -222,6 +317,12 @@ function detectHomeProjectStatus(
 			mcpAvailable: false,
 			registryPath: options.registryPath ?? resolveIduRegistryPath(options.env),
 		});
+		const supervisor = readSupervisorStatus(
+			status.projectId,
+			status.stateRoot,
+			options.exists,
+		);
+		const projectCore = projectCoreStatus(canonicalCandidate, options.exists);
 		return {
 			candidatePath: canonicalCandidate,
 			isGitRepository,
@@ -230,12 +331,15 @@ function detectHomeProjectStatus(
 			stateRoot: status.stateRoot,
 			labDbPath: status.labDbPath,
 			reportsDir: status.reportsDir,
-			supervisor: readSupervisorStatus(
-				status.projectId,
-				status.stateRoot,
-				options.exists,
+			supervisor,
+			projectCore,
+			constitution: constitutionStatus(canonicalCandidate, options.exists),
+			allowedRoot: true,
+			recommendedNext: recommendedProjectNext(
+				status.registered,
+				supervisor,
+				projectCore,
 			),
-			projectCore: projectCoreStatus(canonicalCandidate, options.exists),
 		};
 	} catch (error) {
 		const projectId =
@@ -248,9 +352,30 @@ function detectHomeProjectStatus(
 			projectId,
 			supervisor: "unknown",
 			projectCore: "unknown",
+			constitution: "unknown",
+			allowedRoot: "unknown",
+			recommendedNext: "enroll",
 			warning: error instanceof Error ? error.message : String(error),
 		};
 	}
+}
+
+function formatTool(status: ToolStatus): string {
+	return status.found
+		? `found${status.version ? ` (${status.version})` : ""}`
+		: "missing";
+}
+
+function recommendedProjectNext(
+	registered: boolean,
+	supervisor: CliHomeProjectStatus["supervisor"],
+	projectCore: CliHomeProjectStatus["projectCore"],
+): CliHomeProjectStatus["recommendedNext"] {
+	if (!registered) return "enroll";
+	if (projectCore === "missing" || projectCore === "pending")
+		return "bootstrap";
+	if (supervisor !== "active") return "idu";
+	return "prepare";
 }
 
 function parseAllowedRoots(
@@ -293,6 +418,26 @@ function projectCoreStatus(
 		return parsed.status === "confirmed" ? "confirmed" : "pending";
 	} catch {
 		return "pending";
+	}
+}
+
+function constitutionStatus(
+	projectPath: string,
+	exists: (path: string) => boolean,
+): CliHomeProjectStatus["constitution"] {
+	const constitutionPath = join(
+		projectPath,
+		"config",
+		"project-constitution.json",
+	);
+	if (!exists(constitutionPath)) return "missing";
+	try {
+		const parsed = JSON.parse(readFileSync(constitutionPath, "utf8")) as {
+			status?: string;
+		};
+		return parsed.status === "confirmed" ? "confirmed" : "draft";
+	} catch {
+		return "unknown";
 	}
 }
 

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
 	mkdirSync,
 	mkdtempSync,
+	readFileSync,
 	readdirSync,
 	rmSync,
 	writeFileSync,
@@ -13,9 +14,14 @@ import {
 	applyPackageEnvDefaults,
 	buildCliHomeStatus,
 	formatCliHome,
+	formatCliProjectStatus,
+	formatCliSystemStatus,
+	formatIduLogo,
+	formatInstallationMenu,
+	formatMainMenu,
 	formatSetupPathHelp,
 } from "../src/cli-home.js";
-import { runCliCommand } from "../src/cli.js";
+import { runCliCommand, runInteractiveHomeWithQuestion } from "../src/cli.js";
 
 function tempDir(prefix = "idu-cli-home-"): string {
 	return mkdtempSync(join(tmpdir(), prefix));
@@ -41,6 +47,10 @@ function restoreEnv(snapshot: EnvSnapshot): void {
 		else process.env[key] = value;
 	}
 }
+
+test("formatIduLogo contains recognizable IDU-PI mark", () => {
+	assert.match(formatIduLogo(), /IDU-PI/u);
+});
 
 test("idu-pi without args shows home", async () => {
 	const result = await runCliCommand([]);
@@ -176,6 +186,105 @@ test("home shows enrolled and unenrolled project states", () => {
 	}
 });
 
+test("main and installation menus render first-run options", () => {
+	const status = buildCliHomeStatus({
+		env: { PATH: "" },
+		runner: () => undefined,
+		stdinInteractive: true,
+		version: "0.1.1",
+	});
+	assert.match(formatMainMenu(status), /1\. Instalación/u);
+	assert.match(formatMainMenu(status), /5\. Exit/u);
+	assert.match(formatInstallationMenu(), /Instalar\/actualizar MCP en Pi/u);
+	assert.match(
+		formatInstallationMenu(),
+		/Activar supervisor en este proyecto/u,
+	);
+});
+
+test("system status renders MCP Pi and PATH diagnostics", () => {
+	const root = tempDir();
+	const agentDir = join(root, "agent");
+	mkdirSync(join(agentDir, "extensions"), { recursive: true });
+	writeFileSync(
+		join(agentDir, "mcp.json"),
+		JSON.stringify({ mcpServers: { "idu-pi": { command: "node" } } }),
+		"utf8",
+	);
+	writeFileSync(
+		join(agentDir, "extensions", "idu-pi-commands.ts"),
+		"extension",
+		"utf8",
+	);
+	const status = buildCliHomeStatus({
+		env: { PI_CODING_AGENT_DIR: agentDir, PATH: "" },
+		runner: (command) => (command === "node" ? "v20.0.0" : undefined),
+		stdinInteractive: false,
+	});
+	const text = formatCliSystemStatus(status);
+	assert.match(text, /MCP idu-pi: presente/u);
+	assert.match(text, /Extensión Pi: presente/u);
+	assert.match(text, /pnpm global bin en PATH: no/u);
+	rmSync(root, { recursive: true, force: true });
+});
+
+test("project status renderer shows enrolled and unregistered project states", () => {
+	const root = tempDir();
+	const projectPath = join(root, "project");
+	const workspaceRoot = join(root, "workspace");
+	mkdirSync(join(root, "data"), { recursive: true });
+	mkdirSync(projectPath, { recursive: true });
+	const registryPath = join(root, "data", "projects.json");
+	const unregistered = buildCliHomeStatus({
+		cwd: projectPath,
+		gitRoot: projectPath,
+		registryPath,
+		env: {
+			DEFAULT_CWD: projectPath,
+			ALLOWED_ROOTS: root,
+			AGENT_WORKSPACE_ROOT: workspaceRoot,
+			PATH: "",
+		},
+		runner: () => undefined,
+		stdinInteractive: false,
+	});
+	assert.match(formatCliProjectStatus(unregistered), /enrolado: no/u);
+	assert.match(
+		formatCliProjectStatus(unregistered),
+		/recommended next: enroll/u,
+	);
+	writeFileSync(
+		registryPath,
+		JSON.stringify({
+			activeProjectId: "project",
+			projects: [
+				{
+					id: "project",
+					name: "project",
+					path: projectPath,
+					stateRoot: join(workspaceRoot, "projects", "project"),
+				},
+			],
+		}),
+		"utf8",
+	);
+	const registered = buildCliHomeStatus({
+		cwd: projectPath,
+		gitRoot: projectPath,
+		registryPath,
+		env: {
+			DEFAULT_CWD: projectPath,
+			ALLOWED_ROOTS: root,
+			AGENT_WORKSPACE_ROOT: workspaceRoot,
+			PATH: "",
+		},
+		runner: () => undefined,
+		stdinInteractive: false,
+	});
+	assert.match(formatCliProjectStatus(registered), /enrolado: sí/u);
+	rmSync(root, { recursive: true, force: true });
+});
+
 test("home shows PATH help when pnpm global bin is not in PATH", () => {
 	const status = buildCliHomeStatus({
 		env: {
@@ -214,7 +323,120 @@ test("setup path-help shows pnpm setup and global link steps", async () => {
 	assert.equal(result.exitCode, 0);
 	assert.match(result.stdout, /corepack pnpm setup/u);
 	assert.match(result.stdout, /corepack pnpm link --global/u);
+	assert.match(result.stdout, /node dist\/src\/cli\.js/u);
 	assert.match(formatSetupPathHelp(), /No modifico PATH automáticamente/u);
+});
+
+test("installation MCP action requires confirmation and no writes on no", async () => {
+	const root = tempDir();
+	const projectPath = join(root, "project");
+	const workspaceRoot = join(root, "workspace");
+	const agentDir = join(root, "agent");
+	mkdirSync(projectPath, { recursive: true });
+	const previous = snapshotEnv();
+	const previousCwd = process.cwd();
+	try {
+		process.chdir(projectPath);
+		process.env.DEFAULT_CWD = projectPath;
+		process.env.ALLOWED_ROOTS = root;
+		process.env.AGENT_WORKSPACE_ROOT = workspaceRoot;
+		process.env.PI_CODING_AGENT_DIR = agentDir;
+		const answers = ["1", "2", "n"];
+		const output = await runInteractiveHomeWithQuestion(
+			async () => answers.shift() ?? "n",
+		);
+		assert.match(output, /Cancelado sin cambios/u);
+		assert.equal(readdirSync(root).includes("agent"), false);
+	} finally {
+		process.chdir(previousCwd);
+		restoreEnv(previous);
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("project enroll action requires confirmation and no writes on no", async () => {
+	const root = tempDir();
+	const projectPath = join(root, "project");
+	const workspaceRoot = join(root, "workspace");
+	const agentDir = join(root, "agent");
+	mkdirSync(projectPath, { recursive: true });
+	const previous = snapshotEnv();
+	const previousCwd = process.cwd();
+	try {
+		process.chdir(projectPath);
+		process.env.DEFAULT_CWD = projectPath;
+		process.env.ALLOWED_ROOTS = root;
+		process.env.AGENT_WORKSPACE_ROOT = workspaceRoot;
+		process.env.PI_CODING_AGENT_DIR = agentDir;
+		const answers = ["1", "4", "n"];
+		const output = await runInteractiveHomeWithQuestion(
+			async () => answers.shift() ?? "n",
+		);
+		assert.match(output, /Cancelado sin cambios/u);
+		assert.equal(readdirSync(root).includes("workspace"), false);
+	} finally {
+		process.chdir(previousCwd);
+		restoreEnv(previous);
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("wizard activation does not create missing stateRoot", async () => {
+	const root = tempDir();
+	const projectPath = join(root, "project");
+	const workspaceRoot = join(root, "workspace");
+	const missingStateRoot = join(workspaceRoot, "projects", "project");
+	mkdirSync(join(root, "data"), { recursive: true });
+	mkdirSync(projectPath, { recursive: true });
+	writeFileSync(
+		join(root, "data", "projects.json"),
+		JSON.stringify({
+			activeProjectId: "project",
+			projects: [
+				{
+					id: "project",
+					name: "project",
+					path: projectPath,
+					stateRoot: missingStateRoot,
+				},
+			],
+		}),
+		"utf8",
+	);
+	const previous = snapshotEnv();
+	const previousCwd = process.cwd();
+	try {
+		process.chdir(projectPath);
+		process.env.DEFAULT_CWD = projectPath;
+		process.env.ALLOWED_ROOTS = root;
+		process.env.AGENT_WORKSPACE_ROOT = workspaceRoot;
+		process.env.IDU_PI_REGISTRY_PATH = join(root, "data", "projects.json");
+		const answers = ["1", "5", "s"];
+		const output = await runInteractiveHomeWithQuestion(
+			async () => answers.shift() ?? "n",
+		);
+		assert.match(output, /stateRoot aislado existente/u);
+		assert.equal(readdirSync(root).includes("workspace"), false);
+	} finally {
+		process.chdir(previousCwd);
+		restoreEnv(previous);
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("wizard source avoids AgentLabs scans prepare and bootstrap", () => {
+	const source = readFileSync(join(process.cwd(), "src", "cli.ts"), "utf8");
+	const interactiveBlock = source.slice(
+		source.indexOf("async function runInstallationMenu"),
+	);
+	assert.doesNotMatch(
+		interactiveBlock,
+		/agentLabReviewRun|runTestLab|scanProjectMap|runCliCommand\(\["idu"\]\)|prepare\(\)|runBootstrapIduCommand/u,
+	);
+	assert.match(
+		interactiveBlock,
+		/No ejecuté bootstrap, scans, prepare ni AgentLabs/u,
+	);
 });
 
 test("existing setup command still works", async () => {

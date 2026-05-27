@@ -13,6 +13,10 @@ import {
 	applyPackageEnvDefaults,
 	buildCliHomeStatus,
 	formatCliHome,
+	formatCliProjectStatus,
+	formatCliSystemStatus,
+	formatInstallationMenu,
+	formatMainMenu,
 	formatSetupPathHelp,
 	formatSetupWizardNonInteractive,
 	resolveCliPackageRoot,
@@ -1851,78 +1855,183 @@ function shouldRunInteractiveHome(args: string[]): boolean {
 	);
 }
 
-async function runInteractiveHome(): Promise<string> {
+type CliQuestion = (message: string) => Promise<string>;
+type CliPrint = (message: string) => void;
+
+export async function runInteractiveHome(): Promise<string> {
 	const rl = createInterface({ input: process.stdin, output: process.stdout });
 	try {
-		console.log(
-			formatCliHome(
-				buildCliHomeStatus({
-					argvPath: process.argv[1],
-					stdinInteractive: true,
-				}),
-			),
+		return await runInteractiveHomeWithQuestion(
+			(message) => rl.question(message),
+			(message) => console.log(message),
 		);
-		const choice = (await rl.question("\nElegí una opción [1-8]: ")).trim();
-		if (choice === "8" || /^salir$/iu.test(choice))
-			return "Salida sin cambios.";
-		if (choice === "1") return handleSetupCommand(["status"]);
-		if (choice === "2") {
-			if (
-				!(await confirmAction(rl, "Esto puede escribir mcp.json. ¿Continuar?"))
-			) {
-				return "Cancelado sin cambios.";
-			}
-			return handleSetupCommand(["mcp-init"]);
-		}
-		if (choice === "3") {
-			if (
-				!(await confirmAction(
-					rl,
-					"Esto puede crear estado Idu-pi para el cwd. ¿Continuar?",
-				))
-			) {
-				return "Cancelado sin cambios.";
-			}
-			return handleProjectCommand(["enroll", process.cwd()]);
-		}
-		if (choice === "4") return handleProjectCommand(["status", process.cwd()]);
-		if (choice === "5") {
-			if (
-				!(await confirmAction(
-					rl,
-					"Esto activa guardrails locales para el proyecto. ¿Continuar?",
-				))
-			) {
-				return "Cancelado sin cambios.";
-			}
-			return (await runCliCommand(["idu"])).stdout;
-		}
-		if (choice === "6") {
-			if (
-				!(await confirmAction(
-					rl,
-					"Esto puede preparar contexto local del proyecto. ¿Continuar?",
-				))
-			) {
-				return "Cancelado sin cambios.";
-			}
-			return (await runCliCommand(["prepare"])).stdout;
-		}
-		if (choice === "7") return formatCommandCatalog();
-		return [
-			"Opción no reconocida. No ejecuté acciones.",
-			"Usá `idu-pi home` o `idu-pi setup status`.",
-		].join("\n");
 	} finally {
 		rl.close();
 	}
 }
 
+export async function runInteractiveHomeWithQuestion(
+	question: CliQuestion,
+	print: CliPrint = () => {},
+): Promise<string> {
+	const status = buildCliHomeStatus({
+		argvPath: process.argv[1],
+		stdinInteractive: true,
+	});
+	print(formatMainMenu(status));
+	const choice = (await question("\nElegí una opción [1-5]: ")).trim();
+	if (choice === "5" || /^exit|salir$/iu.test(choice))
+		return "Salida sin cambios.";
+	if (choice === "1") return runInstallationMenu(question, print);
+	if (choice === "2") return formatCliSystemStatus(status);
+	if (choice === "3") return formatCliProjectStatus(status);
+	if (choice === "4") return formatSetupPathHelp();
+	return [
+		"Opción no reconocida. No ejecuté acciones.",
+		"Usá `idu-pi` o `idu-pi setup wizard`.",
+	].join("\n");
+}
+
+async function runInstallationMenu(
+	question: CliQuestion,
+	print: CliPrint,
+): Promise<string> {
+	print(formatInstallationMenu());
+	const choice = (await question("\nElegí una opción [1-6]: ")).trim();
+	if (choice === "6" || /^volver$/iu.test(choice)) return "Volver sin cambios.";
+	if (choice === "1") return handleSetupCommand(["status"]);
+	if (choice === "2") {
+		if (
+			!(await confirmAction(
+				question,
+				"Esto modificará ~/.pi/agent/mcp.json y/o extensions. ¿Continuar?",
+			))
+		) {
+			return "Cancelado sin cambios.";
+		}
+		return handleSetupCommand(["mcp-init"]);
+	}
+	if (choice === "3") {
+		if (
+			!(await confirmAction(
+				question,
+				"Esto modificará ~/.pi/agent/mcp.json y/o extensions. ¿Continuar?",
+			))
+		) {
+			return "Cancelado sin cambios.";
+		}
+		return handleSetupCommand(["mcp-init", "--force"]);
+	}
+	if (choice === "4") {
+		if (
+			!(await confirmAction(
+				question,
+				"Esto enrolará el proyecto actual y creará stateRoot. ¿Continuar?",
+			))
+		) {
+			return "Cancelado sin cambios.";
+		}
+		return handleProjectCommand(["enroll", process.cwd()]);
+	}
+	if (choice === "5") {
+		if (
+			!(await confirmAction(question, "Esto activará guardrails. ¿Continuar?"))
+		) {
+			return "Cancelado sin cambios.";
+		}
+		return runWizardActivateSupervisor();
+	}
+	return "Opción de instalación no reconocida. No ejecuté acciones.";
+}
+
+function runWizardActivateSupervisor(): string {
+	try {
+		applyPackageEnvDefaults();
+		const defaultCwd = canonicalDirectory(requiredEnvForWizard("DEFAULT_CWD"));
+		const allowedRoots = parseAllowedRootsForWizard(
+			process.env.ALLOWED_ROOTS,
+			defaultCwd,
+		);
+		const registry = loadRegistry(defaultCwd, allowedRoots, {
+			registryPath: resolveIduRegistryPath(),
+			createIfMissing: false,
+		});
+		const projectPath = canonicalDirectory(process.cwd());
+		if (!isAllowedCwd(projectPath, allowedRoots)) {
+			return wizardActivationDiagnostic(
+				`cwd fuera de ALLOWED_ROOTS: ${projectPath}`,
+			);
+		}
+		const project = registeredProjectForPath(registry, projectPath);
+		if (!project) {
+			return wizardActivationDiagnostic(
+				"Proyecto no registrado; el wizard no enrola automáticamente.",
+			);
+		}
+		if (!project.stateRoot || !existsSync(project.stateRoot)) {
+			return wizardActivationDiagnostic(
+				"Proyecto registrado sin stateRoot aislado existente; re-enrolalo antes de activar.",
+			);
+		}
+		configureIduSessionStore({
+			workspaceRoot: project.stateRoot,
+			filePath: join(project.stateRoot, "idu-session-state.json"),
+		});
+		activateIduSession(project.id);
+		return [
+			"Guardrails automáticos activados para el proyecto activo.",
+			"No ejecuté bootstrap, scans, prepare ni AgentLabs desde el wizard.",
+			`projectId: ${project.id}`,
+			`projectPath: ${project.path}`,
+			`stateRoot: ${project.stateRoot}`,
+		].join("\n");
+	} catch (error) {
+		return wizardActivationDiagnostic(
+			error instanceof Error ? error.message : String(error),
+		);
+	}
+}
+
+function registeredProjectForPath(
+	registry: ProjectRegistry,
+	projectPath: string,
+): ProjectEntry | undefined {
+	const normalize = (value: string) =>
+		process.platform === "win32" ? value.toLowerCase() : value;
+	return registry.projects.find(
+		(project) => normalize(project.path) === normalize(projectPath),
+	);
+}
+
+function requiredEnvForWizard(name: string): string {
+	const value = process.env[name]?.trim();
+	if (!value) throw new Error(`Missing required env var: ${name}`);
+	return value;
+}
+
+function parseAllowedRootsForWizard(
+	raw: string | undefined,
+	defaultCwd: string,
+): string[] {
+	return (raw?.trim() ? raw.split(";") : [defaultCwd])
+		.map((entry) => canonicalDirectory(entry.trim()))
+		.filter(Boolean);
+}
+
+function wizardActivationDiagnostic(reason: string): string {
+	return [
+		"No pude activar guardrails desde el wizard.",
+		`Qué pasó: ${reason}`,
+		"Acción recomendada: primero enrolá o bootstrappeá el proyecto de forma explícita.",
+		"Comando sugerido: idu-pi project enroll .",
+	].join("\n");
+}
+
 async function confirmAction(
-	rl: ReturnType<typeof createInterface>,
+	question: CliQuestion,
 	message: string,
 ): Promise<boolean> {
-	const answer = (await rl.question(`${message} [y/N]: `)).trim().toLowerCase();
+	const answer = (await question(`${message} [y/N]: `)).trim().toLowerCase();
 	return (
 		answer === "y" ||
 		answer === "yes" ||

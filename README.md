@@ -78,7 +78,25 @@ Para entrar sin memorizar comandos:
 idu-pi
 ```
 
-El home muestra estado del sistema, MCP, proyecto actual, supervisor, rutas de estado y acciones recomendadas. Si la terminal es interactiva, muestra un menú; si no, imprime el resumen y sale.
+Primera vez desde el repo, antes del link global:
+
+```text
+corepack pnpm cli
+# o después de compilar
+node dist/src/cli.js
+```
+
+El home muestra logo, estado del sistema, MCP, proyecto actual, supervisor, rutas de estado y acciones recomendadas. Si la terminal es interactiva, muestra un menú minimalista:
+
+```text
+1. Instalación
+2. Estado
+3. Proyecto actual
+4. Ayuda PATH
+5. Exit
+```
+
+Si no es interactivo, imprime el resumen y sale sin escribir archivos.
 
 Para configurar MCP y enrolar proyectos externos:
 
