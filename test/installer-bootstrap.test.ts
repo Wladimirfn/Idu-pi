@@ -87,6 +87,24 @@ test("plan incluye install build mcp shim y wizard", () => {
 	assert.match(output, /6\. Abrir wizard/u);
 });
 
+test("omite corepack enable si pnpm ya está disponible", () => {
+	const output = runInstall(["--dry-run"], {
+		IDU_PI_INSTALL_MOCK_TOOLS: JSON.stringify({ pnpm: "11.1.3" }),
+	});
+	assert.doesNotMatch(output, /corepack enable/u);
+	assert.match(
+		output,
+		/corepack pnpm install --frozen-lockfile --ignore-scripts/u,
+	);
+});
+
+test("incluye corepack enable sólo si pnpm falta", () => {
+	const output = runInstall(["--dry-run"], {
+		IDU_PI_INSTALL_MOCK_TOOLS: JSON.stringify({ pnpm: false }),
+	});
+	assert.match(output, /corepack enable/u);
+});
+
 test("crea shim .cmd y .ps1 en temp dir", () => {
 	const root = tempDir();
 	try {

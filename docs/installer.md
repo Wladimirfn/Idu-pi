@@ -88,7 +88,7 @@ Flags:
 
 Acciones que sólo ocurren con confirmación o `--yes`:
 
-1. `corepack enable`
+1. `corepack enable` sólo si `pnpm` no está disponible
 2. `corepack pnpm install --frozen-lockfile --ignore-scripts`
 3. `corepack pnpm build`
 4. `node dist/src/cli.js -- setup mcp-init`

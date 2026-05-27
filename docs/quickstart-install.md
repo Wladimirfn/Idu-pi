@@ -74,7 +74,7 @@ En PowerShell usá los equivalentes:
 
 Con confirmación humana, el instalador puede:
 
-1. ejecutar `corepack enable`;
+1. ejecutar `corepack enable` sólo si `pnpm` no está disponible;
 2. ejecutar `corepack pnpm install --frozen-lockfile --ignore-scripts`;
 3. ejecutar `corepack pnpm build`;
 4. ejecutar `node dist/src/cli.js -- setup mcp-init` para MCP y comandos slash globales de Pi;

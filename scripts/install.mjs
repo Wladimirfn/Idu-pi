@@ -159,7 +159,7 @@ function buildPlan(detection) {
 	const steps = [
 		{
 			name: "Instalar dependencias",
-			preCommands: [["corepack", ["enable"]]],
+			preCommands: detection.pnpm.found ? [] : [["corepack", ["enable"]]],
 			command: [
 				"corepack",
 				["pnpm", "install", "--frozen-lockfile", "--ignore-scripts"],
