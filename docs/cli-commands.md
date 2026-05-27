@@ -11,7 +11,7 @@ corepack pnpm cli -- <comando>
 
 El CLI usa `AGENT_WORKSPACE_ROOT` y el registro de proyectos. Los proyectos enrolados guardan estado aislado en `AGENT_WORKSPACE_ROOT/projects/<projectId>/`; proyectos antiguos sin `stateRoot` conservan el fallback `AGENT_WORKSPACE_ROOT/reports/`.
 
-Para uso universal desde orquestadores, el binario MCP es `idu-pi-mcp` o, desde el repo:
+Para uso universal desde orquestadores, `idu-pi setup mcp-init` instala MCP y el espejo global de comandos slash de Pi. Luego al abrir `pi` desde cualquier proyecto podés usar `/idu`, `/idu_status`, `/idu_task`, etc. El binario MCP es `idu-pi-mcp` o, desde el repo:
 
 ```text
 corepack pnpm mcp
@@ -30,7 +30,7 @@ Ver [MCP Server](mcp-server.md).
 | `idu-pi setup wizard` | Abre/describe el asistente; en modo no interactivo no espera input. |
 | `idu-pi setup path-help` | Explica cómo arreglar `PNPM_HOME`/bin global fuera de `PATH`. |
 | `idu-pi setup mcp-print` | Imprime config MCP sin escribir. |
-| `idu-pi setup mcp-init` | Instala `idu-pi` en el `mcp.json` del agente Pi. |
+| `idu-pi setup mcp-init` | Instala `idu-pi` en `mcp.json` y comandos slash globales de Pi. |
 | `idu-pi setup mcp-init --force` | Reemplaza entrada `idu-pi` existente con backup. |
 | `idu-pi project enroll <projectPath> [projectId]` | Registra proyecto y crea estado aislado. |
 | `idu-pi project status <projectPath>` | Muestra estado/rutas del proyecto. |
@@ -43,7 +43,7 @@ Guía: [Instalador y estado por proyecto](installer.md).
 | Comando | Uso |
 | --- | --- |
 | `idu-pi status` | Muestra estado operativo del proyecto/agente. |
-| `idu-pi idu` | Activa guardrails Idu-pi para el proyecto actual. |
+| `idu-pi idu` | Bootstrap inteligente: enrola si falta, crea estado/config/Core/Constitution draft, activa guardrails y prepara análisis seguro. |
 | `idu-pi idu-off` | Desactiva guardrails automáticos. |
 | `idu-pi idu-status` | Muestra estado de sesión Idu-pi. |
 
@@ -53,6 +53,11 @@ Ejemplos:
 idu-pi status
 idu-pi idu
 idu-pi idu-status
+
+# Dentro de Pi, luego de setup mcp-init:
+/idu
+/idu_status
+/idu_task bug "falla login"
 ```
 
 ## Preparación y gates

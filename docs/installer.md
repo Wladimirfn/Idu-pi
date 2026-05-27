@@ -104,7 +104,7 @@ Muestra:
 
 `idu-pi setup` sin subcomando equivale a `setup status`. `idu-pi setup wizard` en modo no interactivo no espera input ni escribe archivos.
 
-## Montar MCP
+## Montar MCP y comandos Pi
 
 Recomendado:
 
@@ -112,12 +112,14 @@ Recomendado:
 corepack pnpm cli -- setup mcp-init
 ```
 
-Esto escribe en:
+Esto deja Pi listo globalmente: escribe el MCP y también instala el espejo de comandos slash para que `/idu` y el resto de comandos Idu-pi aparezcan al abrir `pi` desde cualquier proyecto.
 
 ```text
 PI_CODING_AGENT_DIR/mcp.json
+PI_CODING_AGENT_DIR/extensions/idu-pi-commands.ts
 # o
 ~/.pi/agent/mcp.json
+~/.pi/agent/extensions/idu-pi-commands.ts
 ```
 
 Agrega o preserva:
@@ -128,7 +130,9 @@ Agrega o preserva:
     "idu-pi": {
       "command": "node",
       "args": ["C:\\...\\dist\\src\\mcp-server.js"],
-      "lifecycle": "lazy"
+      "cwd": "C:\\...\\idu-pi",
+      "lifecycle": "lazy",
+      "directTools": true
     }
   }
 }
@@ -138,6 +142,7 @@ Reglas:
 
 - preserva otros `mcpServers`;
 - no reemplaza `mcpServers["idu-pi"]` si ya existe, salvo `--force`;
+- instala/verifica `extensions/idu-pi-commands.ts` para comandos slash globales;
 - crea backup `mcp.backup-YYYYMMDD-HHMMSS.json` antes de modificar un config existente;
 - `setup mcp-print` imprime config sin escribir;
 - `setup mcp-init --dry-run` calcula sin escribir.
@@ -163,15 +168,15 @@ Opcionalmente podés pasar `projectId`:
 idu-pi project enroll "C:\\...\\Sistema_de_mantencion" sistema-de-mantencion
 ```
 
-El enrolamiento:
+El enrolamiento manual:
 
 - valida que la ruta exista y esté dentro de `ALLOWED_ROOTS`;
 - registra el proyecto en el registry existente;
 - crea `AGENT_WORKSPACE_ROOT/projects/<projectId>/`;
-- no crea Project Core automáticamente;
-- no modifica Constitution ni flows;
 - no corre scan pesado;
 - no toca código del proyecto externo.
+
+Normalmente no necesitás enrolar a mano: al ejecutar `/idu` dentro de Pi, Idu-pi enrola el proyecto permitido, crea estado aislado, genera Project Core/Constitution draft y ejecuta preparación segura inicial.
 
 ## Ver estado de proyecto
 

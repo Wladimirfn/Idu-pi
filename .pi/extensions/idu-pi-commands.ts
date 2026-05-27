@@ -41,11 +41,16 @@ type CliCommand = {
 };
 
 const MAX_OUTPUT_CHARS = 12_000;
+const IDU_PI_PACKAGE_ROOT: string = "__IDU_PI_PACKAGE_ROOT__";
 
 function cliProcess(cliArgs: string[]): { command: string; args: string[] } {
+	const cliScript =
+		IDU_PI_PACKAGE_ROOT === "__IDU_PI_PACKAGE_ROOT__"
+			? "dist/src/cli.js"
+			: `${IDU_PI_PACKAGE_ROOT.replace(/\\/gu, "/")}/dist/src/cli.js`;
 	return {
 		command: process.execPath,
-		args: ["dist/src/cli.js", "--", ...cliArgs],
+		args: [cliScript, "--", ...cliArgs],
 	};
 }
 
@@ -126,57 +131,64 @@ export default function (pi: ExtensionAPI) {
 		});
 	}
 
-	registerIduCommand("idu", {
+	function registerIduAliases(name: string, config: CliCommand) {
+		registerIduCommand(name, config);
+		if (name.includes("-")) {
+			registerIduCommand(name.replace(/-/gu, "_"), config);
+		}
+	}
+
+	registerIduAliases("idu", {
 		description: "Activar guardrails automáticos de Idu-pi",
 		cliArgs: () => ["idu"],
 	});
 
-	registerIduCommand("idu-status", {
+	registerIduAliases("idu-status", {
 		description: "Mostrar estado de sesión Idu-pi",
 		cliArgs: () => ["idu-status"],
 	});
 
-	registerIduCommand("idu-off", {
+	registerIduAliases("idu-off", {
 		description: "Desactivar guardrails automáticos de Idu-pi",
 		cliArgs: () => ["idu-off"],
 	});
 
-	registerIduCommand("idu-prepare", {
+	registerIduAliases("idu-prepare", {
 		description: "Ejecutar prepare seguro de Idu-pi",
 		cliArgs: () => ["idu-prepare"],
 	});
 
-	registerIduCommand("idu-preflight", {
+	registerIduAliases("idu-preflight", {
 		description: "Evaluar riesgo preflight para una solicitud",
 		cliArgs: (args) => ["idu-preflight", args],
 		requiresArgs: true,
 		usage: "/idu-preflight <solicitud>",
 	});
 
-	registerIduCommand("idu-advisory", {
+	registerIduAliases("idu-advisory", {
 		description: "Mostrar advisory manual para una solicitud",
 		cliArgs: (args) => ["idu-advisory", args],
 		requiresArgs: true,
 		usage: "/idu-advisory <solicitud>",
 	});
 
-	registerIduCommand("idu-postflight", {
+	registerIduAliases("idu-postflight", {
 		description: "Analizar cambios actuales con postflight",
 		cliArgs: () => ["idu-postflight"],
 	});
 
-	registerIduCommand("idu-supervisor-tick", {
+	registerIduAliases("idu-supervisor-tick", {
 		description: "Ejecutar supervisor Idu-pi",
 		cliArgs: () => ["idu-supervisor-tick"],
 	});
 
-	registerIduCommand("idu-lab-review-plan", {
+	registerIduAliases("idu-lab-review-plan", {
 		description: "Preparar plan de revisión Lab sin ejecutar AgentLabs",
 		cliArgs: (args) => ["idu-lab-review-plan", args || "postflight"],
 		usage: "/idu-lab-review-plan [postflight|preflight <solicitud>]",
 	});
 
-	registerIduCommand("idu-agentlab-request-create", {
+	registerIduAliases("idu-agentlab-request-create", {
 		description: "Crear solicitud AgentLab sin ejecutar revisión",
 		cliArgs: (args) => [
 			"idu-agentlab-request-create",
@@ -185,25 +197,25 @@ export default function (pi: ExtensionAPI) {
 		usage: "/idu-agentlab-request-create [postflight|skill-draft latest]",
 	});
 
-	registerIduCommand("idu-agentlab-request-review", {
+	registerIduAliases("idu-agentlab-request-review", {
 		description: "Revisar solicitud AgentLab sin ejecutarla",
 		cliArgs: (args) => ["idu-agentlab-request-review", args || "latest"],
 		usage: "/idu-agentlab-request-review [latest|ruta]",
 	});
 
-	registerIduCommand("idu-agentlab-review-run", {
+	registerIduAliases("idu-agentlab-review-run", {
 		description: "Ejecutar revisión AgentLab review-only",
 		cliArgs: (args) => ["idu-agentlab-review-run", args || "latest"],
 		usage: "/idu-agentlab-review-run [latest|ruta]",
 	});
 
-	registerIduCommand("idu-agentlab-review-status", {
+	registerIduAliases("idu-agentlab-review-status", {
 		description: "Ver informe AgentLab review-only",
 		cliArgs: (args) => ["idu-agentlab-review-status", args || "latest"],
 		usage: "/idu-agentlab-review-status [latest|ruta]",
 	});
 
-	registerIduCommand("idu-task", {
+	registerIduAliases("idu-task", {
 		description: "Crear tarea estructurada Idu-pi desde Pi CLI",
 		cliArgs: (args) => ["idu-task", ...args.split(/\s+/u).filter(Boolean)],
 		requiresArgs: true,
@@ -211,83 +223,83 @@ export default function (pi: ExtensionAPI) {
 			"/idu-task [bug|feature|refactor|docs|review] <detalle> | /idu-task <texto libre>",
 	});
 
-	registerIduCommand("idu-queue-detail", {
+	registerIduAliases("idu-queue-detail", {
 		description: "Ver cola estructurada Idu-pi",
 		cliArgs: () => ["idu-queue-detail"],
 	});
 
-	registerIduCommand("idu-queue-clear-structured", {
+	registerIduAliases("idu-queue-clear-structured", {
 		description: "Limpiar cola estructurada Idu-pi",
 		cliArgs: () => ["idu-queue-clear-structured"],
 	});
 
-	registerIduCommand("idu-queue-approve", {
+	registerIduAliases("idu-queue-approve", {
 		description: "Aprobar tarea pausada en cola Idu-pi",
 		cliArgs: (args) => ["idu-queue-approve", args],
 		requiresArgs: true,
 		usage: "/idu-queue-approve <id>",
 	});
 
-	registerIduCommand("idu-queue-reject", {
+	registerIduAliases("idu-queue-reject", {
 		description: "Rechazar tarea en cola Idu-pi",
 		cliArgs: (args) => ["idu-queue-reject", args],
 		requiresArgs: true,
 		usage: "/idu-queue-reject <id>",
 	});
 
-	registerIduCommand("idu-semantic-audit-status", {
+	registerIduAliases("idu-semantic-audit-status", {
 		description: "Mostrar estado de auditoría semántica Idu-pi",
 		cliArgs: () => ["idu-semantic-audit-status"],
 	});
 
-	registerIduCommand("idu-semantic-audit-run", {
+	registerIduAliases("idu-semantic-audit-run", {
 		description: "Registrar auditoría semántica manual Idu-pi",
 		cliArgs: () => ["idu-semantic-audit-run"],
 	});
 
-	registerIduCommand("idu-semantic-compact-draft", {
+	registerIduAliases("idu-semantic-compact-draft", {
 		description: "Crear draft de compactación semántica Idu-pi",
 		cliArgs: () => ["idu-semantic-compact-draft"],
 	});
 
-	registerIduCommand("idu-semantic-compact-review", {
+	registerIduAliases("idu-semantic-compact-review", {
 		description: "Revisar draft de compactación semántica Idu-pi",
 		cliArgs: (args) => ["idu-semantic-compact-review", args || "latest"],
 		usage: "/idu-semantic-compact-review [latest|ruta]",
 	});
 
-	registerIduCommand("idu-semantic-agent-tasks-review", {
+	registerIduAliases("idu-semantic-agent-tasks-review", {
 		description: "Revisar tareas AgentLab sugeridas por auditoría semántica",
 		cliArgs: (args) => ["idu-semantic-agent-tasks-review", args || "latest"],
 		usage: "/idu-semantic-agent-tasks-review [latest|ruta]",
 	});
 
-	registerIduCommand("idu-semantic-agent-tasks-create", {
+	registerIduAliases("idu-semantic-agent-tasks-create", {
 		description: "Crear tareas review desde auditoría semántica",
 		cliArgs: (args) => ["idu-semantic-agent-tasks-create", args || "latest"],
 		usage: "/idu-semantic-agent-tasks-create [latest|ruta]",
 	});
 
-	registerIduCommand("idu-supervisor-improvements-review", {
+	registerIduAliases("idu-supervisor-improvements-review", {
 		description:
 			"Revisar propuestas de mejora del supervisor sin aplicar cambios",
 		cliArgs: (args) => ["idu-supervisor-improvements-review", args || "latest"],
 		usage: "/idu-supervisor-improvements-review [latest|ruta]",
 	});
 
-	registerIduCommand("idu-supervisor-improvements-create", {
+	registerIduAliases("idu-supervisor-improvements-create", {
 		description: "Crear propuestas review-only del supervisor en reports",
 		cliArgs: (args) => ["idu-supervisor-improvements-create", args || "latest"],
 		usage: "/idu-supervisor-improvements-create [latest|ruta]",
 	});
 
-	registerIduCommand("idu-supervisor-improvements-status", {
+	registerIduAliases("idu-supervisor-improvements-status", {
 		description: "Ver estados de propuestas de mejora del supervisor",
 		cliArgs: (args) => ["idu-supervisor-improvements-status", args || "latest"],
 		usage: "/idu-supervisor-improvements-status [latest|ruta]",
 	});
 
-	registerIduCommand("idu-supervisor-improvements-approve", {
+	registerIduAliases("idu-supervisor-improvements-approve", {
 		description: "Aprobar propuestas de mejora sin aplicarlas",
 		cliArgs: (args) => [
 			"idu-supervisor-improvements-approve",
@@ -297,7 +309,7 @@ export default function (pi: ExtensionAPI) {
 		usage: "/idu-supervisor-improvements-approve latest <proposalId|all>",
 	});
 
-	registerIduCommand("idu-supervisor-improvements-reject", {
+	registerIduAliases("idu-supervisor-improvements-reject", {
 		description: "Rechazar propuestas de mejora sin borrarlas",
 		cliArgs: (args) => [
 			"idu-supervisor-improvements-reject",
@@ -308,7 +320,7 @@ export default function (pi: ExtensionAPI) {
 			"/idu-supervisor-improvements-reject latest <proposalId|all> [motivo]",
 	});
 
-	registerIduCommand("idu-supervisor-improvements-defer", {
+	registerIduAliases("idu-supervisor-improvements-defer", {
 		description: "Diferir propuestas de mejora sin aplicarlas",
 		cliArgs: (args) => [
 			"idu-supervisor-improvements-defer",
@@ -319,31 +331,31 @@ export default function (pi: ExtensionAPI) {
 			"/idu-supervisor-improvements-defer latest <proposalId|all> [motivo]",
 	});
 
-	registerIduCommand("idu-supervisor-improvements-apply", {
+	registerIduAliases("idu-supervisor-improvements-apply", {
 		description: "Aplicar sólo propuestas aprobadas como reglas dinámicas",
 		cliArgs: (args) => ["idu-supervisor-improvements-apply", args || "latest"],
 		usage: "/idu-supervisor-improvements-apply [latest|ruta]",
 	});
 
-	registerIduCommand("idu-skill-improvements-review", {
+	registerIduAliases("idu-skill-improvements-review", {
 		description: "Revisar propuestas de mejora de skills sin aplicar cambios",
 		cliArgs: (args) => ["idu-skill-improvements-review", args || "latest"],
 		usage: "/idu-skill-improvements-review [latest|ruta]",
 	});
 
-	registerIduCommand("idu-skill-improvements-create", {
+	registerIduAliases("idu-skill-improvements-create", {
 		description: "Crear propuestas review-only de skills en reports",
 		cliArgs: (args) => ["idu-skill-improvements-create", args || "latest"],
 		usage: "/idu-skill-improvements-create [latest|ruta]",
 	});
 
-	registerIduCommand("idu-skill-improvements-status", {
+	registerIduAliases("idu-skill-improvements-status", {
 		description: "Ver estados de propuestas de mejora de skills",
 		cliArgs: (args) => ["idu-skill-improvements-status", args || "latest"],
 		usage: "/idu-skill-improvements-status [latest|ruta]",
 	});
 
-	registerIduCommand("idu-skill-improvements-approve", {
+	registerIduAliases("idu-skill-improvements-approve", {
 		description: "Aprobar propuesta de mejora de skill sin aplicarla",
 		cliArgs: (args) => [
 			"idu-skill-improvements-approve",
@@ -353,7 +365,7 @@ export default function (pi: ExtensionAPI) {
 		usage: "/idu-skill-improvements-approve latest <proposalId|all>",
 	});
 
-	registerIduCommand("idu-skill-improvements-reject", {
+	registerIduAliases("idu-skill-improvements-reject", {
 		description: "Rechazar propuesta de mejora de skill sin borrarla",
 		cliArgs: (args) => [
 			"idu-skill-improvements-reject",
@@ -363,7 +375,7 @@ export default function (pi: ExtensionAPI) {
 		usage: "/idu-skill-improvements-reject latest <proposalId|all> [motivo]",
 	});
 
-	registerIduCommand("idu-skill-improvements-defer", {
+	registerIduAliases("idu-skill-improvements-defer", {
 		description: "Diferir propuesta de mejora de skill sin aplicarla",
 		cliArgs: (args) => [
 			"idu-skill-improvements-defer",
@@ -373,31 +385,31 @@ export default function (pi: ExtensionAPI) {
 		usage: "/idu-skill-improvements-defer latest <proposalId|all> [motivo]",
 	});
 
-	registerIduCommand("idu-skill-drafts-create", {
+	registerIduAliases("idu-skill-drafts-create", {
 		description: "Crear borradores de skills desde propuestas aprobadas",
 		cliArgs: (args) => ["idu-skill-drafts-create", args || "latest"],
 		usage: "/idu-skill-drafts-create [latest|ruta]",
 	});
 
-	registerIduCommand("idu-skill-drafts-review", {
+	registerIduAliases("idu-skill-drafts-review", {
 		description: "Revisar borrador de skill sin aplicar cambios",
 		cliArgs: (args) => ["idu-skill-drafts-review", args || "latest"],
 		usage: "/idu-skill-drafts-review [latest|ruta]",
 	});
 
-	registerIduCommand("idu-supervisor-learning-rules-status", {
+	registerIduAliases("idu-supervisor-learning-rules-status", {
 		description: "Ver reglas dinámicas del supervisor",
 		cliArgs: () => ["idu-supervisor-learning-rules-status"],
 		usage: "/idu-supervisor-learning-rules-status",
 	});
 
-	registerIduCommand("idu-supervisor-learning-rules-test", {
+	registerIduAliases("idu-supervisor-learning-rules-test", {
 		description: "Probar reglas dinámicas del supervisor",
 		cliArgs: () => ["idu-supervisor-learning-rules-test"],
 		usage: "/idu-supervisor-learning-rules-test",
 	});
 
-	registerIduCommand("idu-supervisor-learning-rules-disable", {
+	registerIduAliases("idu-supervisor-learning-rules-disable", {
 		description: "Desactivar una regla dinámica del supervisor",
 		cliArgs: (args) => [
 			"idu-supervisor-learning-rules-disable",
@@ -407,7 +419,7 @@ export default function (pi: ExtensionAPI) {
 		usage: "/idu-supervisor-learning-rules-disable <ruleId> [motivo]",
 	});
 
-	registerIduCommand("idu-supervisor-learning-rules-enable", {
+	registerIduAliases("idu-supervisor-learning-rules-enable", {
 		description: "Reactivar una regla dinámica del supervisor",
 		cliArgs: (args) => [
 			"idu-supervisor-learning-rules-enable",
@@ -417,7 +429,7 @@ export default function (pi: ExtensionAPI) {
 		usage: "/idu-supervisor-learning-rules-enable <ruleId> [motivo]",
 	});
 
-	registerIduCommand("idu-supervisor-learning-rules-rollback", {
+	registerIduAliases("idu-supervisor-learning-rules-rollback", {
 		description: "Restaurar backup de reglas dinámicas del supervisor",
 		cliArgs: (args) => [
 			"idu-supervisor-learning-rules-rollback",

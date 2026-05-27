@@ -15,6 +15,7 @@ import {
 	formatCliHome,
 	formatSetupPathHelp,
 	formatSetupWizardNonInteractive,
+	resolveCliPackageRoot,
 	resolveIduRegistryPath,
 } from "./cli-home.js";
 import {
@@ -36,6 +37,7 @@ import {
 	runIduPrepare,
 	type IduPrepareResult,
 } from "./idu-prepare.js";
+import { formatIduBootstrapResult, runIduBootstrap } from "./idu-bootstrap.js";
 import {
 	formatIduProjectDashboard,
 	type IduProjectDashboardReport,
@@ -818,6 +820,9 @@ export async function runCliCommand(
 			return ok(handleSetupCommand(rest));
 		}
 		if (command === "project") return ok(handleProjectCommand(rest));
+		if (command === "idu" && !runtime) {
+			return ok(await runBootstrapIduCommand());
+		}
 		const activeRuntime = runtime ?? createCliRuntime();
 		configureIduSessionStore(
 			activeRuntime.sessionStatePath
@@ -1238,12 +1243,52 @@ export async function runCliCommand(
 	}
 }
 
+async function runBootstrapIduCommand(): Promise<string> {
+	const config = loadConfig({ requireTelegram: false });
+	process.env.AGENT_WORKSPACE_ROOT ??= config.agentWorkspaceRoot;
+	const bootstrap = runIduBootstrap({
+		projectPath: process.cwd(),
+		config,
+		registryPath: resolveIduRegistryPath(),
+	});
+	const activeRuntime = createCliRuntime({
+		projectPath: bootstrap.project.path,
+		requireTelegramConfig: false,
+	});
+	activeRuntime.supervisorOnIduActivation();
+	const sections = [formatIduBootstrapResult(bootstrap)];
+	if (bootstrap.shouldRunPrepare && bootstrap.criticalDecisions.length === 0) {
+		sections.push(
+			"",
+			"Análisis seguro inicial",
+			"",
+			activeRuntime.formatPrepare(activeRuntime.prepare()),
+		);
+	} else if (bootstrap.criticalDecisions.length > 0) {
+		sections.push("", "Análisis pausado por decisión crítica humana.");
+	}
+	sections.push(
+		"",
+		"Dashboard",
+		"",
+		activeRuntime.formatDashboard(activeRuntime.inspectConnection()),
+	);
+	return sections.join("\n");
+}
+
 function handleSetupCommand(rest: string[]): string {
 	const subcommand = rest[0] ?? "status";
 	const agentDir = resolvePiAgentDir();
+	const packageRoot = resolveCliPackageRoot();
 	const mcpServerPath = join(
 		dirname(fileURLToPath(import.meta.url)),
 		"mcp-server.js",
+	);
+	const extensionSourcePath = join(
+		packageRoot,
+		".pi",
+		"extensions",
+		"idu-pi-commands.ts",
 	);
 	if (subcommand === "status") {
 		const mcpInstalled = existsSync(join(agentDir, "mcp.json"));
@@ -1274,6 +1319,7 @@ function handleSetupCommand(rest: string[]): string {
 		const result = installIduMcpConfig({
 			agentDir,
 			mcpServerPath,
+			extensionSourcePath,
 			force,
 			dryRun,
 		});

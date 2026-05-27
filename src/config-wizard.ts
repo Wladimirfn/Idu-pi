@@ -7,7 +7,8 @@ import {
 	readdirSync,
 	writeFileSync,
 } from "node:fs";
-import { basename, dirname, join, relative } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { AgentProfile, AgentWorkspaceMode } from "./config.js";
 import { isAllowedCwd } from "./config.js";
 import {
@@ -147,6 +148,11 @@ const PROJECT_BLUEPRINT = "config/project-blueprint.json";
 const PROJECT_FLOWS = "config/project-flows.json";
 const DEFAULT_BLUEPRINT = "config/default-blueprint.json";
 const DEFAULT_FLOWS = "config/default-flows.json";
+const PACKAGE_ROOT = resolve(
+	dirname(fileURLToPath(import.meta.url)),
+	"..",
+	"..",
+);
 
 const REGISTRY_TEMPLATE = `# Project Skill Registry
 
@@ -491,7 +497,7 @@ function safeProjectName(projectPath: string, projectId?: string): string {
 
 function blueprintContent(projectName: string): string {
 	const parsed = JSON.parse(
-		readFileSync(join(process.cwd(), DEFAULT_BLUEPRINT), "utf8"),
+		readFileSync(join(PACKAGE_ROOT, DEFAULT_BLUEPRINT), "utf8"),
 	) as unknown;
 	const record =
 		parsed && typeof parsed === "object" && !Array.isArray(parsed)
@@ -508,7 +514,7 @@ function blueprintContent(projectName: string): string {
 
 function flowsContent(): string {
 	const parsed = JSON.parse(
-		readFileSync(join(process.cwd(), DEFAULT_FLOWS), "utf8"),
+		readFileSync(join(PACKAGE_ROOT, DEFAULT_FLOWS), "utf8"),
 	) as unknown;
 	const validation = validateProjectFlows(parsed);
 	if (!validation.ok) {

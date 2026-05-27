@@ -68,6 +68,7 @@ export type IduMcpServerConfig = {
 export type InstallIduMcpConfigInput = {
 	agentDir: string;
 	mcpServerPath: string;
+	extensionSourcePath?: string;
 	force?: boolean;
 	dryRun?: boolean;
 	now?: () => Date;
@@ -77,6 +78,12 @@ export type InstallIduMcpConfigResult = {
 	status: "installed" | "exists" | "dry_run";
 	mcpConfigPath: string;
 	backupPath?: string;
+	commandExtensionPath?: string;
+	commandExtensionStatus?:
+		| "installed"
+		| "exists"
+		| "dry_run"
+		| "missing_source";
 	config: { mcpServers: Record<string, unknown> };
 	summary: string;
 };
@@ -219,20 +226,32 @@ export function installIduMcpConfig(
 			...(hasExistingIdu && !input.force ? {} : { "idu-pi": iduConfig }),
 		},
 	};
+	const extensionResult = installGlobalPiCommandExtension({
+		agentDir,
+		packageRoot: iduConfig.cwd,
+		sourcePath: input.extensionSourcePath,
+		force: input.force,
+		dryRun: input.dryRun,
+	});
 	if (input.dryRun) {
 		return {
 			status: "dry_run",
 			mcpConfigPath,
+			commandExtensionPath: extensionResult.path,
+			commandExtensionStatus: extensionResult.status,
 			config: next,
-			summary: "Dry-run: no escribí mcp.json.",
+			summary: "Dry-run: no escribí mcp.json ni extensión de comandos.",
 		};
 	}
 	if (hasExistingIdu && !input.force) {
 		return {
 			status: "exists",
 			mcpConfigPath,
+			commandExtensionPath: extensionResult.path,
+			commandExtensionStatus: extensionResult.status,
 			config: existing,
-			summary: "idu-pi ya existe en mcp.json; usá --force para reemplazar.",
+			summary:
+				"idu-pi ya existe en mcp.json; comandos slash globales verificados.",
 		};
 	}
 	mkdirSync(agentDir, { recursive: true });
@@ -242,8 +261,10 @@ export function installIduMcpConfig(
 		status: "installed",
 		mcpConfigPath,
 		backupPath,
+		commandExtensionPath: extensionResult.path,
+		commandExtensionStatus: extensionResult.status,
 		config: next,
-		summary: "MCP idu-pi configurado.",
+		summary: "MCP idu-pi y comandos slash globales configurados.",
 	};
 }
 
@@ -253,6 +274,54 @@ export function printIduMcpConfig(input: { mcpServerPath: string }): string {
 		null,
 		2,
 	)}\n`;
+}
+
+type CommandExtensionInstallInput = {
+	agentDir: string;
+	packageRoot: string;
+	sourcePath?: string;
+	force?: boolean;
+	dryRun?: boolean;
+};
+
+type CommandExtensionInstallResult = {
+	path: string;
+	status: "installed" | "exists" | "dry_run" | "missing_source";
+};
+
+function installGlobalPiCommandExtension(
+	input: CommandExtensionInstallInput,
+): CommandExtensionInstallResult {
+	const destination = join(
+		resolve(input.agentDir),
+		"extensions",
+		"idu-pi-commands.ts",
+	);
+	if (input.dryRun) return { path: destination, status: "dry_run" };
+	if (!input.sourcePath || !existsSync(input.sourcePath)) {
+		return { path: destination, status: "missing_source" };
+	}
+	const content = renderGlobalCommandExtension(
+		readFileSync(input.sourcePath, "utf8"),
+		input.packageRoot,
+	);
+	if (existsSync(destination) && !input.force) {
+		const current = readFileSync(destination, "utf8");
+		if (current === content) return { path: destination, status: "exists" };
+	}
+	mkdirSync(dirname(destination), { recursive: true });
+	writeFileSync(destination, content, "utf8");
+	return { path: destination, status: "installed" };
+}
+
+function renderGlobalCommandExtension(
+	source: string,
+	packageRoot: string,
+): string {
+	return source.replace(
+		/const IDU_PI_PACKAGE_ROOT(?::\s*string)? = "__IDU_PI_PACKAGE_ROOT__";/u,
+		`const IDU_PI_PACKAGE_ROOT: string = ${JSON.stringify(resolve(packageRoot))};`,
+	);
 }
 
 export function detectGlobalIduInstall(
@@ -455,6 +524,12 @@ export function formatInstallIduMcpConfigResult(
 		"",
 		"mcpConfigPath:",
 		result.mcpConfigPath,
+		"",
+		"commandExtensionPath:",
+		result.commandExtensionPath ?? "—",
+		"",
+		"commandExtensionStatus:",
+		result.commandExtensionStatus ?? "—",
 		"",
 		"backupPath:",
 		result.backupPath ?? "—",

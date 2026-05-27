@@ -66,12 +66,34 @@ test("detectAgentConfigs detects Pi best-effort", () => {
 	rmSync(root, { recursive: true, force: true });
 });
 
-test("mcp-init creates mcp.json when missing", () => {
+test("mcp-init creates mcp.json and global slash extension when missing", () => {
 	const root = tempDir();
 	const mcpServerPath = join(root, "dist", "src", "mcp-server.js");
-	const result = installIduMcpConfig({ agentDir: root, mcpServerPath });
+	const extensionSourcePath = join(root, "source-extension.ts");
+	writeFileSync(
+		extensionSourcePath,
+		'const IDU_PI_PACKAGE_ROOT: string = "__IDU_PI_PACKAGE_ROOT__";\n',
+		"utf8",
+	);
+	const result = installIduMcpConfig({
+		agentDir: root,
+		mcpServerPath,
+		extensionSourcePath,
+	});
 	assert.equal(result.status, "installed");
+	assert.equal(result.commandExtensionStatus, "installed");
 	assert.equal(existsSync(join(root, "mcp.json")), true);
+	assert.equal(
+		existsSync(join(root, "extensions", "idu-pi-commands.ts")),
+		true,
+	);
+	assert.match(
+		readFileSync(join(root, "extensions", "idu-pi-commands.ts"), "utf8"),
+		new RegExp(
+			`const IDU_PI_PACKAGE_ROOT: string = ${JSON.stringify(root).replace(/\\/gu, "\\\\")}`,
+			"u",
+		),
+	);
 	const parsed = JSON.parse(readFileSync(join(root, "mcp.json"), "utf8")) as {
 		mcpServers: Record<
 			string,
@@ -153,6 +175,10 @@ test("mcp-print and dry-run do not write files", () => {
 	});
 	assert.equal(dryRun.status, "dry_run");
 	assert.equal(existsSync(join(root, "mcp.json")), false);
+	assert.equal(
+		existsSync(join(root, "extensions", "idu-pi-commands.ts")),
+		false,
+	);
 	rmSync(root, { recursive: true, force: true });
 });
 
@@ -286,8 +312,48 @@ test("CLI setup mcp-init works in temp agent dir", async () => {
 		setCliEnv({ projectPath, workspaceRoot, agentDir, allowedRoot: root });
 		const result = await runCliCommand(["setup", "mcp-init"]);
 		assert.equal(result.exitCode, 0);
-		assert.match(result.stdout, /MCP idu-pi configurado/u);
+		assert.match(
+			result.stdout,
+			/MCP idu-pi y comandos slash globales configurados/u,
+		);
 		assert.equal(existsSync(join(agentDir, "mcp.json")), true);
+		assert.equal(
+			existsSync(join(agentDir, "extensions", "idu-pi-commands.ts")),
+			true,
+		);
+	} finally {
+		process.chdir(previousCwd);
+		restoreEnv(previous);
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("CLI /idu bootstraps external project and second call fast-paths", async () => {
+	const root = tempDir();
+	const projectPath = join(root, "Sistema_de_mantencion");
+	const workspaceRoot = join(root, "workspace");
+	const agentDir = join(root, "pi-agent");
+	mkdirSync(projectPath, { recursive: true });
+	const previous = snapshotEnv();
+	const previousCwd = process.cwd();
+	try {
+		process.chdir(projectPath);
+		setCliEnv({ projectPath, workspaceRoot, agentDir, allowedRoot: root });
+		const first = await runCliCommand(["idu"]);
+		assert.equal(first.exitCode, 0);
+		assert.match(first.stdout, /Idu-pi bootstrap/u);
+		assert.match(first.stdout, /Project Core\/Constitution quedan como draft/u);
+		assert.equal(
+			existsSync(join(projectPath, "config", "project-core.json")),
+			true,
+		);
+		assert.equal(
+			existsSync(join(projectPath, "config", "project-blueprint.json")),
+			true,
+		);
+		const second = await runCliCommand(["idu"]);
+		assert.equal(second.exitCode, 0);
+		assert.match(second.stdout, /ya existía en este proyecto/u);
 	} finally {
 		process.chdir(previousCwd);
 		restoreEnv(previous);
