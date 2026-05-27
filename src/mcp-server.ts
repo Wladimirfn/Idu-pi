@@ -4,9 +4,16 @@ import { pathToFileURL } from "node:url";
 import { canonicalDirectory, isAllowedCwd, loadConfig } from "./config.js";
 import { createCliRuntime, type CliRuntime } from "./cli.js";
 import { applyPackageEnvDefaults, resolveIduRegistryPath } from "./cli-home.js";
+import { runIduBootstrap } from "./idu-bootstrap.js";
+import {
+	projectEnroll,
+	projectInstallStatus,
+	type ProjectEnrollResult,
+} from "./idu-installer.js";
 import { inferTaskTemplateKind } from "./task-templates.js";
 import {
 	activateIduSession,
+	configureIduSessionStore,
 	deactivateIduSession,
 	getIduSessionStatus,
 } from "./idu-session.js";
@@ -20,6 +27,10 @@ import type { StructuredTask } from "./structured-task-queue.js";
 type JsonObject = Record<string, unknown>;
 
 export type IduMcpToolName =
+	| "idu_project_status"
+	| "idu_project_enroll"
+	| "idu_bootstrap_project"
+	| "idu_start"
 	| "idu_status"
 	| "idu_activate"
 	| "idu_deactivate"
@@ -98,6 +109,39 @@ const SAFE_BASE_NOTES = [
 ];
 
 const TOOLS: IduMcpToolDefinition[] = [
+	tool(
+		"idu_project_status",
+		"Inspecciona registro y estado aislado del proyecto sin escribir archivos.",
+		{
+			projectPath: optionalString("Ruta opcional del proyecto objetivo."),
+		},
+	),
+	tool(
+		"idu_project_enroll",
+		"Registra explícitamente un proyecto y crea estado aislado sin drafts ni scans.",
+		{
+			projectPath: requiredString("Ruta obligatoria del proyecto objetivo."),
+			projectId: optionalString("ID opcional del proyecto."),
+		},
+	),
+	tool(
+		"idu_bootstrap_project",
+		"Bootstrap explícito: enrola y crea drafts seguros sólo si allowCreateDrafts=true.",
+		{
+			projectPath: requiredString("Ruta obligatoria del proyecto objetivo."),
+			allowCreateDrafts: optionalBoolean(
+				"Permite crear Project Core/Constitution/blueprint/flows draft.",
+			),
+			activate: optionalBoolean("Activa guardrails después del bootstrap."),
+		},
+	),
+	tool(
+		"idu_start",
+		"Entrada cómoda para proyectos ya registrados: activa y muestra dashboard sin enrolar automáticamente.",
+		{
+			projectPath: optionalString("Ruta opcional del proyecto objetivo."),
+		},
+	),
 	tool("idu_status", "Inspecta conexión, sesión y siguiente acción segura.", {
 		projectPath: optionalString("Ruta opcional del proyecto objetivo."),
 	}),
@@ -284,6 +328,9 @@ export async function callIduMcpTool(
 		});
 	}
 	const args = asRecord(input);
+	if (isProjectLifecycleTool(name)) {
+		return handleProjectLifecycleTool(name, args, options);
+	}
 	const resolution = (options.projectResolver ?? resolveMcpProjectContext)(
 		stringArg(args, "projectPath"),
 	);
@@ -420,6 +467,242 @@ async function handleLine(
 	}
 	const response = await handleMcpRequest(parsed, options);
 	if (response) writeResponse(response);
+}
+
+type IduProjectLifecycleToolName =
+	| "idu_project_status"
+	| "idu_project_enroll"
+	| "idu_bootstrap_project"
+	| "idu_start";
+
+function isProjectLifecycleTool(
+	name: IduMcpToolName,
+): name is IduProjectLifecycleToolName {
+	return [
+		"idu_project_status",
+		"idu_project_enroll",
+		"idu_bootstrap_project",
+		"idu_start",
+	].includes(name);
+}
+
+async function handleProjectLifecycleTool(
+	name: IduProjectLifecycleToolName,
+	args: JsonObject,
+	options: IduMcpServerOptions,
+): Promise<IduMcpToolResult> {
+	try {
+		applyPackageEnvDefaults();
+		const config = loadConfig({ requireTelegram: false });
+		const registryPath = resolveIduRegistryPath();
+		switch (name) {
+			case "idu_project_status": {
+				const projectPath = resolveLifecycleProjectPath(
+					stringArg(args, "projectPath"),
+				);
+				const status = projectInstallStatus({
+					projectPath,
+					workspaceRoot: config.agentWorkspaceRoot,
+					allowedRoots: config.allowedRoots,
+					registryPath,
+					mcpAvailable: true,
+				});
+				return envelope({
+					ok: true,
+					tool: name,
+					projectId: status.projectId,
+					projectPath: status.projectPath,
+					summary: status.registered
+						? "Proyecto registrado en Idu-pi."
+						: "Proyecto no registrado en Idu-pi.",
+					data: { ...status },
+					safeNotes: ["Solo leí estado; no escribí registry ni archivos."],
+				});
+			}
+			case "idu_project_enroll": {
+				const projectPath = requiredText(args, "projectPath");
+				const result = projectEnroll({
+					projectPath,
+					projectId: stringArg(args, "projectId"),
+					workspaceRoot: config.agentWorkspaceRoot,
+					allowedRoots: config.allowedRoots,
+					registryPath,
+				});
+				return envelope(projectEnrollEnvelope(name, result));
+			}
+			case "idu_bootstrap_project": {
+				const projectPath = requiredText(args, "projectPath");
+				const allowCreateDrafts = booleanArg(args, "allowCreateDrafts", false);
+				const activate = booleanArg(args, "activate", false);
+				if (!allowCreateDrafts) {
+					const result = projectEnroll({
+						projectPath,
+						workspaceRoot: config.agentWorkspaceRoot,
+						allowedRoots: config.allowedRoots,
+						registryPath,
+					});
+					if (activate) {
+						configureProjectSessionStore(result.statePaths);
+						activateIduSession(result.project.id);
+					}
+					return envelope({
+						...projectEnrollEnvelope(name, result),
+						summary: activate
+							? "Proyecto enrolado y guardrails activados; no creé drafts porque allowCreateDrafts=false."
+							: "Proyecto enrolado; no creé drafts porque allowCreateDrafts=false.",
+						data: {
+							project: result.project,
+							statePaths: result.statePaths,
+							created: result.created,
+							allowCreateDrafts,
+							activated: activate,
+						},
+					});
+				}
+				const result = runIduBootstrap({
+					projectPath,
+					config,
+					registryPath,
+					activate,
+				});
+				return envelope({
+					ok: true,
+					tool: name,
+					projectId: result.project.id,
+					projectPath: result.project.path,
+					summary: activate
+						? "Bootstrap completo: drafts seguros creados/verificados y guardrails activados."
+						: "Bootstrap completo: drafts seguros creados/verificados sin activar guardrails.",
+					data: {
+						project: result.project,
+						statePaths: result.statePaths,
+						created: result.created,
+						existing: result.existing,
+						alreadyBootstrapped: result.alreadyBootstrapped,
+						shouldRunPrepare: result.shouldRunPrepare,
+						allowCreateDrafts,
+						activated: activate,
+					},
+					safeNotes: [
+						"Project Core/Constitution son drafts hasta confirmación humana.",
+						"No ejecuté AgentLabs.",
+						"No hice commit ni push.",
+					],
+					errors: result.criticalDecisions,
+				});
+			}
+			case "idu_start": {
+				const resolution = (
+					options.projectResolver ?? resolveMcpProjectContext
+				)(stringArg(args, "projectPath"));
+				if (resolution.status === "unregistered_project") {
+					return envelope({
+						ok: false,
+						tool: name,
+						projectId: resolution.projectId,
+						projectPath: resolution.projectPath,
+						summary:
+							"Proyecto no registrado; idu_start no enrola automáticamente.",
+						data: {
+							resolutionStatus: resolution.status,
+							recommendedNext:
+								"Usá idu_project_enroll o idu_bootstrap_project explícitamente.",
+						},
+						safeNotes: [
+							...resolution.safeNotes,
+							"No escribí registry ni drafts desde idu_start.",
+						],
+						errors: resolution.errors,
+					});
+				}
+				if (resolution.status === "invalid_project") {
+					return envelope({
+						ok: false,
+						tool: name,
+						projectId: resolution.projectId,
+						projectPath: resolution.projectPath,
+						summary: "Proyecto inválido para Idu-pi MCP.",
+						data: { resolutionStatus: resolution.status },
+						safeNotes: resolution.safeNotes,
+						errors: resolution.errors,
+					});
+				}
+				const runtime = (options.runtimeFactory ?? defaultRuntimeFactory)(
+					resolution.projectPath,
+				);
+				activateIduSession(runtime.projectId);
+				const connection = runtime.inspectConnection();
+				return envelope({
+					ok: true,
+					tool: name,
+					projectId: runtime.projectId,
+					projectPath: runtime.projectPath,
+					summary: `Idu-pi activo; alignment=${connection.alignmentStatus}.`,
+					data: {
+						resolutionStatus: resolution.status,
+						active: true,
+						configStatus: connection.configStatus,
+						alignmentStatus: connection.alignmentStatus,
+						recommendedNext: connection.recommendedNext,
+						connection,
+					},
+					safeNotes: [
+						...resolution.safeNotes,
+						"idu_start no enrola proyectos ni crea drafts.",
+					],
+				});
+			}
+		}
+	} catch (error) {
+		return envelope({
+			ok: false,
+			tool: name,
+			projectId: null,
+			projectPath: stringArg(args, "projectPath") ?? null,
+			summary: `Falló ${name}: ${redactSecrets(errorMessage(error))}`,
+			data: {},
+			errors: [redactSecrets(errorMessage(error))],
+		});
+	}
+}
+
+function configureProjectSessionStore(
+	statePaths: ProjectEnrollResult["statePaths"],
+): void {
+	configureIduSessionStore({
+		workspaceRoot: statePaths.stateRoot,
+		filePath: statePaths.sessionStatePath,
+	});
+}
+
+function projectEnrollEnvelope(
+	name: IduMcpToolName,
+	result: ProjectEnrollResult,
+): Parameters<typeof envelope>[0] {
+	return {
+		ok: true,
+		tool: name,
+		projectId: result.project.id,
+		projectPath: result.project.path,
+		summary:
+			"Proyecto enrolado con estado aislado; no creé drafts ni ejecuté scans.",
+		data: {
+			project: result.project,
+			statePaths: result.statePaths,
+			created: result.created,
+		},
+		safeNotes: [
+			...result.safeNotes,
+			"No creé Project Core ni Constitution.",
+			"No ejecuté scan ni AgentLabs.",
+		],
+	};
+}
+
+function resolveLifecycleProjectPath(inputProjectPath?: string): string {
+	if (inputProjectPath?.trim()) return inputProjectPath.trim();
+	const resolution = resolveMcpProjectContext();
+	return resolution.projectPath;
 }
 
 async function dispatchTool(
@@ -754,6 +1037,7 @@ async function dispatchTool(
 			});
 		}
 	}
+	throw new Error(`Tool ${name} is handled before runtime dispatch.`);
 }
 
 function defaultRuntimeFactory(projectPath?: string): CliRuntime {

@@ -1,10 +1,18 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
 	configureIduSessionStore,
 	deactivateIduSession,
+	getIduSessionStatus,
 } from "../src/idu-session.js";
 import {
 	callIduMcpTool,
@@ -427,8 +435,11 @@ function factory(): IduMcpRuntimeFactory {
 test("mcp server lists Idu-pi tools", async () => {
 	const tools = listIduMcpTools();
 	assert.ok(tools.some((tool) => tool.name === "idu_status"));
+	assert.ok(tools.some((tool) => tool.name === "idu_project_enroll"));
+	assert.ok(tools.some((tool) => tool.name === "idu_bootstrap_project"));
+	assert.ok(tools.some((tool) => tool.name === "idu_start"));
 	assert.ok(tools.some((tool) => tool.name === "idu_agentlab_review_run"));
-	assert.equal(tools.length, 14);
+	assert.equal(tools.length, 18);
 });
 
 test("idu_status works with explicit projectPath", async () => {
@@ -639,6 +650,228 @@ test("JSON-RPC initialize, notifications, and tool calls work", async () => {
 	};
 	assert.equal(body.ok, true);
 	assert.equal(body.tool, "idu_status");
+});
+
+type EnvSnapshot = Record<string, string | undefined>;
+
+function snapshotEnv(): EnvSnapshot {
+	return {
+		DEFAULT_CWD: process.env.DEFAULT_CWD,
+		ALLOWED_ROOTS: process.env.ALLOWED_ROOTS,
+		AGENT_WORKSPACE_ROOT: process.env.AGENT_WORKSPACE_ROOT,
+		IDU_PI_REGISTRY_PATH: process.env.IDU_PI_REGISTRY_PATH,
+		TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
+		ALLOWED_USER_ID: process.env.ALLOWED_USER_ID,
+	};
+}
+
+function restoreEnv(snapshot: EnvSnapshot): void {
+	for (const [key, value] of Object.entries(snapshot)) {
+		if (value === undefined) delete process.env[key];
+		else process.env[key] = value;
+	}
+}
+
+function setMcpEnv(root: string, projectPath: string): string {
+	const workspaceRoot = join(root, "workspace");
+	const registryPath = join(root, "registry", "projects.json");
+	process.env.DEFAULT_CWD = projectPath;
+	process.env.ALLOWED_ROOTS = root;
+	process.env.AGENT_WORKSPACE_ROOT = workspaceRoot;
+	process.env.IDU_PI_REGISTRY_PATH = registryPath;
+	delete process.env.TELEGRAM_BOT_TOKEN;
+	delete process.env.ALLOWED_USER_ID;
+	return registryPath;
+}
+
+test("idu_project_status does not write files for unregistered project", async () => {
+	const root = mkdtempSync(join(tmpdir(), "idu-mcp-status-"));
+	const projectPath = join(root, "project");
+	mkdirSync(projectPath, { recursive: true });
+	const previous = snapshotEnv();
+	const registryPath = setMcpEnv(root, projectPath);
+	try {
+		const result = await callIduMcpTool("idu_project_status", { projectPath });
+		assert.equal(result.ok, true);
+		assert.equal(result.data.registered, false);
+		assert.equal(existsSync(registryPath), false);
+	} finally {
+		restoreEnv(previous);
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("idu_project_enroll registers project and creates isolated state only", async () => {
+	const root = mkdtempSync(join(tmpdir(), "idu-mcp-enroll-"));
+	const projectPath = join(root, "project");
+	mkdirSync(projectPath, { recursive: true });
+	const previous = snapshotEnv();
+	setMcpEnv(root, projectPath);
+	try {
+		const result = await callIduMcpTool("idu_project_enroll", { projectPath });
+		assert.equal(result.ok, true);
+		assert.equal(result.projectId, "project");
+		const statePaths = result.data.statePaths as {
+			stateRoot: string;
+			reportsDir: string;
+			agentLabReportsDir: string;
+		};
+		assert.equal(existsSync(statePaths.stateRoot), true);
+		assert.equal(existsSync(statePaths.reportsDir), true);
+		assert.equal(existsSync(statePaths.agentLabReportsDir), true);
+		assert.equal(
+			existsSync(join(projectPath, "config", "project-core.json")),
+			false,
+		);
+		assert.equal(
+			existsSync(join(projectPath, "config", "project-constitution.json")),
+			false,
+		);
+	} finally {
+		restoreEnv(previous);
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("idu_project_status reports registered project after enroll", async () => {
+	const root = mkdtempSync(join(tmpdir(), "idu-mcp-status-registered-"));
+	const projectPath = join(root, "project");
+	mkdirSync(projectPath, { recursive: true });
+	const previous = snapshotEnv();
+	setMcpEnv(root, projectPath);
+	try {
+		await callIduMcpTool("idu_project_enroll", { projectPath });
+		const result = await callIduMcpTool("idu_project_status", { projectPath });
+		assert.equal(result.ok, true);
+		assert.equal(result.data.registered, true);
+	} finally {
+		restoreEnv(previous);
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("idu_project_enroll rejects paths outside allowed roots", async () => {
+	const root = mkdtempSync(join(tmpdir(), "idu-mcp-enroll-deny-"));
+	const outside = mkdtempSync(join(tmpdir(), "idu-mcp-outside-"));
+	const previous = snapshotEnv();
+	setMcpEnv(root, root);
+	try {
+		const result = await callIduMcpTool("idu_project_enroll", {
+			projectPath: outside,
+		});
+		assert.equal(result.ok, false);
+		assert.match(result.summary, /ALLOWED_ROOTS/u);
+	} finally {
+		restoreEnv(previous);
+		rmSync(root, { recursive: true, force: true });
+		rmSync(outside, { recursive: true, force: true });
+	}
+});
+
+test("idu_bootstrap_project creates drafts only when explicitly allowed and activates when requested", async () => {
+	const root = mkdtempSync(join(tmpdir(), "idu-mcp-bootstrap-"));
+	const noDraftsPath = join(root, "no-drafts");
+	const draftsPath = join(root, "drafts");
+	mkdirSync(noDraftsPath, { recursive: true });
+	mkdirSync(draftsPath, { recursive: true });
+	const previous = snapshotEnv();
+	setMcpEnv(root, noDraftsPath);
+	try {
+		const noDrafts = await callIduMcpTool("idu_bootstrap_project", {
+			projectPath: noDraftsPath,
+			allowCreateDrafts: false,
+			activate: false,
+		});
+		assert.equal(noDrafts.ok, true);
+		assert.equal(
+			existsSync(join(noDraftsPath, "config", "project-core.json")),
+			false,
+		);
+
+		const withDraftsInactive = await callIduMcpTool("idu_bootstrap_project", {
+			projectPath: draftsPath,
+			allowCreateDrafts: true,
+			activate: false,
+		});
+		assert.equal(withDraftsInactive.ok, true);
+		assert.equal(
+			existsSync(join(draftsPath, "config", "project-core.json")),
+			true,
+		);
+		assert.equal(
+			existsSync(join(draftsPath, "config", "project-constitution.json")),
+			true,
+		);
+		assert.equal(
+			getIduSessionStatus(String(withDraftsInactive.projectId)).active,
+			false,
+		);
+
+		const withDrafts = await callIduMcpTool("idu_bootstrap_project", {
+			projectPath: draftsPath,
+			allowCreateDrafts: true,
+			activate: true,
+		});
+		assert.equal(withDrafts.ok, true);
+		assert.equal(
+			getIduSessionStatus(String(withDrafts.projectId)).active,
+			true,
+		);
+	} finally {
+		restoreEnv(previous);
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("idu_start does not enroll unregistered projects and activates registered projects", async () => {
+	const unregistered = await callIduMcpTool(
+		"idu_start",
+		{ projectPath: "C:/projects/new" },
+		{
+			projectResolver: () => ({
+				status: "unregistered_project",
+				projectId: "new",
+				projectPath: "C:/projects/new",
+				recommendedNext: "Use enroll.",
+				safeNotes: [],
+				errors: ["not registered"],
+			}),
+			runtimeFactory: factory(),
+		},
+	);
+	assert.equal(unregistered.ok, false);
+	assert.match(
+		String(unregistered.data.recommendedNext),
+		/idu_project_enroll/u,
+	);
+
+	const registeredStart = await callIduMcpTool(
+		"idu_start",
+		{ projectPath: "C:/projects/sistema" },
+		{ projectResolver: () => registered(), runtimeFactory: factory() },
+	);
+	assert.equal(registeredStart.ok, true);
+	assert.equal(registeredStart.data.active, true);
+});
+
+test("idu_activate remains activate-only and does not bootstrap unregistered projects", async () => {
+	const root = mkdtempSync(join(tmpdir(), "idu-mcp-activate-only-"));
+	const projectPath = join(root, "project");
+	mkdirSync(projectPath, { recursive: true });
+	const previous = snapshotEnv();
+	const registryPath = setMcpEnv(root, projectPath);
+	try {
+		const result = await callIduMcpTool("idu_activate", { projectPath });
+		assert.equal(result.ok, false);
+		assert.equal(existsSync(registryPath), false);
+		assert.equal(
+			existsSync(join(projectPath, "config", "project-core.json")),
+			false,
+		);
+	} finally {
+		restoreEnv(previous);
+		rmSync(root, { recursive: true, force: true });
+	}
 });
 
 test("agentlab review run is the only AgentLab execution tool and reports sandbox notes", async () => {

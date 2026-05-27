@@ -95,9 +95,10 @@ idu-pi project enroll "C:\\Users\\elmas\\OneDrive\\Escritorio\\Mis proyectos\\Si
 Cada herramienta acepta `projectPath` opcional.
 
 1. Si `projectPath` viene, Idu-pi valida la ruta contra `ALLOWED_ROOTS` e intenta asociarla con el registry.
-2. Si la ruta no está registrada, devuelve `unregistered_project` con diagnóstico claro. No escribe el registry automáticamente.
+2. Si la ruta no está registrada, las herramientas de lectura/activación devuelven `unregistered_project` con diagnóstico claro. No escriben el registry automáticamente.
 3. Si `projectPath` no viene, usa el proyecto activo del registry.
 4. Si no hay proyecto activo, usa `process.cwd()` sólo como candidato y recomienda registrar el proyecto.
+5. El registry sólo se modifica desde herramientas explícitas: `idu_project_enroll` o `idu_bootstrap_project`.
 
 ## Herramientas disponibles
 
@@ -120,8 +121,12 @@ Herramientas mínimas:
 
 | Tool | Propósito |
 | --- | --- |
+| `idu_project_status` | Lee si un proyecto está registrado y sus rutas de estado; no escribe archivos. |
+| `idu_project_enroll` | Registra explícitamente un proyecto y crea estado aislado; no crea drafts ni activa guardrails. |
+| `idu_bootstrap_project` | Bootstrap explícito: enrola, crea estado y, con `allowCreateDrafts=true`, crea Project Core/Constitution/blueprint/flows draft. |
+| `idu_start` | Entrada cómoda para proyectos registrados: activa guardrails y muestra estado; no enrola ni crea drafts. |
 | `idu_status` | Estado de conexión, sesión, config/alignment y próximo paso. |
-| `idu_activate` | Activa guardrails automáticos sin scan pesado ni AgentLabs. |
+| `idu_activate` | Sólo activa guardrails automáticos sin enrolar, bootstrap, scan pesado ni AgentLabs. |
 | `idu_deactivate` | Apaga guardrails automáticos. |
 | `idu_prepare` | Ejecuta prepare seguro. |
 | `idu_preflight` | Evalúa riesgo/impacto de una solicitud humana. |
@@ -147,6 +152,8 @@ El MCP adapter:
 - no modifica skills reales;
 - no borra memoria;
 - no devuelve secretos de errores/logs sin redacción básica;
-- no ejecuta AgentLabs salvo la herramienta explícita `idu_agentlab_review_run`.
+- no ejecuta AgentLabs salvo la herramienta explícita `idu_agentlab_review_run`;
+- no escribe registry desde `idu_status`, `idu_activate` ni `idu_start`;
+- no crea `config/project-*.json` salvo `idu_bootstrap_project` con `allowCreateDrafts=true`.
 
 Telegram es un adapter, no el núcleo. El núcleo sigue siendo Idu-pi Core.

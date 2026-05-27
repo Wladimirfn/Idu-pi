@@ -30,6 +30,7 @@ export type IduBootstrapInput = {
 	projectPath: string;
 	config: BridgeConfig;
 	registryPath?: string;
+	activate?: boolean;
 };
 
 export type IduBootstrapResult = {
@@ -119,7 +120,7 @@ export function runIduBootstrap(input: IduBootstrapInput): IduBootstrapResult {
 		workspaceRoot: statePaths.stateRoot,
 		filePath: statePaths.sessionStatePath,
 	});
-	activateIduSession(project.id);
+	if (input.activate ?? true) activateIduSession(project.id);
 
 	const configResult = initProjectConfig(projectPath, project.id);
 	created.push(...configResult.created);

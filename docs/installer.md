@@ -176,7 +176,14 @@ El enrolamiento manual:
 - no corre scan pesado;
 - no toca código del proyecto externo.
 
-Normalmente no necesitás enrolar a mano: al ejecutar `/idu` dentro de Pi, Idu-pi enrola el proyecto permitido, crea estado aislado, genera Project Core/Constitution draft y ejecuta preparación segura inicial.
+Normalmente no necesitás enrolar a mano desde CLI: al ejecutar `/idu` dentro de Pi, Idu-pi enrola el proyecto permitido, crea estado aislado, genera Project Core/Constitution draft y ejecuta preparación segura inicial.
+
+Desde MCP la separación es explícita:
+
+- `idu_project_status` sólo lee estado.
+- `idu_project_enroll` registra y crea estado aislado, sin drafts.
+- `idu_bootstrap_project` crea drafts sólo con `allowCreateDrafts=true`.
+- `idu_start` activa proyectos ya registrados, pero no enrola automáticamente.
 
 ## Ver estado de proyecto
 

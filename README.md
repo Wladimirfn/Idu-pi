@@ -90,6 +90,17 @@ idu-pi setup mcp-init
 idu-pi project enroll <projectPath> [projectId]
 ```
 
+Desde MCP, el orquestador puede usar herramientas explícitas:
+
+```text
+idu_project_status
+idu_project_enroll
+idu_bootstrap_project
+idu_start
+```
+
+`idu_activate` sólo activa guardrails; no enrola ni crea drafts.
+
 Guía: [Instalador, home CLI y estado por proyecto](docs/installer.md).
 
 ## Cómo se activa
