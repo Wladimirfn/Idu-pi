@@ -21,6 +21,21 @@ Ver [MCP Server](mcp-server.md).
 
 ## Setup e instalación
 
+Primera instalación, antes de que `idu-pi` exista en `PATH`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/install.ps1
+```
+
+Dry-run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/install.ps1 -DryRun
+node scripts/install.mjs --dry-run
+```
+
+El bootstrap installer no modifica `PATH` automáticamente; crea un shim local con confirmación y muestra la ruta a agregar si hace falta.
+
 | Comando | Uso |
 | --- | --- |
 | `idu-pi` | Muestra home CLI; en terminal interactiva abre wizard visual con Instalación/Estado/Proyecto/PATH/Exit. |

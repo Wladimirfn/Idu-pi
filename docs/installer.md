@@ -49,6 +49,76 @@ AGENT_WORKSPACE_ROOT/
 
 Esto evita mezclar DB, reports, cola, sesión o memoria semántica entre proyectos.
 
+## Bootstrap installer seguro
+
+Cuando una terminal nueva responde `idu-pi: The term 'idu-pi' is not recognized`, el comando todavía no puede abrir su propio instalador. Para primera instalación usá el bootstrap externo:
+
+```powershell
+git clone https://github.com/Wladimirfn/IDU-PI.git idu-pi
+cd idu-pi
+powershell -ExecutionPolicy Bypass -File scripts/install.ps1
+```
+
+También puede ejecutarse directo con Node:
+
+```bash
+node scripts/install.mjs
+```
+
+Antes de tocar nada:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/install.ps1 -DryRun
+# o
+node scripts/install.mjs --dry-run
+```
+
+El instalador muestra versión, Node, Git, Corepack, pnpm, Pi agent dir, MCP config, `idu-pi` global, plan, comandos y rutas que tocaría.
+
+Flags:
+
+```text
+--yes          acepta confirmaciones; no modifica PATH automáticamente
+--dry-run      muestra plan, comandos y archivos sin escribir
+--no-mcp       omite setup mcp-init
+--no-shim      omite shim idu-pi local
+--open-wizard  abre node dist/src/cli.js al final
+--help         muestra ayuda
+```
+
+Acciones que sólo ocurren con confirmación o `--yes`:
+
+1. `corepack enable`
+2. `corepack pnpm install --frozen-lockfile --ignore-scripts`
+3. `corepack pnpm build`
+4. `node dist/src/cli.js -- setup mcp-init`
+5. crear shim local `idu-pi.cmd` / `idu-pi.ps1`
+6. abrir wizard si se pidió `--open-wizard`
+
+El shim local se crea en:
+
+```text
+C:\Users\<user>\AppData\Local\idu-pi\bin
+```
+
+Si esa carpeta ya está en `PATH`, `idu-pi` queda disponible. Si no, el instalador imprime:
+
+```text
+Agrega esta ruta al PATH:
+C:\Users\<user>\AppData\Local\idu-pi\bin
+
+No modifiqué PATH automáticamente.
+```
+
+Si un shim existente cambiaría, crea backup antes de sobrescribir:
+
+```text
+idu-pi.backup-YYYYMMDD-HHMMSS.cmd
+idu-pi.backup-YYYYMMDD-HHMMSS.ps1
+```
+
+Guía corta: [Instalación rápida segura](quickstart-install.md).
+
 ## Home CLI
 
 ```bash
@@ -241,6 +311,6 @@ Idu-pi no modifica `PATH` automáticamente.
 
 El home y el wizard no ejecutan acciones destructivas por mostrarse. Sólo escriben si elegís explícitamente una acción como instalar MCP o enrolar proyecto, y el menú interactivo pide confirmación antes de esas escrituras.
 
-El instalador no ejecuta Telegram, AgentLabs, IA externa, scans pesados, commits ni pushes. Sólo configura adapters globales y prepara estado de proyecto.
+El instalador no ejecuta bootstrap remoto opaco ni scripts de dependencias: usa `pnpm-lock.yaml` con `--frozen-lockfile --ignore-scripts`; pnpm puede descargar paquetes fijados desde el registry/cache configurado. No usa `irm | iex`, no modifica `PATH` automáticamente, no lee ni muestra secretos de `.env`, no ejecuta Telegram, AgentLabs, IA externa, scans pesados, enrolamiento de proyectos, Project Core, commits ni pushes. Sólo configura adapters globales cuando lo confirmás explícitamente.
 
 Telegram es un adapter, no el núcleo. MCP también es un adapter. El núcleo es Idu-pi Core.

@@ -72,13 +72,31 @@ Las interfaces llaman al core. El core no depende de Telegram.
 
 ## Instalación / configuración
 
-Para entrar sin memorizar comandos:
+Primera instalación segura, cuando `idu-pi` todavía no existe en `PATH`:
+
+```powershell
+git clone https://github.com/Wladimirfn/IDU-PI.git idu-pi
+cd idu-pi
+powershell -ExecutionPolicy Bypass -File scripts/install.ps1
+```
+
+Dry-run verificable:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/install.ps1 -DryRun
+# o
+node scripts/install.mjs --dry-run
+```
+
+El instalador no ejecuta bootstrap remoto opaco ni scripts de dependencias: usa `pnpm-lock.yaml` con `--frozen-lockfile --ignore-scripts`; pnpm puede descargar paquetes fijados desde el registry/cache configurado. No ejecuta Telegram/AgentLabs, no enrola proyectos y no modifica `PATH` automáticamente. Si crea el shim local, informa la ruta a agregar al `PATH` y dice: "No modifiqué PATH automáticamente." Guía: [Instalación rápida segura](docs/quickstart-install.md).
+
+Para entrar sin memorizar comandos después de instalar:
 
 ```text
 idu-pi
 ```
 
-Primera vez desde el repo, antes del link global:
+Primera vez desde el repo, antes del link global o shim:
 
 ```text
 corepack pnpm cli
@@ -181,14 +199,13 @@ Nada crítico se aplica sin confirmación humana.
 
 ## Instalación rápida
 
-En Windows:
+Recomendado en Windows:
 
-```text
-setup-pi-telegram-bridge.bat
-start-pi-telegram-bridge.bat
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/install.ps1
 ```
 
-Instalación manual:
+Instalación manual para desarrollo:
 
 ```bash
 corepack pnpm install
@@ -196,7 +213,7 @@ cp .env.example .env
 corepack pnpm dev
 ```
 
-Variables mínimas en `.env`:
+Variables mínimas en `.env` para el adapter Telegram:
 
 ```env
 TELEGRAM_BOT_TOKEN=token_de_botfather
@@ -252,6 +269,7 @@ corepack pnpm test
 
 ## Documentación
 
+- [`docs/quickstart-install.md`](docs/quickstart-install.md) — primera instalación segura con bootstrap installer.
 - [`docs/cli-commands.md`](docs/cli-commands.md) — comandos CLI por grupo.
 - [`docs/telegram-commands.md`](docs/telegram-commands.md) — comandos Telegram por grupo.
 - [`docs/supervisor-model.md`](docs/supervisor-model.md) — modelo conceptual del supervisor.
