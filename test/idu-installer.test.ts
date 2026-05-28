@@ -559,12 +559,25 @@ test("CLI /idu bootstraps external project and second call fast-paths", async ()
 			1,
 		);
 		assert.match(first.stdout, /Plan Maestro:/u);
+		assert.match(
+			first.stdout,
+			/Acción principal:\n1\. Ver detalles: idu-pi master-plan-review latest/u,
+		);
+		assert.doesNotMatch(
+			first.stdout,
+			/Acción principal:\n(?:.*\n){0,3}.*idu-pi idu-prepare/u,
+		);
+		assert.match(first.stdout, /Advertencias breves:[\s\S]*pending_scan/u);
 		const approve = await runCliCommand(["master-plan-approve", "latest"]);
 		assert.equal(approve.exitCode, 0);
 		const second = await runCliCommand(["idu"]);
 		assert.equal(second.exitCode, 0);
 		assert.match(second.stdout, /ya existía en este proyecto/u);
 		assert.match(second.stdout, /Plan Maestro:\napproved/u);
+		assert.match(
+			second.stdout,
+			/Continuar con prepare\/flows según corresponda/u,
+		);
 		assert.equal(
 			readdirSync(join(stateRoot, "reports")).filter((entry) =>
 				/^master-plan-.*\.json$/u.test(entry),

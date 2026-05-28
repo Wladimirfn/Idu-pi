@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
-test("/idu activates automatic guardrails and shows project dashboard", () => {
+test("/idu activates automatic guardrails and shows master plan summary", () => {
 	const source = readFileSync("src/index.ts", "utf8");
 	const handler = source.slice(source.indexOf('bot.command("idu"'));
 	const handlerBlock = handler.slice(
@@ -12,7 +12,9 @@ test("/idu activates automatic guardrails and shows project dashboard", () => {
 
 	assert.match(handlerBlock, /activateIduSession\(projectId\)/);
 	assert.match(handlerBlock, /inspectProjectConnection\(/);
-	assert.match(handlerBlock, /iduProjectDashboardText\(report\)/);
+	assert.match(handlerBlock, /formatMasterPlanSummaryForIdu\(masterPlan\)/);
+	assert.match(handlerBlock, /formatMasterPlanSecondaryWarnings\(report\)/);
+	assert.doesNotMatch(handlerBlock, /iduProjectDashboardText\(report\)/);
 });
 
 test("/idu_off and /idu_status are wired to session state", () => {

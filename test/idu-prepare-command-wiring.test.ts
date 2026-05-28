@@ -24,7 +24,7 @@ test("/idu_prepare is wired without unsafe operations", () => {
 	);
 });
 
-test("/idu response advertises prepare only when safe", () => {
+test("/idu response keeps prepare as secondary to master plan", () => {
 	const source = readFileSync("src/index.ts", "utf8");
 	const handler = source.slice(source.indexOf('bot.command("idu"'));
 	const handlerBlock = handler.slice(
@@ -32,9 +32,12 @@ test("/idu response advertises prepare only when safe", () => {
 		handler.indexOf('bot.command("idu_prepare"'),
 	);
 
-	assert.match(handlerBlock, /iduProjectDashboardText\(report\)/u);
-	assert.match(source, /formatIduProjectDashboard\(/u);
-	assert.match(source, /lastIduPrepareByProject\.get\(report\.projectId\)/u);
-	assert.match(source, /recommendedNext: report\.recommendedNext/u);
+	assert.match(handlerBlock, /formatMasterPlanSummaryForIdu\(masterPlan\)/u);
+	assert.match(handlerBlock, /formatMasterPlanSecondaryWarnings\(report\)/u);
+	assert.doesNotMatch(handlerBlock, /iduProjectDashboardText\(report\)/u);
+	assert.doesNotMatch(
+		handlerBlock,
+		/recommendedNext: report\.recommendedNext/u,
+	);
 	assert.doesNotMatch(handlerBlock, /applyProjectFlowsDraft\(/u);
 });

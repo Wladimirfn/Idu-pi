@@ -732,6 +732,18 @@ function buildPreflightReport(request: string): ProjectPreflightReport {
 	});
 }
 
+function formatMasterPlanSecondaryWarnings(
+	report: ReturnType<typeof inspectProjectConnection>,
+): string[] {
+	if (report.alignmentStatus !== "pending_scan") return [];
+	return [
+		"",
+		"Advertencias breves:",
+		"- Estado de alineación secundario: pending_scan.",
+		"- /idu_prepare sigue disponible, pero el Plan Maestro dirige la acción principal.",
+	];
+}
+
 function iduProjectDashboardText(
 	report: ReturnType<typeof inspectProjectConnection>,
 ): string {
@@ -1445,8 +1457,7 @@ bot.command("idu", async (ctx) => {
 			"Guardrails automáticos activados para el proyecto activo.",
 			"",
 			formatMasterPlanSummaryForIdu(masterPlan),
-			"",
-			iduProjectDashboardText(report),
+			...formatMasterPlanSecondaryWarnings(report),
 		].join("\n"),
 	);
 });

@@ -15,6 +15,7 @@ import { join, relative } from "node:path";
 import { test } from "node:test";
 import {
 	approveMasterPlan,
+	classifyProjectPath,
 	ensureMasterPlanForIdu,
 	formatMasterPlanReview,
 	formatMasterPlanSummaryForIdu,
@@ -88,6 +89,77 @@ function writeLargeProject(projectPath: string): void {
 	}
 }
 
+function writeToolingHeavyProductProject(projectPath: string): void {
+	mkdirSync(join(projectPath, ".agents", "skills", "agent"), {
+		recursive: true,
+	});
+	mkdirSync(join(projectPath, ".adal", "skills"), { recursive: true });
+	mkdirSync(join(projectPath, ".augment", "cache"), { recursive: true });
+	mkdirSync(join(projectPath, ".vscode"), { recursive: true });
+	mkdirSync(join(projectPath, "src", "components"), { recursive: true });
+	mkdirSync(join(projectPath, "src", "services"), { recursive: true });
+	mkdirSync(join(projectPath, "routes"), { recursive: true });
+	mkdirSync(join(projectPath, "supabase", "migrations"), { recursive: true });
+	writeFileSync(
+		join(projectPath, "README.md"),
+		"# Maintenance Portal\n\nIndustrial operations maintenance system.\n",
+		"utf8",
+	);
+	writeFileSync(
+		join(projectPath, "package.json"),
+		JSON.stringify({
+			dependencies: {
+				"@supabase/supabase-js": "1.0.0",
+				express: "1.0.0",
+				vite: "1.0.0",
+			},
+			devDependencies: { typescript: "1.0.0" },
+		}),
+		"utf8",
+	);
+	writeFileSync(
+		join(projectPath, "pnpm-lock.yaml"),
+		"lockfileVersion: '9'\n",
+		"utf8",
+	);
+	writeFileSync(
+		join(projectPath, "src", "login.html"),
+		"<form id='login-form'><button id='login'>Login</button></form>",
+		"utf8",
+	);
+	writeFileSync(
+		join(projectPath, "src", "login.js"),
+		"fetch('/api/auth/login'); localStorage.setItem('session', token);",
+		"utf8",
+	);
+	writeFileSync(
+		join(projectPath, "routes", "auth.ts"),
+		"import jwt from 'jsonwebtoken'; export const login = () => jwt.sign({ id: 1 }, 'secret');",
+		"utf8",
+	);
+	writeFileSync(
+		join(projectPath, "src", "components", "dashboard.tsx"),
+		"export function Dashboard(){ return null; }",
+		"utf8",
+	);
+	writeFileSync(
+		join(projectPath, "src", "services", "upload.ts"),
+		"import { createClient } from '@supabase/supabase-js'; export const upload = () => createClient('', '').storage.from('files');",
+		"utf8",
+	);
+	writeFileSync(
+		join(projectPath, "supabase", "migrations", "001.sql"),
+		"create table reports(id uuid primary key);",
+		"utf8",
+	);
+	writeFileSync(
+		join(projectPath, ".agents", "skills", "README.md"),
+		"# agent skills\n",
+		"utf8",
+	);
+	writeFileSync(join(projectPath, ".adal", "config.json"), "{}", "utf8");
+}
+
 function listRelativeFiles(root: string): string[] {
 	const files: string[] = [];
 	function walk(dir: string): void {
@@ -111,6 +183,206 @@ function writeBrokenDirectoryLink(linkPath: string, targetPath: string): void {
 		rmSync(targetPath, { recursive: true, force: true });
 	}
 }
+
+test("classifyProjectPath separa señales de producto de tooling genérico", () => {
+	assert.equal(
+		classifyProjectPath(".agents/skills/react/SKILL.md"),
+		"agent_metadata",
+	);
+	assert.equal(
+		classifyProjectPath(".augment/cache/state.json"),
+		"agent_metadata",
+	);
+	assert.equal(classifyProjectPath(".vscode/settings.json"), "tooling");
+	assert.equal(classifyProjectPath("src/components/Login.tsx"), "component");
+	assert.equal(classifyProjectPath("routes/auth.ts"), "auth");
+	assert.equal(
+		classifyProjectPath("supabase/migrations/001.sql"),
+		"data_store",
+	);
+	assert.equal(classifyProjectPath("dist/index.js"), "generated");
+});
+
+test("Plan Maestro separa tooling y detecta arquitectura datos auth y flujos funcionales", () => {
+	const root = tempRoot();
+	try {
+		const projectPath = join(root, "project");
+		const stateRoot = join(root, "state", "projects", "demo");
+		mkdirSync(projectPath, { recursive: true });
+		writeToolingHeavyProductProject(projectPath);
+
+		const result = generateMasterPlanDraft({
+			projectId: "demo",
+			projectPath,
+			stateRoot,
+			gitHead: "head1",
+		});
+
+		assert.deepEqual(
+			[".adal", ".agents", ".augment"].filter((tool) =>
+				result.plan.detectedModules.includes(tool),
+			),
+			[],
+		);
+		assert.ok(result.plan.toolingDetected.includes(".agents"));
+		assert.ok(result.plan.toolingDetected.includes(".adal"));
+		assert.ok(result.plan.toolingDetected.includes(".augment"));
+		assert.ok(result.plan.detectedModules.includes("src"));
+		assert.ok(result.plan.detectedModules.includes("routes"));
+		assert.equal(result.plan.architecture.packageManager, "pnpm");
+		assert.ok(result.plan.architecture.languages.includes("TypeScript"));
+		assert.ok(result.plan.architecture.languages.includes("JavaScript"));
+		assert.ok(result.plan.architecture.frameworks.includes("Express"));
+		assert.equal(result.plan.architecture.database, "Supabase/Postgres");
+		assert.equal(result.plan.securityModel.authDetected, true);
+		assert.equal(result.plan.securityModel.sessionDetected, true);
+		assert.ok(
+			result.plan.dataStores.some((store) => store.type === "supabase"),
+		);
+		assert.ok(
+			result.plan.dataStores.some((store) => store.type === "postgres"),
+		);
+		assert.ok(
+			result.plan.detectedFlows.every((flow) => typeof flow !== "string"),
+		);
+		assert.ok(
+			result.plan.detectedFlows.some(
+				(flow) => flow.type === "auth" && flow.modules.includes("routes"),
+			),
+		);
+		assert.ok(
+			result.plan.detectedFlows.some((flow) =>
+				flow.dataStores.includes("supabase"),
+			),
+		);
+		const summary = formatMasterPlanSummaryForIdu(result);
+		assert.match(summary, /Objetivo:/u);
+		assert.match(summary, /Arquitectura:/u);
+		assert.match(summary, /Datos:/u);
+		assert.match(summary, /Auth:/u);
+		assert.match(summary, /Flujos principales:/u);
+		assert.doesNotMatch(summary, /\.agents|\.adal|\.augment/u);
+		const markdown = formatMasterPlanReview(
+			reviewMasterPlan({ stateRoot, pathOrLatest: "latest" }),
+		);
+		assert.match(markdown, /## Arquitectura detectada/u);
+		assert.match(markdown, /## Stack\/lenguajes/u);
+		assert.match(markdown, /## Persistencia \/ datos/u);
+		assert.match(markdown, /## Seguridad \/ auth/u);
+		assert.match(markdown, /## Flujos funcionales/u);
+		assert.match(markdown, /## Tooling detectado/u);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("Plan Maestro legacy se normaliza sin crashear /idu", () => {
+	const root = tempRoot();
+	try {
+		const projectPath = join(root, "project");
+		const stateRoot = join(root, "state", "projects", "demo");
+		mkdirSync(join(stateRoot, "reports"), { recursive: true });
+		writeSmallProject(projectPath);
+		writeFileSync(
+			join(stateRoot, "reports", "master-plan-legacy.json"),
+			JSON.stringify({
+				version: "1.0.0",
+				projectId: "demo",
+				projectPath,
+				generatedAt: new Date().toISOString(),
+				status: "draft",
+				autoDepth: {
+					mode: "quick",
+					reason: "legacy",
+					signals: [],
+					agentLabsSelected: [],
+					skippedAgentLabs: [],
+					tokenCostHint: "low",
+				},
+				source: {
+					projectCoreStatus: "missing",
+					constitutionStatus: "missing",
+					blueprintStatus: "missing",
+					flowsStatus: "missing",
+					scanStatus: "legacy",
+				},
+				executiveSummary: "legacy",
+				inferredObjective: "legacy objective",
+				problemStatement: "legacy problem",
+				scope: [],
+				outOfScope: [],
+				detectedModules: ["src"],
+				detectedFlows: ["src/login.ts"],
+				dataStores: ["db/schema.sql"],
+				userRoles: [],
+				criticalRisks: [],
+				qualityRisks: [],
+				securityRisks: [],
+				architectureRisks: [],
+				openQuestions: [],
+				assumptions: [],
+				recommendedNext: [],
+				sourceFiles: [],
+				agentLabReviews: [],
+			}),
+			"utf8",
+		);
+		writeFileSync(
+			join(stateRoot, "master-plan.current.json"),
+			JSON.stringify({
+				currentPlanJson: "reports/master-plan-legacy.json",
+				currentPlanMd: "reports/master-plan-legacy.md",
+				status: "draft",
+				projectId: "demo",
+				projectPath,
+				updatedAt: new Date().toISOString(),
+			}),
+			"utf8",
+		);
+
+		const result = ensureMasterPlanForIdu({
+			projectId: "demo",
+			projectPath,
+			stateRoot,
+		});
+		const text = formatMasterPlanSummaryForIdu(result);
+		assert.match(text, /Arquitectura:/u);
+		assert.match(text, /Datos:/u);
+		assert.match(text, /Login\/acceso/u);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("Supabase storage sin señales auth no marca login/session", () => {
+	const root = tempRoot();
+	try {
+		const projectPath = join(root, "project");
+		const stateRoot = join(root, "state", "projects", "demo");
+		mkdirSync(join(projectPath, "src", "services"), { recursive: true });
+		writeFileSync(
+			join(projectPath, "package.json"),
+			JSON.stringify({ dependencies: { "@supabase/supabase-js": "1.0.0" } }),
+			"utf8",
+		);
+		writeFileSync(
+			join(projectPath, "src", "services", "storage.ts"),
+			"import { createClient } from '@supabase/supabase-js'; export const storage = createClient('', '').storage.from('files');",
+			"utf8",
+		);
+
+		const result = generateMasterPlanDraft({
+			projectId: "demo",
+			projectPath,
+			stateRoot,
+		});
+		assert.equal(result.plan.architecture.database, "Supabase/Postgres");
+		assert.equal(result.plan.securityModel.authDetected, false);
+		assert.equal(result.plan.securityModel.sessionDetected, false);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
 
 test("genera Plan Maestro draft en stateRoot/reports sin modificar repo del usuario", () => {
 	const root = tempRoot();
@@ -225,6 +497,14 @@ test("AutoDepth elige deep_required para proyecto grande y no ejecuta AgentLabs"
 		});
 
 		assert.equal(result.plan.autoDepth.mode, "deep_required");
+		assert.match(
+			formatMasterPlanSummaryForIdu(result),
+			/requiere aprobación humana antes de deep review/i,
+		);
+		assert.match(
+			formatMasterPlanSummaryForIdu(result),
+			/No ejecutar deep review automáticamente/u,
+		);
 		assert.ok(result.plan.autoDepth.skippedAgentLabs.length >= 1);
 		assert.ok(
 			result.plan.agentLabReviews.every(
@@ -306,8 +586,22 @@ test("status detecta approved vigente y marca stale si gitHead cambia", () => {
 
 		const current = getMasterPlanStatus({ stateRoot, currentGitHead: "same" });
 		assert.equal(current.status, "approved");
+		assert.match(
+			formatMasterPlanSummaryForIdu({
+				status: current,
+				plan: reviewMasterPlan({ stateRoot, pathOrLatest: "latest" }).plan,
+			}),
+			/Continuar con prepare\/flows según corresponda/u,
+		);
 		const stale = getMasterPlanStatus({ stateRoot, currentGitHead: "changed" });
 		assert.equal(stale.status, "stale");
+		assert.match(
+			formatMasterPlanSummaryForIdu({
+				status: stale,
+				plan: reviewMasterPlan({ stateRoot, pathOrLatest: "latest" }).plan,
+			}),
+			/master-plan-redraft latest/u,
+		);
 		assert.equal(
 			JSON.parse(
 				readFileSync(join(stateRoot, "master-plan.current.json"), "utf8"),
@@ -416,7 +710,11 @@ test("memory es liviano y review/summary son humanos", () => {
 		assert.match(formatMasterPlanSummaryForIdu(result), /AutoDepth:/u);
 		assert.match(
 			formatMasterPlanSummaryForIdu(result),
-			/master-plan-review latest/u,
+			/Acción principal:\n1\. Ver detalles: idu-pi master-plan-review latest/u,
+		);
+		assert.doesNotMatch(
+			formatMasterPlanSummaryForIdu(result),
+			/Acción principal:[\s\S]*idu-pi idu-prepare/u,
 		);
 		writeFileSync(
 			join(stateRoot, "master-plan.current.json"),

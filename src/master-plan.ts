@@ -42,6 +42,89 @@ export type MasterPlanSource = {
 	scanStatus: string;
 };
 
+export type ProjectPathClassification =
+	| "app_module"
+	| "route"
+	| "component"
+	| "service"
+	| "data_store"
+	| "auth"
+	| "ui"
+	| "docs"
+	| "test"
+	| "tooling"
+	| "agent_metadata"
+	| "generated"
+	| "ignored"
+	| "product_code"
+	| "business_module"
+	| "api_route"
+	| "data_layer"
+	| "auth_security"
+	| "configuration"
+	| "documentation"
+	| "vendor"
+	| "runtime_state"
+	| "unknown";
+
+export type MasterPlanArchitecture = {
+	projectKind: string;
+	frontend: string;
+	backend: string;
+	database: string;
+	auth: string;
+	deployment: string;
+	packageManager: string;
+	languages: string[];
+	frameworks: string[];
+	evidence: string[];
+};
+
+export type MasterPlanDataStore = {
+	name: string;
+	type:
+		| "supabase"
+		| "postgres"
+		| "sqlite"
+		| "mysql"
+		| "mongodb"
+		| "prisma"
+		| "localStorage"
+		| "indexedDB"
+		| "json"
+		| "api"
+		| "unknown";
+	evidence: string[];
+	riskLevel: "low" | "medium" | "high";
+};
+
+export type MasterPlanSecurityModel = {
+	authDetected: boolean;
+	sessionDetected: boolean;
+	sensitiveFlows: string[];
+	evidence: string[];
+};
+
+export type MasterPlanFunctionalFlow = {
+	name: string;
+	type:
+		| "auth"
+		| "data_ingest"
+		| "reporting"
+		| "api"
+		| "ui_action"
+		| "data_flow"
+		| "unknown";
+	from: string;
+	through: string[];
+	to: string;
+	modules: string[];
+	dataStores: string[];
+	triggers: string[];
+	evidence: string[];
+	riskLevel: "low" | "medium" | "high";
+};
+
 export type MasterPlanApproval = {
 	approvedAt?: string;
 	rejectedAt?: string;
@@ -64,8 +147,12 @@ export type MasterPlan = {
 	scope: string[];
 	outOfScope: string[];
 	detectedModules: string[];
-	detectedFlows: string[];
-	dataStores: string[];
+	detectedFlows: MasterPlanFunctionalFlow[];
+	dataStores: MasterPlanDataStore[];
+	architecture: MasterPlanArchitecture;
+	securityModel: MasterPlanSecurityModel;
+	toolingDetected: string[];
+	ignoredTooling: string[];
 	userRoles: string[];
 	criticalRisks: string[];
 	qualityRisks: string[];
@@ -137,6 +224,45 @@ const SKIPPED_DIRS = new Set([
 	"workspaces",
 	".pi-lens",
 ]);
+const AGENT_METADATA_DIRS = new Set([
+	".adal",
+	".agents",
+	".aider-desk",
+	".atl",
+	".augment",
+	".bob",
+	".claude",
+	".codeartsdoer",
+	".codebuddy",
+	".codemaker",
+	".codestudio",
+	".commandcode",
+	".continue",
+	".cortex",
+	".crush",
+	".devin",
+	".factory",
+	".forge",
+	".goose",
+	".iflow",
+	".windsurf",
+]);
+const TOOLING_DIRS = new Set([
+	".cursor",
+	".github",
+	".vscode",
+	".idea",
+	".husky",
+	".mcp",
+]);
+const GENERATED_DIRS = new Set(["dist", "build", "coverage", ".next", "out"]);
+const VENDOR_DIRS = new Set(["node_modules", "vendor"]);
+const RUNTIME_STATE_DIRS = new Set([
+	"reports",
+	"workspaces",
+	".pi-lens",
+	".pi",
+]);
 const TEXT_EXTENSIONS = new Set([
 	".ts",
 	".tsx",
@@ -195,6 +321,10 @@ export function generateMasterPlanDraft(input: {
 		detectedModules: signals.moduleCandidates,
 		detectedFlows: signals.flowCandidates,
 		dataStores: signals.dataStoreCandidates,
+		architecture: signals.architecture,
+		securityModel: signals.securityModel,
+		toolingDetected: signals.toolingDetected,
+		ignoredTooling: signals.ignoredTooling,
 		userRoles: inferUserRoles(signals),
 		criticalRisks: inferCriticalRisks(autoDepth, source, signals),
 		qualityRisks: inferQualityRisks(signals),
@@ -366,46 +496,119 @@ export function formatMasterPlanSummaryForIdu(
 		| MasterPlanDraftResult
 		| { status: MasterPlanStatusResult; plan?: MasterPlan },
 ): string {
-	if ("plan" in result && "current" in result) {
-		return [
-			"Plan Maestro:",
-			result.plan.status,
-			"",
-			"AutoDepth:",
-			`${result.plan.autoDepth.mode} — ${result.plan.autoDepth.reason}`,
-			"",
-			"Acción automática:",
-			"- Revisé estado aislado",
-			"- Analicé estructura básica",
-			"- Generé Plan Maestro draft",
-			"- Guardé resumen optimizado",
-			"",
-			"Guardado en:",
-			result.jsonPath,
-			"",
-			"Acciones:",
-			"1. Aprobar: idu-pi master-plan-approve latest",
-			"2. Rehacer: idu-pi master-plan-redraft latest",
-			"3. Ver detalles: idu-pi master-plan-review latest",
-		].join("\n");
-	}
-	const status = result.status;
+	const isDraftResult = "plan" in result && "current" in result;
 	const plan = result.plan;
-	return [
+	const status = isDraftResult ? result.plan.status : result.status.status;
+	const savedPath = isDraftResult
+		? result.jsonPath
+		: result.status.exists
+			? result.status.currentPlanJson
+			: "—";
+	const lines = [
 		"Plan Maestro:",
-		status.status,
+		status,
+		"",
+		"Objetivo:",
+		plan?.inferredObjective ?? "—",
+		"",
+		"Arquitectura:",
+		plan ? shortArchitectureLine(plan) : "—",
+		"",
+		"Datos:",
+		plan ? shortDataLine(plan) : "—",
+		"",
+		"Auth:",
+		plan
+			? plan.securityModel.authDetected
+				? "detectado"
+				: "no detectado"
+			: "—",
+		"",
+		"Flujos principales:",
+		...(plan ? topFlowLines(plan) : ["- —"]),
 		"",
 		"AutoDepth:",
 		plan ? `${plan.autoDepth.mode} — ${plan.autoDepth.reason}` : "—",
 		"",
 		"Guardado en:",
-		status.exists ? status.currentPlanJson : "—",
+		savedPath,
 		"",
-		"Acciones:",
-		status.status === "approved"
-			? "1. Ver detalles: idu-pi master-plan-review latest"
-			: "1. Rehacer: idu-pi master-plan-redraft latest",
-	].join("\n");
+		"Acción automática:",
+		...(isDraftResult
+			? [
+					"- Revisé estado aislado",
+					"- Analicé estructura básica",
+					"- Generé Plan Maestro draft",
+					"- Guardé resumen optimizado",
+				]
+			: ["- Reutilicé Plan Maestro existente"]),
+		"",
+		"Acción principal:",
+		...masterPlanActionLines(status, plan),
+	];
+	if (plan?.autoDepth.mode === "deep_required") {
+		lines.push(
+			"",
+			"Advertencias:",
+			"- Requiere aprobación humana antes de deep review.",
+			"- No ejecutar deep review automáticamente.",
+		);
+	}
+	return lines.join("\n");
+}
+
+function masterPlanActionLines(
+	status: MasterPlanStatus | "missing",
+	plan?: MasterPlan,
+): string[] {
+	if (status === "draft") {
+		return [
+			"1. Ver detalles: idu-pi master-plan-review latest",
+			"2. Aprobar: idu-pi master-plan-approve latest",
+			"3. Rehacer: idu-pi master-plan-redraft latest",
+		];
+	}
+	if (status === "approved") {
+		return [
+			"1. Continuar con prepare/flows según corresponda: idu-pi idu-prepare",
+			"2. Ver detalles: idu-pi master-plan-review latest",
+		];
+	}
+	if (status === "stale") {
+		return ["1. Rehacer: idu-pi master-plan-redraft latest"];
+	}
+	if (status === "rejected") {
+		return ["1. Rehacer: idu-pi master-plan-redraft latest"];
+	}
+	return plan ? ["1. Ver detalles: idu-pi master-plan-review latest"] : [];
+}
+
+function shortArchitectureLine(plan: MasterPlan): string {
+	return (
+		[
+			plan.architecture.frontend,
+			plan.architecture.backend,
+			plan.architecture.database !== "no detectada"
+				? plan.architecture.database
+				: undefined,
+		]
+			.filter((value): value is string => !!value && value !== "no claro")
+			.join(" + ") || plan.architecture.projectKind
+	);
+}
+
+function shortDataLine(plan: MasterPlan): string {
+	return plan.dataStores.length
+		? plan.dataStores.map((store) => store.name).join(" / ")
+		: "no detectada";
+}
+
+function topFlowLines(plan: MasterPlan): string[] {
+	return plan.detectedFlows.length
+		? plan.detectedFlows
+				.slice(0, 3)
+				.map((flow, index) => `${index + 1}. ${flow.name}`)
+		: ["- —"];
 }
 
 export function formatMasterPlanStatus(result: MasterPlanStatusResult): string {
@@ -480,11 +683,45 @@ export function formatMasterPlanMarkdown(plan: MasterPlan): string {
 		"## Fuera de alcance",
 		...bulletList(plan.outOfScope),
 		"",
+		"## Arquitectura detectada",
+		...bulletList([
+			`Tipo: ${plan.architecture.projectKind}`,
+			`Frontend: ${plan.architecture.frontend}`,
+			`Backend: ${plan.architecture.backend}`,
+			`Base de datos: ${plan.architecture.database}`,
+			`Auth: ${plan.architecture.auth}`,
+			`Deploy: ${plan.architecture.deployment}`,
+			`Package manager: ${plan.architecture.packageManager}`,
+		]),
+		"",
+		"## Stack/lenguajes",
+		...bulletList([
+			`Lenguajes: ${plan.architecture.languages.join(", ") || "—"}`,
+			`Frameworks: ${plan.architecture.frameworks.join(", ") || "—"}`,
+			...plan.architecture.evidence.map((item) => `Evidencia: ${item}`),
+		]),
+		"",
+		"## Persistencia / datos",
+		...bulletList(plan.dataStores.map(formatDataStoreForMarkdown)),
+		"",
+		"## Seguridad / auth",
+		...bulletList([
+			`Auth detectado: ${plan.securityModel.authDetected ? "sí" : "no"}`,
+			`Sesión detectada: ${plan.securityModel.sessionDetected ? "sí" : "no"}`,
+			...plan.securityModel.sensitiveFlows.map(
+				(flow) => `Flujo sensible: ${flow}`,
+			),
+			...plan.securityModel.evidence.map((item) => `Evidencia: ${item}`),
+		]),
+		"",
 		"## Módulos detectados",
 		...bulletList(plan.detectedModules),
 		"",
-		"## Flujos detectados",
-		...bulletList(plan.detectedFlows),
+		"## Flujos funcionales",
+		...bulletList(plan.detectedFlows.map(formatFlowForMarkdown)),
+		"",
+		"## Tooling detectado",
+		...bulletList(plan.toolingDetected),
 		"",
 		"## Riesgos",
 		...bulletList([
@@ -503,6 +740,14 @@ export function formatMasterPlanMarkdown(plan: MasterPlan): string {
 		"## Estado de aprobación",
 		plan.status,
 	].join("\n");
+}
+
+function formatDataStoreForMarkdown(store: MasterPlanDataStore): string {
+	return `${store.name} (${store.type}, riesgo ${store.riskLevel}) — ${store.evidence.slice(0, 3).join(", ")}`;
+}
+
+function formatFlowForMarkdown(flow: MasterPlanFunctionalFlow): string {
+	return `${flow.name} [${flow.type}, riesgo ${flow.riskLevel}]: ${flow.from} → ${flow.through.join(" → ") || "proceso detectado"} → ${flow.to}; módulos=${flow.modules.join(", ") || "—"}; datos=${flow.dataStores.join(", ") || "—"}; evidencia=${flow.evidence.slice(0, 3).join(", ")}`;
 }
 
 function updatePlanDecision(
@@ -545,10 +790,82 @@ type ProjectSignals = {
 	hasAuth: boolean;
 	routeCount: number;
 	moduleCandidates: string[];
-	flowCandidates: string[];
-	dataStoreCandidates: string[];
+	flowCandidates: MasterPlanFunctionalFlow[];
+	dataStoreCandidates: MasterPlanDataStore[];
+	architecture: MasterPlanArchitecture;
+	securityModel: MasterPlanSecurityModel;
+	toolingDetected: string[];
+	ignoredTooling: string[];
 	sourceFiles: string[];
 };
+
+type PackageMetadata = {
+	dependencyCount: number;
+	packageManager: string;
+	dependencies: string[];
+};
+
+export function classifyProjectPath(path: string): ProjectPathClassification {
+	const normalized = path.replace(/\\/gu, "/").replace(/^\.\//u, "");
+	const segments = normalized.split("/").filter(Boolean);
+	const first = segments[0] ?? normalized;
+	const lower = normalized.toLowerCase();
+	const firstLower = first.toLowerCase();
+	if (!normalized) return "unknown";
+	if (VENDOR_DIRS.has(firstLower)) return "vendor";
+	if (GENERATED_DIRS.has(firstLower)) return "generated";
+	if (RUNTIME_STATE_DIRS.has(firstLower)) return "runtime_state";
+	if (AGENT_METADATA_DIRS.has(firstLower)) return "agent_metadata";
+	if (TOOLING_DIRS.has(firstLower)) return "tooling";
+	if (
+		first.startsWith(".") &&
+		(/agent|ai|aider|codex|claude|cursor|augment|windsurf|goose|mcp/u.test(
+			firstLower,
+		) ||
+			/skills?|prompts?|cache|state|workflows?/u.test(lower))
+	)
+		return "agent_metadata";
+	if (first.startsWith(".")) return "tooling";
+	if (
+		/\.(test|spec)\.[jt]sx?$/iu.test(lower) ||
+		/(^|\/)(__tests__|test|tests)(\/|$)/u.test(lower)
+	)
+		return "test";
+	if (
+		/^(docs?|readme\.md|architecture\.md)/iu.test(lower) ||
+		/\.md$/iu.test(lower)
+	)
+		return "docs";
+	if (
+		/^(supabase|prisma|database|db|migrations?)(\/|$)/u.test(lower) ||
+		/schema\.(prisma|sql)$/u.test(lower)
+	)
+		return "data_store";
+	if (
+		/(^|\/)(components?|widgets?)(\/|$)/u.test(lower) ||
+		/\.[jt]sx$/u.test(lower)
+	)
+		return "component";
+	if (/auth|login|session|token|middleware|password|jwt/u.test(lower))
+		return "auth";
+	if (/^(routes?|api|server\/routes?|app\/api)(\/|$)/u.test(lower))
+		return "route";
+	if (/(^|\/)(services?|controllers?)(\/|$)/u.test(lower)) return "service";
+	if (
+		/^(public|views?|pages?|app|screens?)(\/|$)/u.test(lower) ||
+		/\.html?$/u.test(lower)
+	)
+		return "ui";
+	if (/^(src|lib|server|models?|modules?)(\/|$)/u.test(lower))
+		return "app_module";
+	if (
+		/^(package\.json|[^/]+lock\.(json|yaml)|pnpm-lock\.yaml|vite\.config|next\.config|tailwind\.config|tsconfig\.json)/u.test(
+			lower,
+		)
+	)
+		return "configuration";
+	return "unknown";
+}
 
 function collectProjectSignals(projectPath: string): ProjectSignals {
 	const files: string[] = [];
@@ -560,51 +877,149 @@ function collectProjectSignals(projectPath: string): ProjectSignals {
 	let hasAuth = false;
 	let routeCount = 0;
 	const moduleCandidates = new Set<string>();
-	const flowCandidates = new Set<string>();
-	const dataStoreCandidates = new Set<string>();
+	const dataStoreMap = new Map<string, MasterPlanDataStore>();
+	const toolingDetected = new Set<string>();
+	const ignoredTooling = new Set<string>();
+	const languageSet = new Set<string>();
+	const frameworkSet = new Set<string>();
+	const architectureEvidence = new Set<string>();
+	const securityEvidence = new Set<string>();
+	const authFiles: string[] = [];
+	const uploadFiles: string[] = [];
+	const reportFiles: string[] = [];
+	const apiFiles: string[] = [];
 	walkProject(projectPath, (path, stats) => {
 		const rel = relative(projectPath, path).replace(/\\/gu, "/");
-		if (stats.isDirectory()) {
-			directories.add(rel);
-			if (rel.split("/").length <= 2 && rel)
-				moduleCandidates.add(rel.split("/")[0] ?? rel);
+		const classification = classifyProjectPath(rel);
+		const top = rel.split("/")[0] ?? rel;
+		if (classification === "tooling" || classification === "agent_metadata") {
+			toolingDetected.add(top);
+			ignoredTooling.add(top);
 			return;
 		}
+		if (stats.isDirectory()) {
+			directories.add(rel);
+			if (isProductClassification(classification) && rel.split("/").length <= 2)
+				moduleCandidates.add(top);
+			return;
+		}
+		if (isIgnoredClassification(classification)) return;
 		files.push(rel);
 		const ext = extname(rel).toLowerCase();
-		if (TEXT_EXTENSIONS.has(ext))
+		addLanguageForExtension(languageSet, ext);
+		if (TEXT_EXTENSIONS.has(ext)) {
 			approxRelevantBytes += Math.min(Number(stats.size), 512_000);
-		if (ext === ".md") docsBytes += Number(stats.size);
-		if (/test|spec|__tests__/iu.test(rel)) hasTests = true;
-		if (/db|schema|migration|prisma|sqlite|supabase/iu.test(rel)) {
-			hasDb = true;
-			dataStoreCandidates.add(rel);
+			const content = safeReadText(path);
+			collectContentSignals(rel, content, {
+				dataStoreMap,
+				frameworkSet,
+				architectureEvidence,
+				securityEvidence,
+			});
+			if (/upload|import|file|storage|bpi/iu.test(`${rel} ${content}`))
+				uploadFiles.push(rel);
+			if (/report|dashboard|analytics|chart|export/iu.test(`${rel} ${content}`))
+				reportFiles.push(rel);
+			if (
+				/auth|login|session|token|password|jwt|middleware/iu.test(
+					`${rel} ${content}`,
+				)
+			) {
+				hasAuth = true;
+				authFiles.push(rel);
+				securityEvidence.add(rel);
+			}
 		}
-		if (/auth|login|session|user|password|token/iu.test(rel)) hasAuth = true;
+		if (ext === ".md") docsBytes += Number(stats.size);
+		if (classification === "test") hasTests = true;
+		if (classification === "data_store") {
+			hasDb = true;
+			addDataStore(dataStoreMap, dataStoreFromPath(rel), rel);
+		}
+		if (classification === "auth") {
+			hasAuth = true;
+			authFiles.push(rel);
+			securityEvidence.add(rel);
+		}
 		if (
-			/routes?|pages?|screens?|views?/iu.test(rel) ||
-			/\.(html|tsx|jsx)$/iu.test(rel)
+			classification === "route" ||
+			classification === "ui" ||
+			classification === "component"
 		)
 			routeCount += 1;
-		if (/flow|workflow|process|orden|order|checkout|login/iu.test(rel))
-			flowCandidates.add(rel);
+		if (classification === "route") apiFiles.push(rel);
 	});
 	const packagePath = join(projectPath, "package.json");
-	const dependencyCount = readDependencyCount(packagePath);
+	const packageMetadata = readPackageMetadata(packagePath);
+	for (const dependency of packageMetadata.dependencies) {
+		addFrameworkFromDependency(frameworkSet, dependency);
+		addDataStoreFromDependency(dataStoreMap, dependency, "package.json");
+		if (/auth|jwt|passport|bcrypt/iu.test(dependency)) {
+			hasAuth = true;
+			securityEvidence.add(`package:${dependency}`);
+		}
+	}
+	if (existsSync(join(projectPath, "pnpm-lock.yaml")))
+		packageMetadata.packageManager = "pnpm";
+	if (existsSync(join(projectPath, "package-lock.json")))
+		packageMetadata.packageManager = "npm";
+	if (existsSync(join(projectPath, "yarn.lock")))
+		packageMetadata.packageManager = "yarn";
+	if (
+		existsSync(join(projectPath, "vite.config.ts")) ||
+		existsSync(join(projectPath, "vite.config.js"))
+	)
+		frameworkSet.add("Vite");
+	if (
+		existsSync(join(projectPath, "next.config.ts")) ||
+		existsSync(join(projectPath, "next.config.js"))
+	)
+		frameworkSet.add("Next.js");
+	const dataStores = [...dataStoreMap.values()].slice(0, 20);
+	hasDb = hasDb || dataStores.length > 0;
+	const modules = [...moduleCandidates].slice(0, 20);
+	const architecture = buildArchitecture({
+		packageManager: packageMetadata.packageManager,
+		languages: [...languageSet],
+		frameworks: [...frameworkSet],
+		dataStores,
+		hasAuth,
+		evidence: [...architectureEvidence],
+		files,
+	});
+	const securityModel: MasterPlanSecurityModel = {
+		authDetected: hasAuth,
+		sessionDetected: [...securityEvidence].some((item) =>
+			/session|token|jwt|localStorage/iu.test(item),
+		),
+		sensitiveFlows: hasAuth ? ["Login/acceso"] : [],
+		evidence: [...securityEvidence].slice(0, 12),
+	};
 	return {
 		fileCount: files.length,
 		directoryCount: directories.size,
 		docsBytes,
 		approxRelevantBytes,
 		hasPackageJson: existsSync(packagePath),
-		dependencyCount,
+		dependencyCount: packageMetadata.dependencyCount,
 		hasTests,
 		hasDb,
 		hasAuth,
 		routeCount,
-		moduleCandidates: [...moduleCandidates].slice(0, 20),
-		flowCandidates: [...flowCandidates].slice(0, 20),
-		dataStoreCandidates: [...dataStoreCandidates].slice(0, 20),
+		moduleCandidates: modules,
+		flowCandidates: inferFunctionalFlows({
+			modules,
+			dataStores,
+			authFiles,
+			uploadFiles,
+			reportFiles,
+			apiFiles,
+		}),
+		dataStoreCandidates: dataStores,
+		architecture,
+		securityModel,
+		toolingDetected: [...toolingDetected].sort().slice(0, 20),
+		ignoredTooling: [...ignoredTooling].sort().slice(0, 20),
 		sourceFiles: files.slice(0, 200),
 	};
 }
@@ -614,7 +1029,7 @@ function walkProject(
 	visit: (path: string, stats: Stats) => void,
 ): void {
 	for (const entry of readdirSync(root, { withFileTypes: true })) {
-		if (SKIPPED_DIRS.has(entry.name) || entry.isSymbolicLink()) continue;
+		if (entry.isSymbolicLink()) continue;
 		const path = join(root, entry.name);
 		let stats: Stats;
 		try {
@@ -623,8 +1038,361 @@ function walkProject(
 			continue;
 		}
 		visit(path, stats);
-		if (stats.isDirectory()) walkProject(path, visit);
+		if (stats.isDirectory() && !shouldSkipRecursion(entry.name))
+			walkProject(path, visit);
 	}
+}
+
+function isProductClassification(
+	classification: ProjectPathClassification,
+): boolean {
+	return [
+		"app_module",
+		"route",
+		"component",
+		"service",
+		"data_store",
+		"auth",
+		"ui",
+		"product_code",
+		"business_module",
+		"api_route",
+		"data_layer",
+		"auth_security",
+	].includes(classification);
+}
+
+function isIgnoredClassification(
+	classification: ProjectPathClassification,
+): boolean {
+	return [
+		"generated",
+		"vendor",
+		"runtime_state",
+		"ignored",
+		"tooling",
+		"agent_metadata",
+	].includes(classification);
+}
+
+function shouldSkipRecursion(name: string): boolean {
+	const lower = name.toLowerCase();
+	return (
+		SKIPPED_DIRS.has(name) ||
+		AGENT_METADATA_DIRS.has(lower) ||
+		TOOLING_DIRS.has(lower) ||
+		GENERATED_DIRS.has(lower) ||
+		VENDOR_DIRS.has(lower) ||
+		RUNTIME_STATE_DIRS.has(lower) ||
+		(lower.startsWith(".") &&
+			/agent|ai|aider|codex|claude|cursor|augment|windsurf|goose|mcp/u.test(
+				lower,
+			))
+	);
+}
+
+function safeReadText(path: string): string {
+	try {
+		return readFileSync(path, "utf8").slice(0, 512_000);
+	} catch {
+		return "";
+	}
+}
+
+function addLanguageForExtension(languages: Set<string>, ext: string): void {
+	if ([".ts", ".tsx"].includes(ext)) languages.add("TypeScript");
+	if ([".js", ".jsx"].includes(ext)) languages.add("JavaScript");
+	if ([".html", ".htm"].includes(ext)) languages.add("HTML");
+	if (ext === ".css") languages.add("CSS");
+	if (ext === ".py") languages.add("Python");
+	if (ext === ".php") languages.add("PHP");
+	if (ext === ".sql") languages.add("SQL");
+}
+
+function collectContentSignals(
+	rel: string,
+	content: string,
+	acc: {
+		dataStoreMap: Map<string, MasterPlanDataStore>;
+		frameworkSet: Set<string>;
+		architectureEvidence: Set<string>;
+		securityEvidence: Set<string>;
+	},
+): void {
+	if (/supabase/iu.test(`${rel} ${content}`))
+		addDataStore(acc.dataStoreMap, "supabase", rel);
+	if (/postgres|pg\b|create table/iu.test(content))
+		addDataStore(acc.dataStoreMap, "postgres", rel);
+	if (/sqlite|\.sqlite|\.db/iu.test(`${rel} ${content}`))
+		addDataStore(acc.dataStoreMap, "sqlite", rel);
+	if (/mysql/iu.test(`${rel} ${content}`))
+		addDataStore(acc.dataStoreMap, "mysql", rel);
+	if (/mongo(db|ose)?/iu.test(`${rel} ${content}`))
+		addDataStore(acc.dataStoreMap, "mongodb", rel);
+	if (/indexedDB/iu.test(content))
+		addDataStore(acc.dataStoreMap, "indexedDB", rel);
+	if (/localStorage/iu.test(content))
+		addDataStore(acc.dataStoreMap, "localStorage", rel);
+	if (/fetch\s*\(\s*["']\/api\//u.test(content))
+		addDataStore(acc.dataStoreMap, "api", rel);
+	if (/react/iu.test(content)) acc.frameworkSet.add("React");
+	if (/express/iu.test(content)) acc.frameworkSet.add("Express");
+	if (/createClient\(|@supabase\/supabase-js/iu.test(content))
+		acc.frameworkSet.add("Supabase");
+	if (/auth|login|password|jwt|middleware/iu.test(`${rel} ${content}`))
+		acc.securityEvidence.add(rel);
+	if (/session|token|localStorage/iu.test(content))
+		acc.securityEvidence.add(`session:${rel}`);
+	if (
+		/server|route|api|component|page|vite|next|tailwind/iu.test(
+			`${rel} ${content}`,
+		)
+	)
+		acc.architectureEvidence.add(rel);
+}
+
+function dataStoreFromPath(rel: string): MasterPlanDataStore["type"] {
+	if (/supabase/iu.test(rel)) return "supabase";
+	if (/prisma/iu.test(rel)) return "prisma";
+	if (/postgres|\.sql|migration/iu.test(rel)) return "postgres";
+	if (/sqlite|\.db/iu.test(rel)) return "sqlite";
+	if (/mysql/iu.test(rel)) return "mysql";
+	if (/mongo/iu.test(rel)) return "mongodb";
+	if (/\.json$/iu.test(rel)) return "json";
+	return "unknown";
+}
+
+function addDataStore(
+	stores: Map<string, MasterPlanDataStore>,
+	type: MasterPlanDataStore["type"],
+	evidence: string,
+): void {
+	const name = type === "postgres" ? "Postgres" : type;
+	const existing = stores.get(type);
+	const riskLevel = [
+		"supabase",
+		"postgres",
+		"mysql",
+		"mongodb",
+		"prisma",
+	].includes(type)
+		? "high"
+		: type === "localStorage" || type === "indexedDB"
+			? "medium"
+			: "low";
+	if (existing) {
+		if (!existing.evidence.includes(evidence)) existing.evidence.push(evidence);
+		return;
+	}
+	stores.set(type, { name, type, evidence: [evidence], riskLevel });
+}
+
+function readPackageMetadata(packagePath: string): PackageMetadata {
+	try {
+		if (!existsSync(packagePath))
+			return {
+				dependencyCount: 0,
+				packageManager: "unknown",
+				dependencies: [],
+			};
+		const parsed = JSON.parse(readFileSync(packagePath, "utf8")) as {
+			packageManager?: string;
+			dependencies?: Record<string, unknown>;
+			devDependencies?: Record<string, unknown>;
+		};
+		const dependencies = [
+			...Object.keys(parsed.dependencies ?? {}),
+			...Object.keys(parsed.devDependencies ?? {}),
+		];
+		return {
+			dependencyCount: dependencies.length,
+			packageManager: parsed.packageManager?.split("@")[0] ?? "npm",
+			dependencies,
+		};
+	} catch {
+		return { dependencyCount: 0, packageManager: "unknown", dependencies: [] };
+	}
+}
+
+function addFrameworkFromDependency(
+	frameworks: Set<string>,
+	dependency: string,
+): void {
+	if (dependency === "react") frameworks.add("React");
+	if (dependency === "vue") frameworks.add("Vue");
+	if (dependency === "svelte") frameworks.add("Svelte");
+	if (dependency === "next") frameworks.add("Next.js");
+	if (dependency === "vite") frameworks.add("Vite");
+	if (dependency === "express") frameworks.add("Express");
+	if (dependency.includes("supabase")) frameworks.add("Supabase");
+}
+
+function addDataStoreFromDependency(
+	stores: Map<string, MasterPlanDataStore>,
+	dependency: string,
+	evidence: string,
+): void {
+	if (dependency.includes("supabase"))
+		addDataStore(stores, "supabase", evidence);
+	if (/pg|postgres/iu.test(dependency))
+		addDataStore(stores, "postgres", evidence);
+	if (/sqlite/iu.test(dependency)) addDataStore(stores, "sqlite", evidence);
+	if (/mysql/iu.test(dependency)) addDataStore(stores, "mysql", evidence);
+	if (/mongo/iu.test(dependency)) addDataStore(stores, "mongodb", evidence);
+	if (/prisma/iu.test(dependency)) addDataStore(stores, "prisma", evidence);
+}
+
+function buildArchitecture(input: {
+	packageManager: string;
+	languages: string[];
+	frameworks: string[];
+	dataStores: MasterPlanDataStore[];
+	hasAuth: boolean;
+	evidence: string[];
+	files: string[];
+}): MasterPlanArchitecture {
+	const hasFrontend =
+		input.languages.some((language) => ["HTML", "CSS"].includes(language)) ||
+		input.frameworks.some((framework) =>
+			["React", "Vue", "Svelte", "Next.js", "Vite"].includes(framework),
+		);
+	const hasBackend =
+		input.frameworks.includes("Express") ||
+		input.files.some((file) => /^(server|routes?|api)\//u.test(file));
+	const database = databaseSummary(input.dataStores);
+	return {
+		projectKind:
+			hasFrontend && hasBackend
+				? "full-stack"
+				: hasFrontend
+					? "frontend"
+					: hasBackend
+						? "backend"
+						: "unknown",
+		frontend: hasFrontend
+			? frontendSummary(input.frameworks, input.languages)
+			: "no claro",
+		backend: hasBackend ? backendSummary(input.frameworks) : "no claro",
+		database,
+		auth: input.hasAuth ? "auth/login detectado" : "no detectado",
+		deployment: input.files.some((file) =>
+			/dockerfile|vercel|netlify|render|fly\.toml/iu.test(file),
+		)
+			? "config detectada"
+			: "no detectado",
+		packageManager: input.packageManager,
+		languages: unique(input.languages).sort(),
+		frameworks: unique(input.frameworks).sort(),
+		evidence: input.evidence.slice(0, 12),
+	};
+}
+
+function frontendSummary(frameworks: string[], languages: string[]): string {
+	const frontend = frameworks.filter((framework) =>
+		["React", "Vue", "Svelte", "Next.js", "Vite"].includes(framework),
+	);
+	if (frontend.length) return frontend.join(" + ");
+	return languages.includes("HTML") ? "HTML/JS" : "no claro";
+}
+
+function backendSummary(frameworks: string[]): string {
+	if (frameworks.includes("Express")) return "Node/Express";
+	return "Node/backend routes";
+}
+
+function databaseSummary(dataStores: MasterPlanDataStore[]): string {
+	const types = new Set(dataStores.map((store) => store.type));
+	if (types.has("supabase")) return "Supabase/Postgres";
+	if (types.has("postgres")) return "Postgres";
+	if (types.has("prisma")) return "Prisma";
+	if (types.has("sqlite")) return "SQLite";
+	if (types.has("mysql")) return "MySQL";
+	if (types.has("mongodb")) return "MongoDB";
+	if (types.has("localStorage")) return "localStorage";
+	if (types.has("json")) return "JSON files";
+	return "no detectada";
+}
+
+function inferFunctionalFlows(input: {
+	modules: string[];
+	dataStores: MasterPlanDataStore[];
+	authFiles: string[];
+	uploadFiles: string[];
+	reportFiles: string[];
+	apiFiles: string[];
+}): MasterPlanFunctionalFlow[] {
+	const flows: MasterPlanFunctionalFlow[] = [];
+	const dataStoreNames = input.dataStores.map((store) => store.type);
+	if (input.authFiles.length) {
+		flows.push({
+			name: "Login/acceso",
+			type: "auth",
+			from:
+				input.authFiles.find((file) => /\.html?$/u.test(file)) ??
+				input.authFiles[0]!,
+			through: input.authFiles
+				.filter((file) => !/\.html?$/u.test(file))
+				.slice(0, 5),
+			to: "sesión/dashboard",
+			modules: modulesForEvidence(input.modules, input.authFiles),
+			dataStores: dataStoreNames.filter((store) =>
+				["supabase", "localStorage", "api"].includes(store),
+			),
+			triggers: ["login", "auth", "session"],
+			evidence: input.authFiles.slice(0, 8),
+			riskLevel: "high",
+		});
+	}
+	if (input.uploadFiles.length) {
+		flows.push({
+			name: "Carga/ingesta de archivos",
+			type: "data_ingest",
+			from: input.uploadFiles[0]!,
+			through: input.uploadFiles.slice(1, 6),
+			to: dataStoreNames[0] ?? "persistencia por confirmar",
+			modules: modulesForEvidence(input.modules, input.uploadFiles),
+			dataStores: dataStoreNames,
+			triggers: ["upload", "import", "storage"],
+			evidence: input.uploadFiles.slice(0, 8),
+			riskLevel: dataStoreNames.length ? "high" : "medium",
+		});
+	}
+	if (input.reportFiles.length) {
+		flows.push({
+			name: "Reportes/visualización operativa",
+			type: "reporting",
+			from: input.reportFiles[0]!,
+			through: input.reportFiles.slice(1, 6),
+			to: "dashboard/reporte",
+			modules: modulesForEvidence(input.modules, input.reportFiles),
+			dataStores: dataStoreNames,
+			triggers: ["report", "dashboard", "export"],
+			evidence: input.reportFiles.slice(0, 8),
+			riskLevel: dataStoreNames.length ? "medium" : "low",
+		});
+	}
+	if (!flows.length && input.apiFiles.length) {
+		flows.push({
+			name: "API / rutas funcionales",
+			type: "api",
+			from: "usuario o cliente",
+			through: input.apiFiles.slice(0, 6),
+			to: dataStoreNames[0] ?? "respuesta API",
+			modules: modulesForEvidence(input.modules, input.apiFiles),
+			dataStores: dataStoreNames,
+			triggers: ["request", "route"],
+			evidence: input.apiFiles.slice(0, 8),
+			riskLevel: dataStoreNames.length ? "medium" : "low",
+		});
+	}
+	return flows.slice(0, 10);
+}
+
+function modulesForEvidence(modules: string[], evidence: string[]): string[] {
+	const matched = modules.filter((module) =>
+		evidence.some((file) => file === module || file.startsWith(`${module}/`)),
+	);
+	return matched.length ? matched : modules.slice(0, 3);
 }
 
 function decideAutoDepth(
@@ -903,22 +1671,6 @@ function recommendedNext(autoDepth: MasterPlanAutoDepth): string[] {
 	];
 }
 
-function readDependencyCount(packagePath: string): number {
-	try {
-		if (!existsSync(packagePath)) return 0;
-		const parsed = JSON.parse(readFileSync(packagePath, "utf8")) as {
-			dependencies?: Record<string, unknown>;
-			devDependencies?: Record<string, unknown>;
-		};
-		return (
-			Object.keys(parsed.dependencies ?? {}).length +
-			Object.keys(parsed.devDependencies ?? {}).length
-		);
-	} catch {
-		return 0;
-	}
-}
-
 function uniqueMasterPlanBaseName(reportsDir: string, iso: string): string {
 	const stamp = iso
 		.replace(/[-:]/gu, "")
@@ -1013,10 +1765,101 @@ function safePathInsideState(stateRoot: string, path: string): string {
 function readPlan(path: string): MasterPlan | undefined {
 	try {
 		if (!existsSync(path)) return undefined;
-		return JSON.parse(readFileSync(path, "utf8")) as MasterPlan;
+		return normalizeMasterPlan(
+			JSON.parse(readFileSync(path, "utf8")) as Partial<MasterPlan>,
+		);
 	} catch {
 		return undefined;
 	}
+}
+
+function normalizeMasterPlan(raw: Partial<MasterPlan>): MasterPlan {
+	const dataStores = normalizePlanDataStores(raw.dataStores);
+	const architecture =
+		raw.architecture ??
+		buildArchitecture({
+			packageManager: "unknown",
+			languages: [],
+			frameworks: [],
+			dataStores,
+			hasAuth: false,
+			evidence: [],
+			files: raw.sourceFiles ?? [],
+		});
+	const securityModel = raw.securityModel ?? {
+		authDetected: false,
+		sessionDetected: false,
+		sensitiveFlows: [],
+		evidence: [],
+	};
+	return {
+		...(raw as MasterPlan),
+		detectedModules: raw.detectedModules ?? [],
+		detectedFlows: normalizePlanFlows(
+			raw.detectedFlows,
+			raw.detectedModules ?? [],
+			dataStores,
+		),
+		dataStores,
+		architecture,
+		securityModel,
+		toolingDetected: raw.toolingDetected ?? [],
+		ignoredTooling: raw.ignoredTooling ?? [],
+		sourceFiles: raw.sourceFiles ?? [],
+		agentLabReviews: raw.agentLabReviews ?? [],
+	};
+}
+
+function normalizePlanDataStores(
+	stores: MasterPlan["dataStores"] | string[] | undefined,
+): MasterPlanDataStore[] {
+	if (!Array.isArray(stores)) return [];
+	const normalized = new Map<string, MasterPlanDataStore>();
+	for (const store of stores) {
+		if (typeof store === "string") {
+			addDataStore(normalized, dataStoreFromPath(store), store);
+		} else if (store?.type) {
+			normalized.set(store.type, {
+				name: store.name,
+				type: store.type,
+				evidence: Array.isArray(store.evidence) ? store.evidence : [],
+				riskLevel: store.riskLevel,
+			});
+		}
+	}
+	return [...normalized.values()];
+}
+
+function normalizePlanFlows(
+	flows: MasterPlan["detectedFlows"] | string[] | undefined,
+	modules: string[],
+	dataStores: MasterPlanDataStore[],
+): MasterPlanFunctionalFlow[] {
+	if (!Array.isArray(flows)) return [];
+	return flows.map((flow) => {
+		if (typeof flow !== "string") return flow;
+		return {
+			name: flowNameFromEvidence(flow),
+			type: /auth|login|session|token/iu.test(flow) ? "auth" : "unknown",
+			from: flow,
+			through: [],
+			to: "resultado por confirmar",
+			modules: modulesForEvidence(modules, [flow]),
+			dataStores: dataStores.map((store) => store.type),
+			triggers: [],
+			evidence: [flow],
+			riskLevel: /auth|login|session|token/iu.test(flow) ? "high" : "low",
+		};
+	});
+}
+
+function flowNameFromEvidence(evidence: string): string {
+	if (/auth|login|session|token/iu.test(evidence)) return "Login/acceso";
+	if (/upload|import|storage/iu.test(evidence))
+		return "Carga/ingesta de archivos";
+	if (/report|dashboard|analytics/iu.test(evidence))
+		return "Reportes/visualización operativa";
+	return basename(evidence).replace(/\.[^.]+$/u, "") || "Flujo funcional";
 }
 
 function requirePlan(path: string): MasterPlan {

@@ -1447,28 +1447,29 @@ async function runBootstrapIduCommand(): Promise<string> {
 		stateRoot: bootstrap.statePaths.stateRoot,
 		gitHead: bootstrap.currentGitHead,
 	});
+	const connection = activeRuntime.inspectConnection();
 	const sections = [
 		formatIduBootstrapResult(bootstrap),
 		"",
 		formatMasterPlanSummaryForIdu(masterPlan),
+		...formatMasterPlanSecondaryWarnings(connection),
 	];
-	if (bootstrap.shouldRunPrepare && bootstrap.criticalDecisions.length === 0) {
-		sections.push(
-			"",
-			"Análisis seguro inicial",
-			"",
-			activeRuntime.formatPrepare(activeRuntime.prepare()),
-		);
-	} else if (bootstrap.criticalDecisions.length > 0) {
+	if (bootstrap.criticalDecisions.length > 0) {
 		sections.push("", "Análisis pausado por decisión crítica humana.");
 	}
-	sections.push(
-		"",
-		"Dashboard",
-		"",
-		activeRuntime.formatDashboard(activeRuntime.inspectConnection()),
-	);
 	return sections.join("\n");
+}
+
+function formatMasterPlanSecondaryWarnings(
+	report: ProjectConnectionReport,
+): string[] {
+	if (report.alignmentStatus !== "pending_scan") return [];
+	return [
+		"",
+		"Advertencias breves:",
+		"- Estado de alineación secundario: pending_scan.",
+		"- idu-pi idu-prepare sigue disponible, pero el Plan Maestro dirige la acción principal.",
+	];
 }
 
 function handleSetupCommand(rest: string[]): string {
