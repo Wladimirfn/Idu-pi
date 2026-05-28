@@ -17,11 +17,14 @@ import {
 	approveMasterPlan,
 	classifyProjectPath,
 	ensureMasterPlanForIdu,
+	handleMasterPlanNaturalDecision,
 	isMasterPlanCompatible,
 	formatMasterPlanReview,
 	formatMasterPlanSummaryForIdu,
 	generateMasterPlanDraft,
 	getMasterPlanStatus,
+	loadExternalProjectMemory,
+	readMasterPlanPendingAction,
 	redraftMasterPlan,
 	rejectMasterPlan,
 	reviewMasterPlan,
@@ -691,13 +694,21 @@ test("AutoDepth elige deep_required para proyecto grande y no ejecuta AgentLabs"
 		});
 
 		assert.equal(result.plan.autoDepth.mode, "deep_required");
-		assert.match(
-			formatMasterPlanSummaryForIdu(result),
-			/requiere aprobación humana antes de deep review/i,
+		assert.equal(result.plan.deepStage, "lab_requests_prepared");
+		assert.equal(result.plan.deepReviewRecommended, true);
+		assert.equal(result.plan.deepReviewRequiresApproval, true);
+		assert.ok(
+			result.plan.safeActionsPerformed.includes(
+				"Analicé estructura y señales principales.",
+			),
 		);
 		assert.match(
 			formatMasterPlanSummaryForIdu(result),
-			/No ejecutar deep review automáticamente/u,
+			/análisis seguro etapa 1 completado; deep review requiere aprobación/i,
+		);
+		assert.match(
+			formatMasterPlanSummaryForIdu(result),
+			/Preparé recomendaciones para revisión profunda/u,
 		);
 		assert.ok(result.plan.autoDepth.skippedAgentLabs.length >= 1);
 		assert.ok(
@@ -706,6 +717,133 @@ test("AutoDepth elige deep_required para proyecto grande y no ejecuta AgentLabs"
 			),
 		);
 		assert.match(result.plan.recommendedNext.join("\n"), /deep review/i);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("pending action aprueba o rehace sólo con respuesta natural exacta", () => {
+	const root = tempRoot();
+	try {
+		const projectPath = join(root, "project");
+		const stateRoot = join(root, "state", "projects", "demo");
+		mkdirSync(projectPath, { recursive: true });
+		writeSmallProject(projectPath);
+		const draft = generateMasterPlanDraft({
+			projectId: "demo",
+			projectPath,
+			stateRoot,
+			gitHead: "head1",
+		});
+		const pending = readMasterPlanPendingAction(stateRoot);
+		assert.equal(pending?.type, "approve_master_plan");
+		assert.equal(pending?.planPath, draft.current.currentPlanJson);
+
+		assert.equal(
+			handleMasterPlanNaturalDecision({
+				text: "broken",
+				projectId: "demo",
+				projectPath,
+				stateRoot,
+				source: "cli",
+			}).handled,
+			false,
+		);
+		assert.equal(
+			handleMasterPlanNaturalDecision({
+				text: "token",
+				projectId: "demo",
+				projectPath,
+				stateRoot,
+				source: "cli",
+			}).handled,
+			false,
+		);
+		const approved = handleMasterPlanNaturalDecision({
+			text: "ok dale",
+			projectId: "demo",
+			projectPath,
+			stateRoot,
+			source: "cli",
+		});
+		assert.equal(approved.handled, true);
+		assert.equal(approved.action, "approved");
+		assert.equal(readMasterPlanPendingAction(stateRoot), undefined);
+
+		const ignored = handleMasterPlanNaturalDecision({
+			text: "dale",
+			projectId: "demo",
+			projectPath,
+			stateRoot,
+			source: "cli",
+		});
+		assert.equal(ignored.handled, false);
+
+		generateMasterPlanDraft({ projectId: "demo", projectPath, stateRoot });
+		const redrafted = handleMasterPlanNaturalDecision({
+			text: "rehacer",
+			projectId: "demo",
+			projectPath,
+			stateRoot,
+			source: "cli",
+		});
+		assert.equal(redrafted.handled, true);
+		assert.equal(redrafted.action, "redrafted");
+		assert.equal(
+			readMasterPlanPendingAction(stateRoot)?.type,
+			"approve_master_plan",
+		);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("memory provider local fake y fallido se integra sin bloquear", () => {
+	const root = tempRoot();
+	try {
+		const projectPath = join(root, "project");
+		const stateRoot = join(root, "state", "projects", "demo");
+		mkdirSync(projectPath, { recursive: true });
+		writeSmallProject(projectPath);
+		const fake = generateMasterPlanDraft({
+			projectId: "demo",
+			projectPath,
+			stateRoot,
+			memoryProvider: {
+				provider: "engram",
+				load: () => ({
+					provider: "engram",
+					status: "available",
+					summary: "Arquitectura aceptada: CLI como adapter fino.",
+					evidence: Array.from({ length: 20 }, (_, index) => `memory-${index}`),
+				}),
+			},
+		});
+		assert.equal(fake.plan.memoryContext.provider, "engram");
+		assert.equal(fake.plan.memoryContext.status, "available");
+		assert.ok(fake.plan.memoryContext.evidence.length <= 8);
+		assert.match(
+			formatMasterPlanSummaryForIdu(fake),
+			/Memoria:\nengram\/available/u,
+		);
+
+		const local = loadExternalProjectMemory({ projectId: "demo", stateRoot });
+		assert.equal(local.provider, "local");
+		assert.equal(local.status, "available");
+
+		const fallback = generateMasterPlanDraft({
+			projectId: "demo",
+			projectPath,
+			stateRoot,
+			memoryProvider: {
+				provider: "engram",
+				load: () => {
+					throw new Error("engram unavailable");
+				},
+			},
+		});
+		assert.equal(fallback.plan.memoryContext.provider, "local");
+		assert.equal(fallback.plan.memoryContext.status, "available");
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}
@@ -906,7 +1044,7 @@ test("memory es liviano y review/summary son humanos", () => {
 		assert.match(formatMasterPlanSummaryForIdu(result), /AutoDepth:/u);
 		assert.match(
 			formatMasterPlanSummaryForIdu(result),
-			/Acción principal:\n1\. Ver detalles: idu-pi master-plan-review latest/u,
+			/Responder "ok" para aprobar, "rehacer" para regenerar/u,
 		);
 		assert.doesNotMatch(
 			formatMasterPlanSummaryForIdu(result),

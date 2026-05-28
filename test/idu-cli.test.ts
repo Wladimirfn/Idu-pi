@@ -1300,6 +1300,39 @@ test("CLI master-plan commands are wired with aliases", async () => {
 	});
 });
 
+test("cli natural approval only acts with pending Master Plan action", async () => {
+	await withRuntime(async (runtime) => {
+		let pending = false;
+		let approved = false;
+		runtime.masterPlanNaturalDecision = (text) => {
+			if (!pending) return { handled: false, reason: "no_pending_action" };
+			if (text === "ok" || text === "dale") {
+				approved = true;
+				pending = false;
+				return {
+					handled: true,
+					action: "approved",
+					result: {
+						plan: { status: "approved" },
+						current: { status: "approved" },
+					} as any,
+				};
+			}
+			return { handled: false, reason: "no_match" };
+		};
+
+		const ignored = await runCliCommand(["ok"], runtime);
+		assert.equal(ignored.exitCode, 1);
+		assert.equal(approved, false);
+
+		pending = true;
+		const result = await runCliCommand(["dale"], runtime);
+		assert.equal(result.exitCode, 0);
+		assert.match(result.stdout, /approved/u);
+		assert.equal(approved, true);
+	});
+});
+
 test("cli idu activa sesión persistente", async () => {
 	await withRuntime(async (runtime, { workspaceRoot }) => {
 		const result = await runCliCommand(["idu"], runtime);

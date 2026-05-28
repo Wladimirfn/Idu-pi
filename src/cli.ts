@@ -59,6 +59,7 @@ import {
 	formatMasterPlanStatus,
 	formatMasterPlanSummaryForIdu,
 	getMasterPlanStatus,
+	handleMasterPlanNaturalDecision,
 	readGitHead,
 	redraftMasterPlan,
 	rejectMasterPlan,
@@ -318,6 +319,9 @@ export type CliRuntime = {
 		reason?: string,
 	) => MasterPlanDraftResult;
 	masterPlanRedraft?: (reason?: string) => MasterPlanDraftResult;
+	masterPlanNaturalDecision?: (
+		text: string,
+	) => ReturnType<typeof handleMasterPlanNaturalDecision>;
 	formatMasterPlanStatus?: (result: MasterPlanStatusResult) => string;
 	formatMasterPlanReview?: (review: MasterPlanReview) => string;
 	formatMasterPlanOperation?: (result: MasterPlanDraftResult) => string;
@@ -672,6 +676,15 @@ export function createCliRuntime(
 				gitHead: readGitHead(activeProject.path),
 				reason,
 			}),
+		masterPlanNaturalDecision: (text) =>
+			handleMasterPlanNaturalDecision({
+				text,
+				projectId: activeProject.id,
+				projectPath: activeProject.path,
+				stateRoot: masterPlanStateRoot,
+				gitHead: readGitHead(activeProject.path),
+				source: "cli",
+			}),
 		formatMasterPlanStatus,
 		formatMasterPlanReview,
 		formatMasterPlanOperation,
@@ -950,6 +963,15 @@ export async function runCliCommand(
 					}
 				: { workspaceRoot: activeRuntime.workspaceRoot },
 		);
+		const naturalMasterPlanDecision = normalizedArgs.join(" ").trim();
+		if (naturalMasterPlanDecision && activeRuntime.masterPlanNaturalDecision) {
+			const decision = activeRuntime.masterPlanNaturalDecision(
+				naturalMasterPlanDecision,
+			);
+			if (decision.handled && activeRuntime.formatMasterPlanOperation) {
+				return ok(activeRuntime.formatMasterPlanOperation(decision.result));
+			}
+		}
 		switch (command) {
 			case "status":
 				return ok(

@@ -75,6 +75,7 @@ import {
 	formatMasterPlanStatus,
 	formatMasterPlanSummaryForIdu,
 	getMasterPlanStatus,
+	handleMasterPlanNaturalDecision,
 	readGitHead,
 	redraftMasterPlan,
 	rejectMasterPlan,
@@ -3117,6 +3118,19 @@ bot.on("message:text", async (ctx) => {
 	}
 
 	if (text.startsWith("/")) return;
+
+	const masterPlanDecision = handleMasterPlanNaturalDecision({
+		text,
+		projectId: currentProjectId(),
+		projectPath: activeProjectPath(),
+		stateRoot: activeProjectStateRoot(),
+		gitHead: readGitHead(activeProjectPath()),
+		source: "telegram",
+	});
+	if (masterPlanDecision.handled) {
+		await replyLong(ctx, formatMasterPlanOperation(masterPlanDecision.result));
+		return;
+	}
 
 	if (pendingAction === "project-core-wizard") {
 		const activeProject = getActiveProject(registry);

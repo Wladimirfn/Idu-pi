@@ -4,6 +4,7 @@ import {
 	mkdirSync,
 	readdirSync,
 	readFileSync,
+	rmSync,
 	statSync,
 	writeFileSync,
 	type Stats,
@@ -29,6 +30,12 @@ export type MasterPlanStatus =
 	| "stale"
 	| "incompatible";
 export type MasterPlanAutoDepthMode = "quick" | "standard" | "deep_required";
+export type MasterPlanDeepStage =
+	| "none"
+	| "safe_scan_done"
+	| "lab_requests_prepared"
+	| "lab_review_done"
+	| "deep_approval_required";
 
 export type MasterPlanAutoDepth = {
 	mode: MasterPlanAutoDepthMode;
@@ -137,6 +144,39 @@ export type MasterPlanApproval = {
 	reason?: string;
 };
 
+export type MasterPlanMemoryContext = {
+	provider: "engram" | "local" | "none";
+	status: "available" | "unavailable" | "skipped" | "error";
+	summary: string;
+	evidence: string[];
+};
+
+export type MasterPlanMemoryProvider = {
+	provider: "engram" | "local";
+	load: (input: {
+		projectId: string;
+		projectPath?: string;
+		stateRoot: string;
+	}) => MasterPlanMemoryContext;
+};
+
+export type MasterPlanPendingAction = {
+	type: "approve_master_plan";
+	planPath: string;
+	planStatus: MasterPlanStatus;
+	createdAt: string;
+	acceptedInputs: string[];
+	rejectedInputs: string[];
+};
+
+export type MasterPlanNaturalDecisionResult =
+	| { handled: false; reason: "no_pending_action" | "no_match" }
+	| {
+			handled: true;
+			action: "approved" | "rejected" | "redrafted";
+			result: MasterPlanDraftResult;
+	  };
+
 export type MasterPlan = {
 	version: string;
 	schemaVersion: number;
@@ -146,6 +186,11 @@ export type MasterPlan = {
 	generatedAt: string;
 	status: MasterPlanStatus;
 	autoDepth: MasterPlanAutoDepth;
+	deepStage: MasterPlanDeepStage;
+	deepReviewRecommended: boolean;
+	deepReviewRequiresApproval: boolean;
+	safeActionsPerformed: string[];
+	memoryContext: MasterPlanMemoryContext;
 	source: MasterPlanSource;
 	executiveSummary: string;
 	inferredObjective: string;
@@ -233,6 +278,7 @@ export type MasterPlanReview = {
 
 const CURRENT_FILE = "master-plan.current.json";
 const MEMORY_FILE = "master-plan.memory.json";
+const PENDING_ACTION_FILE = "master-plan.pending-action.json";
 const MASTER_PLAN_SCHEMA_VERSION = 2;
 const SKIPPED_DIRS = new Set([
 	".git",
@@ -305,6 +351,7 @@ export function generateMasterPlanDraft(input: {
 	stateRoot: string;
 	gitHead?: string;
 	reason?: string;
+	memoryProvider?: MasterPlanMemoryProvider;
 }): MasterPlanDraftResult {
 	const projectPath = resolve(input.projectPath);
 	const stateRoot = resolve(input.stateRoot);
@@ -314,6 +361,13 @@ export function generateMasterPlanDraft(input: {
 	const signals = collectProjectSignals(projectPath);
 	const source = readSourceStatuses(projectPath, signals);
 	const autoDepth = decideAutoDepth(signals, source);
+	const deepSafety = deepSafetyForAutoDepth(autoDepth);
+	const memoryContext = loadExternalProjectMemory({
+		projectId: input.projectId,
+		projectPath,
+		stateRoot,
+		provider: input.memoryProvider,
+	});
 	const inferredObjective = inferObjective(projectPath, signals);
 	const plan: MasterPlan = {
 		version: "1.0.0",
@@ -324,6 +378,11 @@ export function generateMasterPlanDraft(input: {
 		generatedAt,
 		status: "draft",
 		autoDepth,
+		deepStage: deepSafety.deepStage,
+		deepReviewRecommended: deepSafety.deepReviewRecommended,
+		deepReviewRequiresApproval: deepSafety.deepReviewRequiresApproval,
+		safeActionsPerformed: deepSafety.safeActionsPerformed,
+		memoryContext,
 		source,
 		executiveSummary: buildExecutiveSummary(
 			input.projectId,
@@ -388,6 +447,7 @@ export function generateMasterPlanDraft(input: {
 		...(plan.gitHead ? { gitHead: plan.gitHead } : {}),
 		updatedAt: generatedAt,
 	});
+	writeMasterPlanPendingAction(stateRoot, current);
 	const memory = writeMemory(stateRoot, plan, current);
 	return { plan, current, memory, jsonPath, markdownPath };
 }
@@ -545,7 +605,49 @@ export function ensureMasterPlanForIdu(input: {
 				safePlanPathInsideReports(input.stateRoot, status.currentPlanJson),
 			)
 		: undefined;
+	if (status.status === "draft")
+		writeMasterPlanPendingAction(input.stateRoot, status);
 	return { status, plan };
+}
+
+export function handleMasterPlanNaturalDecision(input: {
+	text: string;
+	projectId: string;
+	projectPath: string;
+	stateRoot: string;
+	gitHead?: string;
+	source: "cli" | "pi" | "telegram" | "mcp";
+}): MasterPlanNaturalDecisionResult {
+	const pending = readMasterPlanPendingAction(input.stateRoot);
+	if (!pending) return { handled: false, reason: "no_pending_action" };
+	const decision = classifyMasterPlanNaturalDecision(input.text, pending);
+	if (!decision) return { handled: false, reason: "no_match" };
+	if (decision === "approve") {
+		const result = approveMasterPlan({
+			stateRoot: input.stateRoot,
+			pathOrLatest: "latest",
+			source: input.source,
+		});
+		clearMasterPlanPendingAction(input.stateRoot);
+		return { handled: true, action: "approved", result };
+	}
+	if (decision === "reject") {
+		const result = rejectMasterPlan({
+			stateRoot: input.stateRoot,
+			pathOrLatest: "latest",
+			reason: input.text,
+		});
+		clearMasterPlanPendingAction(input.stateRoot);
+		return { handled: true, action: "rejected", result };
+	}
+	const result = redraftMasterPlan({
+		projectId: input.projectId,
+		projectPath: input.projectPath,
+		stateRoot: input.stateRoot,
+		...(input.gitHead ? { gitHead: input.gitHead } : {}),
+		reason: input.text,
+	});
+	return { handled: true, action: "redrafted", result };
 }
 
 export function formatMasterPlanSummaryForIdu(
@@ -585,7 +687,12 @@ export function formatMasterPlanSummaryForIdu(
 		...(plan ? topFlowLines(plan) : ["- —"]),
 		"",
 		"AutoDepth:",
-		plan ? `${plan.autoDepth.mode} — ${plan.autoDepth.reason}` : "—",
+		plan ? formatAutoDepthSummary(plan) : "—",
+		"",
+		"Memoria:",
+		plan
+			? `${plan.memoryContext.provider}/${plan.memoryContext.status}`
+			: "unavailable",
 		"",
 		"Guardado en:",
 		savedPath,
@@ -594,10 +701,14 @@ export function formatMasterPlanSummaryForIdu(
 		...(isDraftResult
 			? [
 					...(result.automaticNote ? [`- ${result.automaticNote}`] : []),
-					"- Revisé estado aislado",
-					"- Analicé estructura básica",
-					"- Generé Plan Maestro draft",
-					"- Guardé resumen optimizado",
+					...(plan?.safeActionsPerformed.length
+						? plan.safeActionsPerformed.map((item) => `- ${item}`)
+						: [
+								"- Revisé estado aislado",
+								"- Analicé estructura básica",
+								"- Generé Plan Maestro draft",
+								"- Guardé resumen optimizado",
+							]),
 				]
 			: ["- Reutilicé Plan Maestro existente"]),
 		"",
@@ -611,11 +722,18 @@ export function formatMasterPlanSummaryForIdu(
 		lines.push(
 			"",
 			"Advertencias:",
-			"- Requiere aprobación humana antes de deep review.",
-			"- No ejecutar deep review automáticamente.",
+			"- Deep review costoso requiere aprobación humana explícita.",
+			"- No ejecutar AgentLabs largos automáticamente.",
 		);
 	}
 	return lines.join("\n");
+}
+
+function formatAutoDepthSummary(plan: MasterPlan): string {
+	if (plan.autoDepth.mode === "deep_required") {
+		return `${plan.autoDepth.mode} — análisis seguro etapa 1 completado; deep review requiere aprobación`;
+	}
+	return `${plan.autoDepth.mode} — ${plan.autoDepth.reason}`;
 }
 
 function masterPlanActionLines(
@@ -624,9 +742,11 @@ function masterPlanActionLines(
 ): string[] {
 	if (status === "draft") {
 		return [
+			'Responder "ok" para aprobar, "rehacer" para regenerar, o usar:',
 			"1. Ver detalles: idu-pi master-plan-review latest",
 			"2. Aprobar: idu-pi master-plan-approve latest",
 			"3. Rehacer: idu-pi master-plan-redraft latest",
+			"4. Preparar deep review: idu-pi agentlab-request-create postflight latest",
 		];
 	}
 	if (status === "approved") {
@@ -747,10 +867,26 @@ export function formatMasterPlanMarkdown(plan: MasterPlan): string {
 		plan.executiveSummary,
 		"",
 		"## Modo de análisis automático",
-		`${plan.autoDepth.mode} — ${plan.autoDepth.reason}`,
+		formatAutoDepthSummary(plan),
+		"",
+		"Etapa segura:",
+		...bulletList([
+			`deepStage: ${plan.deepStage}`,
+			`deepReviewRecommended: ${String(plan.deepReviewRecommended)}`,
+			`deepReviewRequiresApproval: ${String(plan.deepReviewRequiresApproval)}`,
+			...plan.safeActionsPerformed,
+		]),
 		"",
 		"Señales:",
 		...bulletList(plan.autoDepth.signals),
+		"",
+		"## Memoria externa/local",
+		...bulletList([
+			`Provider: ${plan.memoryContext.provider}`,
+			`Status: ${plan.memoryContext.status}`,
+			`Summary: ${plan.memoryContext.summary || "—"}`,
+			...plan.memoryContext.evidence.map((item) => `Evidencia: ${item}`),
+		]),
 		"",
 		"## Objetivo inferido",
 		plan.inferredObjective,
@@ -871,6 +1007,11 @@ function diagnosticMasterPlan(
 			skippedAgentLabs: [],
 			tokenCostHint: "low",
 		},
+		deepStage: "none",
+		deepReviewRecommended: false,
+		deepReviewRequiresApproval: false,
+		safeActionsPerformed: [],
+		memoryContext: unavailableMemoryContext(),
 		source: {
 			projectCoreStatus: "unknown",
 			constitutionStatus: "unknown",
@@ -947,6 +1088,7 @@ function updatePlanDecision(
 		...(plan.gitHead ? { gitHead: plan.gitHead } : {}),
 		updatedAt: new Date().toISOString(),
 	});
+	writeMasterPlanPendingAction(stateRoot, nextCurrent);
 	const memory = writeMemory(stateRoot, plan, nextCurrent);
 	return { plan, current: nextCurrent, memory, jsonPath, markdownPath };
 }
@@ -1936,6 +2078,219 @@ function writeMemory(
 	return memory;
 }
 
+function deepSafetyForAutoDepth(
+	autoDepth: MasterPlanAutoDepth,
+): Pick<
+	MasterPlan,
+	| "deepStage"
+	| "deepReviewRecommended"
+	| "deepReviewRequiresApproval"
+	| "safeActionsPerformed"
+> {
+	const baseActions = [
+		"Analicé estructura y señales principales.",
+		"Generé Plan Maestro preliminar.",
+		"Guardé resumen optimizado.",
+	];
+	if (autoDepth.mode !== "deep_required") {
+		return {
+			deepStage: "safe_scan_done",
+			deepReviewRecommended: false,
+			deepReviewRequiresApproval: false,
+			safeActionsPerformed: baseActions,
+		};
+	}
+	return {
+		deepStage: "lab_requests_prepared",
+		deepReviewRecommended: true,
+		deepReviewRequiresApproval: true,
+		safeActionsPerformed: [
+			"Analicé estructura y señales principales.",
+			"Generé Plan Maestro preliminar.",
+			"Preparé recomendaciones para revisión profunda.",
+			"Guardé todo en reports sin modificar el repo.",
+		],
+	};
+}
+
+export function loadExternalProjectMemory(input: {
+	projectId: string;
+	projectPath?: string;
+	stateRoot: string;
+	provider?: MasterPlanMemoryProvider;
+}): MasterPlanMemoryContext {
+	if (input.provider) {
+		try {
+			return limitMemoryContext(
+				input.provider.load({
+					projectId: input.projectId,
+					projectPath: input.projectPath,
+					stateRoot: input.stateRoot,
+				}),
+			);
+		} catch {
+			const local = readLocalMemoryContext(input.stateRoot);
+			return local.status === "available"
+				? local
+				: errorMemoryContext(input.provider.provider);
+		}
+	}
+	return readLocalMemoryContext(input.stateRoot);
+}
+
+function readLocalMemoryContext(stateRoot: string): MasterPlanMemoryContext {
+	try {
+		const path = join(stateRoot, MEMORY_FILE);
+		if (!existsSync(path)) return unavailableMemoryContext();
+		const memory = JSON.parse(
+			readFileSync(path, "utf8"),
+		) as Partial<MasterPlanMemory>;
+		return limitMemoryContext({
+			provider: "local",
+			status: "available",
+			summary: memory.objectiveSummary ?? "Memoria local disponible.",
+			evidence: [
+				...(memory.topRisks ?? []).map((risk) => `risk:${risk}`),
+				...(memory.currentPlanJson ? [`plan:${memory.currentPlanJson}`] : []),
+			],
+		});
+	} catch {
+		return {
+			provider: "local",
+			status: "error",
+			summary: "No pude leer memoria local.",
+			evidence: [],
+		};
+	}
+}
+
+function limitMemoryContext(
+	context: MasterPlanMemoryContext,
+): MasterPlanMemoryContext {
+	return {
+		provider: context.provider,
+		status: context.status,
+		summary: context.summary.slice(0, 500),
+		evidence: context.evidence.slice(0, 8).map((item) => item.slice(0, 240)),
+	};
+}
+
+function unavailableMemoryContext(): MasterPlanMemoryContext {
+	return {
+		provider: "none",
+		status: "unavailable",
+		summary: "Memoria externa no disponible; usé sólo señales locales.",
+		evidence: [],
+	};
+}
+
+function errorMemoryContext(
+	provider: "engram" | "local",
+): MasterPlanMemoryContext {
+	return {
+		provider,
+		status: "error",
+		summary:
+			"Memoria externa falló; Plan Maestro continúa con señales locales.",
+		evidence: [],
+	};
+}
+
+function pendingActionPath(stateRoot: string): string {
+	return join(stateRoot, PENDING_ACTION_FILE);
+}
+
+function writeMasterPlanPendingAction(
+	stateRoot: string,
+	current: Pick<MasterPlanCurrent, "currentPlanJson" | "status" | "updatedAt">,
+): MasterPlanPendingAction | undefined {
+	if (current.status !== "draft") {
+		clearMasterPlanPendingAction(stateRoot);
+		return undefined;
+	}
+	const action: MasterPlanPendingAction = {
+		type: "approve_master_plan",
+		planPath: current.currentPlanJson,
+		planStatus: current.status,
+		createdAt: current.updatedAt,
+		acceptedInputs: [
+			"ok",
+			"dale",
+			"sí",
+			"si",
+			"confirmo",
+			"aprueba",
+			"aprobar",
+			"continuar",
+		],
+		rejectedInputs: [
+			"no",
+			"rechaza",
+			"rechazar",
+			"cancelar",
+			"rehacer",
+			"redraft",
+		],
+	};
+	writeFileSync(
+		pendingActionPath(stateRoot),
+		`${JSON.stringify(action, null, 2)}\n`,
+		"utf8",
+	);
+	return action;
+}
+
+export function readMasterPlanPendingAction(
+	stateRoot: string,
+): MasterPlanPendingAction | undefined {
+	try {
+		const path = pendingActionPath(stateRoot);
+		if (!existsSync(path)) return undefined;
+		return JSON.parse(readFileSync(path, "utf8")) as MasterPlanPendingAction;
+	} catch {
+		return undefined;
+	}
+}
+
+function clearMasterPlanPendingAction(stateRoot: string): void {
+	rmSync(pendingActionPath(stateRoot), { force: true });
+}
+
+function classifyMasterPlanNaturalDecision(
+	text: string,
+	pending: MasterPlanPendingAction,
+): "approve" | "reject" | "redraft" | undefined {
+	const normalized = normalizeNaturalDecisionText(text);
+	if (!normalized) return undefined;
+	const tokens = normalized.split(" ").filter(Boolean);
+	const accepted = new Set(
+		pending.acceptedInputs.map(normalizeNaturalDecisionText),
+	);
+	const rejected = new Set(
+		pending.rejectedInputs.map(normalizeNaturalDecisionText),
+	);
+	if (accepted.has(normalized)) return "approve";
+	if (
+		tokens.length <= 3 &&
+		tokens.length > 0 &&
+		tokens.every((token) => accepted.has(token))
+	)
+		return "approve";
+	if (["rehacer", "redraft"].includes(normalized)) return "redraft";
+	if (rejected.has(normalized)) return "reject";
+	return undefined;
+}
+
+function normalizeNaturalDecisionText(text: string): string {
+	return text
+		.toLocaleLowerCase("es")
+		.normalize("NFD")
+		.replace(/[\u0300-\u036f]/gu, "")
+		.replace(/[^\p{L}\p{N} ]+/gu, " ")
+		.replace(/\s+/gu, " ")
+		.trim();
+}
+
 function readCurrent(stateRoot: string): MasterPlanCurrent | undefined {
 	try {
 		const path = join(stateRoot, CURRENT_FILE);
@@ -2095,6 +2450,9 @@ function masterPlanCompatibilityReason(plan: Partial<MasterPlan>): string {
 	}
 	if (!isMasterPlanStatus(plan.status)) return "status inválido";
 	if (!isCompatibleAutoDepth(plan.autoDepth)) return "autoDepth incompleto";
+	if (!isCompatibleDeepSafety(plan)) return "deep safety incompleto";
+	if (!isCompatibleMemoryContext(plan.memoryContext))
+		return "memoryContext incompleto";
 	if (!isCompatibleSource(plan.source)) return "source incompleto";
 	if (!isCompatibleArchitecture(plan.architecture))
 		return "architecture incompleta";
@@ -2132,6 +2490,35 @@ function isCompatibleAutoDepth(
 			Array.isArray(autoDepth.agentLabsSelected) &&
 			Array.isArray(autoDepth.skippedAgentLabs) &&
 			hasText(autoDepth.tokenCostHint),
+	);
+}
+
+function isCompatibleDeepSafety(plan: Partial<MasterPlan>): boolean {
+	return Boolean(
+		[
+			"none",
+			"safe_scan_done",
+			"lab_requests_prepared",
+			"lab_review_done",
+			"deep_approval_required",
+		].includes(String(plan.deepStage)) &&
+			typeof plan.deepReviewRecommended === "boolean" &&
+			typeof plan.deepReviewRequiresApproval === "boolean" &&
+			Array.isArray(plan.safeActionsPerformed),
+	);
+}
+
+function isCompatibleMemoryContext(
+	memoryContext: Partial<MasterPlanMemoryContext> | undefined,
+): memoryContext is MasterPlanMemoryContext {
+	return Boolean(
+		memoryContext &&
+			["engram", "local", "none"].includes(String(memoryContext.provider)) &&
+			["available", "unavailable", "skipped", "error"].includes(
+				String(memoryContext.status),
+			) &&
+			typeof memoryContext.summary === "string" &&
+			Array.isArray(memoryContext.evidence),
 	);
 }
 
@@ -2234,6 +2621,11 @@ function normalizeMasterPlan(raw: Partial<MasterPlan>): MasterPlan {
 	return {
 		...(raw as MasterPlan),
 		schemaVersion: raw.schemaVersion ?? MASTER_PLAN_SCHEMA_VERSION,
+		deepStage: raw.deepStage ?? "none",
+		deepReviewRecommended: raw.deepReviewRecommended ?? false,
+		deepReviewRequiresApproval: raw.deepReviewRequiresApproval ?? false,
+		safeActionsPerformed: raw.safeActionsPerformed ?? [],
+		memoryContext: raw.memoryContext ?? unavailableMemoryContext(),
 		detectedModules: raw.detectedModules ?? [],
 		detectedFlows: normalizePlanFlows(
 			raw.detectedFlows,

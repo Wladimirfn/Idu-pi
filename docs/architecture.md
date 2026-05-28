@@ -196,7 +196,9 @@ AGENT_WORKSPACE_ROOT/projects/<safeProjectId>/master-plan.current.json
 AGENT_WORKSPACE_ROOT/projects/<safeProjectId>/master-plan.memory.json
 ```
 
-`src/master-plan.ts` genera este draft de forma determinista con señales baratas del proyecto. AutoDepth decide `quick`, `standard` o `deep_required`; AgentLabs quedan seleccionados como metadata/request recomendada, no se ejecutan automáticamente. Aprobar el Plan Maestro no aplica flows ni confirma Project Core/Constitution.
+`src/master-plan.ts` genera este draft de forma determinista con señales baratas del proyecto. AutoDepth decide `quick`, `standard` o `deep_required`; en `deep_required` ejecuta una etapa segura automática y marca que el deep review costoso requiere aprobación humana. AgentLabs quedan seleccionados como metadata/request recomendada, no se ejecutan automáticamente. Aprobar el Plan Maestro no aplica flows ni confirma Project Core/Constitution.
+
+El Plan Maestro también guarda `master-plan.pending-action.json` cuando hay draft pendiente, para permitir decisiones naturales acotadas como `ok`, `dale`, `sí` o `rehacer`. La memoria externa se consulta mediante una abstracción opcional; si no hay proveedor disponible, se usa `master-plan.memory.json` como fallback local o se marca `none/unavailable` sin bloquear la generación.
 
 ## Constitution
 

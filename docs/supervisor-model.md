@@ -79,9 +79,9 @@ AutoDepth decide automáticamente:
 
 - `quick`: proyecto pequeño, escaneo barato, 0-1 AgentLab como metadata.
 - `standard`: proyecto mediano con DB/UI/auth o estructura suficiente, hasta 3 AgentLabs recomendados.
-- `deep_required`: proyecto grande/crítico; no se ejecuta deep review sin aprobación humana.
+- `deep_required`: proyecto grande/crítico; Idu-pi completa una etapa segura automática (scan determinista, clasificación, draft preliminar y recomendaciones) y deja el deep review costoso para aprobación humana explícita.
 
-Aprobar el Plan Maestro sólo registra decisión humana sobre ese draft. No aplica flows, no confirma Project Core/Constitution y no ejecuta AgentLabs.
+Aprobar el Plan Maestro sólo registra decisión humana sobre ese draft. No aplica flows, no confirma Project Core/Constitution y no ejecuta AgentLabs. Cuando hay un draft pendiente, el usuario puede responder de forma natural (`ok`, `dale`, `sí`, `rehacer`) desde superficies que mantienen estado; fuera de ese pending action esas palabras no ejecutan nada crítico.
 
 ## Constitution
 

@@ -561,7 +561,7 @@ test("CLI /idu bootstraps external project and second call fast-paths", async ()
 		assert.match(first.stdout, /Plan Maestro:/u);
 		assert.match(
 			first.stdout,
-			/Acción principal:\n1\. Ver detalles: idu-pi master-plan-review latest/u,
+			/Responder "ok" para aprobar, "rehacer" para regenerar/u,
 		);
 		assert.doesNotMatch(
 			first.stdout,
