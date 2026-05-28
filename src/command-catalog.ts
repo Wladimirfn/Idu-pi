@@ -79,6 +79,36 @@ export const TELEGRAM_COMMANDS: TelegramCommandEntry[] = [
 		usage: ["/idu_supervisor_tick"],
 	},
 	{
+		command: "idu_master_plan_status",
+		description: "Ver Plan Maestro",
+		help: "/idu_master_plan_status - ver estado del Plan Maestro Idu-pi",
+		usage: ["/idu_master_plan_status"],
+	},
+	{
+		command: "idu_master_plan_review",
+		description: "Revisar Plan Maestro",
+		help: "/idu_master_plan_review [latest|ruta] - mostrar Plan Maestro sin aplicarlo",
+		usage: ["/idu_master_plan_review latest"],
+	},
+	{
+		command: "idu_master_plan_approve",
+		description: "Aprobar Plan Maestro",
+		help: "/idu_master_plan_approve [latest|ruta] - aprobar Plan Maestro sin aplicar flows",
+		usage: ["/idu_master_plan_approve latest"],
+	},
+	{
+		command: "idu_master_plan_reject",
+		description: "Rechazar Plan Maestro",
+		help: "/idu_master_plan_reject [latest|ruta] [motivo] - rechazar Plan Maestro sin borrar drafts",
+		usage: ["/idu_master_plan_reject latest objetivo incompleto"],
+	},
+	{
+		command: "idu_master_plan_redraft",
+		description: "Rehacer Plan Maestro",
+		help: "/idu_master_plan_redraft [motivo] - crear nuevo draft determinista sin borrar anteriores",
+		usage: ["/idu_master_plan_redraft falta contexto"],
+	},
+	{
 		command: "agentlab_request_create",
 		description: "Crear solicitud AgentLab",
 		help: "/agentlab_request_create [postflight|skill-draft latest] - crear solicitudes formales sin ejecutar AgentLabs",
@@ -678,6 +708,22 @@ export const CLI_COMMANDS: LocalCommandEntry[] = [
 	{ label: "Idu status", command: "corepack pnpm cli -- idu-status" },
 	{ label: "Idu off", command: "corepack pnpm cli -- idu-off" },
 	{ label: "Prepare seguro", command: "corepack pnpm cli -- idu-prepare" },
+	{
+		label: "Plan Maestro status",
+		command: "corepack pnpm cli -- idu-master-plan-status",
+	},
+	{
+		label: "Plan Maestro review",
+		command: "corepack pnpm cli -- idu-master-plan-review latest",
+	},
+	{
+		label: "Plan Maestro approve",
+		command: "corepack pnpm cli -- idu-master-plan-approve latest",
+	},
+	{
+		label: "Plan Maestro redraft",
+		command: "corepack pnpm cli -- idu-master-plan-redraft latest",
+	},
 	{
 		label: "Idu supervisor tick",
 		command: "corepack pnpm cli -- idu-supervisor-tick",

@@ -140,6 +140,7 @@ Ejemplos:
 | `agentlab-review-request-*.json` | Solicitudes formales AgentLab. |
 | `agentlab-review-run-*.json` | Resultados AgentLab review-only. |
 | `agentlab-consolidation-*.json` | Consolidación de reportes AgentLab. |
+| `master-plan-*.json` / `master-plan-*.md` | Plan Maestro draft/approved/stale generado por AutoDepth. |
 
 `reports/` es staging/revisión. No todo artifact es verdad ni decisión aplicada.
 
@@ -183,6 +184,19 @@ src/project-core-confirmation.ts
 ```
 
 Un draft puede venir de wizard o research. Sólo se vuelve fuente de verdad cuando el humano confirma.
+
+## Plan Maestro AutoDepth
+
+MASTER-PLAN-1 agrega un snapshot operativo derivado y revisable en `stateRoot`:
+
+```text
+AGENT_WORKSPACE_ROOT/projects/<safeProjectId>/reports/master-plan-*.json
+AGENT_WORKSPACE_ROOT/projects/<safeProjectId>/reports/master-plan-*.md
+AGENT_WORKSPACE_ROOT/projects/<safeProjectId>/master-plan.current.json
+AGENT_WORKSPACE_ROOT/projects/<safeProjectId>/master-plan.memory.json
+```
+
+`src/master-plan.ts` genera este draft de forma determinista con señales baratas del proyecto. AutoDepth decide `quick`, `standard` o `deep_required`; AgentLabs quedan seleccionados como metadata/request recomendada, no se ejecutan automáticamente. Aprobar el Plan Maestro no aplica flows ni confirma Project Core/Constitution.
 
 ## Constitution
 

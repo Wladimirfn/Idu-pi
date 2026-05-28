@@ -4,6 +4,7 @@ import {
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
+	readdirSync,
 	readFileSync,
 	rmSync,
 	writeFileSync,
@@ -548,9 +549,28 @@ test("CLI /idu bootstraps external project and second call fast-paths", async ()
 			existsSync(join(projectPath, "config", "project-blueprint.json")),
 			true,
 		);
+		const stateRoot = join(workspaceRoot, "projects", "sistema_de_mantencion");
+		assert.equal(existsSync(join(stateRoot, "master-plan.current.json")), true);
+		assert.equal(existsSync(join(stateRoot, "master-plan.memory.json")), true);
+		assert.equal(
+			readdirSync(join(stateRoot, "reports")).filter((entry) =>
+				/^master-plan-.*\.json$/u.test(entry),
+			).length,
+			1,
+		);
+		assert.match(first.stdout, /Plan Maestro:/u);
+		const approve = await runCliCommand(["master-plan-approve", "latest"]);
+		assert.equal(approve.exitCode, 0);
 		const second = await runCliCommand(["idu"]);
 		assert.equal(second.exitCode, 0);
 		assert.match(second.stdout, /ya existía en este proyecto/u);
+		assert.match(second.stdout, /Plan Maestro:\napproved/u);
+		assert.equal(
+			readdirSync(join(stateRoot, "reports")).filter((entry) =>
+				/^master-plan-.*\.json$/u.test(entry),
+			).length,
+			1,
+		);
 	} finally {
 		process.chdir(previousCwd);
 		restoreEnv(previous);

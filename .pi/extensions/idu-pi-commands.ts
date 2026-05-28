@@ -179,6 +179,38 @@ export default function (pi: ExtensionAPI) {
 		cliArgs: () => ["idu-supervisor-tick"],
 	});
 
+	registerIduAliases("idu-master-plan-status", {
+		description: "Ver estado del Plan Maestro Idu-pi",
+		cliArgs: () => ["idu-master-plan-status"],
+	});
+
+	registerIduAliases("idu-master-plan-review", {
+		description: "Revisar Plan Maestro Idu-pi sin aplicarlo",
+		cliArgs: (args) => ["idu-master-plan-review", args || "latest"],
+		usage: "/idu-master-plan-review [latest|ruta]",
+	});
+
+	registerIduAliases("idu-master-plan-approve", {
+		description: "Aprobar Plan Maestro Idu-pi sin aplicar flows",
+		cliArgs: (args) => ["idu-master-plan-approve", args || "latest"],
+		usage: "/idu-master-plan-approve [latest|ruta]",
+	});
+
+	registerIduAliases("idu-master-plan-reject", {
+		description: "Rechazar Plan Maestro Idu-pi",
+		cliArgs: (args) => [
+			"idu-master-plan-reject",
+			...(args ? args.split(/\s+/u) : ["latest"]),
+		],
+		usage: "/idu-master-plan-reject [latest|ruta] [motivo]",
+	});
+
+	registerIduAliases("idu-master-plan-redraft", {
+		description: "Rehacer Plan Maestro Idu-pi",
+		cliArgs: (args) => ["idu-master-plan-redraft", args],
+		usage: "/idu-master-plan-redraft [motivo]",
+	});
+
 	registerIduAliases("idu-lab-review-plan", {
 		description: "Preparar plan de revisión Lab sin ejecutar AgentLabs",
 		cliArgs: (args) => ["idu-lab-review-plan", args || "postflight"],

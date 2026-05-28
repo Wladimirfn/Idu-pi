@@ -52,6 +52,22 @@ import {
 } from "./idu-prepare.js";
 import { formatIduBootstrapResult, runIduBootstrap } from "./idu-bootstrap.js";
 import {
+	approveMasterPlan,
+	ensureMasterPlanForIdu,
+	formatMasterPlanOperation,
+	formatMasterPlanReview,
+	formatMasterPlanStatus,
+	formatMasterPlanSummaryForIdu,
+	getMasterPlanStatus,
+	readGitHead,
+	redraftMasterPlan,
+	rejectMasterPlan,
+	reviewMasterPlan,
+	type MasterPlanDraftResult,
+	type MasterPlanReview,
+	type MasterPlanStatusResult,
+} from "./master-plan.js";
+import {
 	formatIduProjectDashboard,
 	type IduProjectDashboardReport,
 } from "./idu-project-dashboard.js";
@@ -294,6 +310,17 @@ export type CliRuntime = {
 	formatPostflight: (report: ProjectPostflightReport) => string;
 	prepare: () => IduPrepareResult;
 	formatPrepare: (result: IduPrepareResult) => string;
+	masterPlanStatus?: () => MasterPlanStatusResult;
+	masterPlanReview?: (pathOrLatest: string) => MasterPlanReview;
+	masterPlanApprove?: (pathOrLatest: string) => MasterPlanDraftResult;
+	masterPlanReject?: (
+		pathOrLatest: string,
+		reason?: string,
+	) => MasterPlanDraftResult;
+	masterPlanRedraft?: (reason?: string) => MasterPlanDraftResult;
+	formatMasterPlanStatus?: (result: MasterPlanStatusResult) => string;
+	formatMasterPlanReview?: (review: MasterPlanReview) => string;
+	formatMasterPlanOperation?: (result: MasterPlanDraftResult) => string;
 	labReviewPlan: (mode: "postflight") => LabReviewPlan;
 	formatLabReviewPlan: (plan: LabReviewPlan) => string;
 	semanticAuditStatus: () => SemanticAuditStatusReport;
@@ -581,6 +608,13 @@ export function createCliRuntime(
 		reportsPath,
 		labDbPath,
 	};
+	const masterPlanStateRoot =
+		projectStatePaths?.stateRoot ??
+		resolveProjectStatePaths({
+			workspaceRoot: config.agentWorkspaceRoot,
+			projectId: activeProject.id,
+			projectPath: activeProject.path,
+		}).stateRoot;
 	return {
 		projectId: activeProject.id,
 		projectPath: activeProject.path,
@@ -611,6 +645,36 @@ export function createCliRuntime(
 		formatPostflight: formatProjectPostflightReport,
 		prepare: () => runPrepare(context),
 		formatPrepare: formatIduPrepareResult,
+		masterPlanStatus: () =>
+			getMasterPlanStatus({
+				stateRoot: masterPlanStateRoot,
+				currentGitHead: readGitHead(activeProject.path),
+			}),
+		masterPlanReview: (pathOrLatest) =>
+			reviewMasterPlan({ stateRoot: masterPlanStateRoot, pathOrLatest }),
+		masterPlanApprove: (pathOrLatest) =>
+			approveMasterPlan({
+				stateRoot: masterPlanStateRoot,
+				pathOrLatest,
+				source: "cli",
+			}),
+		masterPlanReject: (pathOrLatest, reason) =>
+			rejectMasterPlan({
+				stateRoot: masterPlanStateRoot,
+				pathOrLatest,
+				reason,
+			}),
+		masterPlanRedraft: (reason) =>
+			redraftMasterPlan({
+				projectId: activeProject.id,
+				projectPath: activeProject.path,
+				stateRoot: masterPlanStateRoot,
+				gitHead: readGitHead(activeProject.path),
+				reason,
+			}),
+		formatMasterPlanStatus,
+		formatMasterPlanReview,
+		formatMasterPlanOperation,
 		labReviewPlan: () =>
 			buildLabReviewPlan({
 				postflightReport: buildPostflightReport(context),
@@ -909,6 +973,73 @@ export async function runCliCommand(
 			case "idu-prepare":
 			case "prepare":
 				return ok(activeRuntime.formatPrepare(activeRuntime.prepare()));
+			case "idu-master-plan-status":
+			case "master-plan-status":
+				if (
+					!activeRuntime.masterPlanStatus ||
+					!activeRuntime.formatMasterPlanStatus
+				)
+					return fail("Master Plan no disponible en este runtime.");
+				return ok(
+					activeRuntime.formatMasterPlanStatus(
+						activeRuntime.masterPlanStatus(),
+					),
+				);
+			case "idu-master-plan-review":
+			case "master-plan-review":
+				if (
+					!activeRuntime.masterPlanReview ||
+					!activeRuntime.formatMasterPlanReview
+				)
+					return fail("Master Plan no disponible en este runtime.");
+				return ok(
+					activeRuntime.formatMasterPlanReview(
+						activeRuntime.masterPlanReview(rest.join(" ").trim() || "latest"),
+					),
+				);
+			case "idu-master-plan-approve":
+			case "master-plan-approve":
+				if (
+					!activeRuntime.masterPlanApprove ||
+					!activeRuntime.formatMasterPlanOperation
+				)
+					return fail("Master Plan no disponible en este runtime.");
+				return ok(
+					activeRuntime.formatMasterPlanOperation(
+						activeRuntime.masterPlanApprove(rest.join(" ").trim() || "latest"),
+					),
+				);
+			case "idu-master-plan-reject":
+			case "master-plan-reject": {
+				if (
+					!activeRuntime.masterPlanReject ||
+					!activeRuntime.formatMasterPlanOperation
+				)
+					return fail("Master Plan no disponible en este runtime.");
+				const pathOrLatest = rest[0] ?? "latest";
+				const reason = rest.slice(1).join(" ").trim() || undefined;
+				return ok(
+					activeRuntime.formatMasterPlanOperation(
+						activeRuntime.masterPlanReject(pathOrLatest, reason),
+					),
+				);
+			}
+			case "idu-master-plan-redraft":
+			case "master-plan-redraft": {
+				if (
+					!activeRuntime.masterPlanRedraft ||
+					!activeRuntime.formatMasterPlanOperation
+				)
+					return fail("Master Plan no disponible en este runtime.");
+				const reasonParts = rest[0] === "latest" ? rest.slice(1) : rest;
+				return ok(
+					activeRuntime.formatMasterPlanOperation(
+						activeRuntime.masterPlanRedraft(
+							reasonParts.join(" ").trim() || undefined,
+						),
+					),
+				);
+			}
 			case "idu-preflight":
 			case "preflight":
 				return ok(
@@ -1306,7 +1437,17 @@ async function runBootstrapIduCommand(): Promise<string> {
 		requireTelegramConfig: false,
 	});
 	activeRuntime.supervisorOnIduActivation();
-	const sections = [formatIduBootstrapResult(bootstrap)];
+	const masterPlan = ensureMasterPlanForIdu({
+		projectId: bootstrap.project.id,
+		projectPath: bootstrap.project.path,
+		stateRoot: bootstrap.statePaths.stateRoot,
+		gitHead: bootstrap.currentGitHead,
+	});
+	const sections = [
+		formatIduBootstrapResult(bootstrap),
+		"",
+		formatMasterPlanSummaryForIdu(masterPlan),
+	];
 	if (bootstrap.shouldRunPrepare && bootstrap.criticalDecisions.length === 0) {
 		sections.push(
 			"",
@@ -1825,6 +1966,11 @@ export function helpText(): string {
 		"  idu-pi idu-off             (Telegram: /idu_off)",
 		"  idu-pi idu-status          (Telegram: /idu_status)",
 		"  idu-pi idu-prepare         (Telegram: /idu_prepare)",
+		"  idu-pi idu-master-plan-status",
+		"  idu-pi idu-master-plan-review latest",
+		"  idu-pi idu-master-plan-approve latest",
+		"  idu-pi idu-master-plan-reject latest [motivo]",
+		"  idu-pi idu-master-plan-redraft latest",
 		"  idu-pi idu-supervisor-tick (Telegram: /idu_supervisor_tick)",
 		"  idu-pi idu-supervisor-improvements-review latest",
 		"  idu-pi idu-supervisor-improvements-create latest",

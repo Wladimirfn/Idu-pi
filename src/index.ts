@@ -68,6 +68,20 @@ import {
 } from "./idu-prepare.js";
 import { formatIduProjectDashboard } from "./idu-project-dashboard.js";
 import {
+	approveMasterPlan,
+	ensureMasterPlanForIdu,
+	formatMasterPlanOperation,
+	formatMasterPlanReview,
+	formatMasterPlanStatus,
+	formatMasterPlanSummaryForIdu,
+	getMasterPlanStatus,
+	readGitHead,
+	redraftMasterPlan,
+	rejectMasterPlan,
+	reviewMasterPlan,
+} from "./master-plan.js";
+import { resolveProjectStatePaths } from "./project-state.js";
+import {
 	activateIduSession,
 	configureIduSessionStore,
 	deactivateIduSession,
@@ -1308,6 +1322,16 @@ function activeProjectPath(): string {
 	return getActiveProject(registry)?.path ?? currentCwd;
 }
 
+function activeProjectStateRoot(): string {
+	const project = getActiveProject(registry);
+	if (project?.stateRoot) return project.stateRoot;
+	return resolveProjectStatePaths({
+		workspaceRoot: config.agentWorkspaceRoot,
+		projectId: currentProjectId(),
+		projectPath: activeProjectPath(),
+	}).stateRoot;
+}
+
 function semanticCompactionProjectContext(projectPath: string): {
 	projectCore?: string;
 	constitution?: string;
@@ -1409,10 +1433,18 @@ bot.command("idu", async (ctx) => {
 		allowedRoots: config.allowedRoots,
 		workspaceRoot: config.agentWorkspaceRoot,
 	});
+	const masterPlan = ensureMasterPlanForIdu({
+		projectId,
+		projectPath: activeProjectPath(),
+		stateRoot: activeProjectStateRoot(),
+		gitHead: readGitHead(activeProjectPath()),
+	});
 	await replyLong(
 		ctx,
 		[
 			"Guardrails automáticos activados para el proyecto activo.",
+			"",
+			formatMasterPlanSummaryForIdu(masterPlan),
 			"",
 			iduProjectDashboardText(report),
 		].join("\n"),
@@ -1432,6 +1464,82 @@ bot.command("idu_status", async (ctx) => {
 	await replyLong(
 		ctx,
 		formatIduSessionStatus(getIduSessionStatus(currentProjectId())),
+	);
+});
+
+bot.command("idu_master_plan_status", async (ctx) => {
+	if (!(await guard(ctx))) return;
+	await replyLong(
+		ctx,
+		formatMasterPlanStatus(
+			getMasterPlanStatus({
+				stateRoot: activeProjectStateRoot(),
+				currentGitHead: readGitHead(activeProjectPath()),
+			}),
+		),
+	);
+});
+
+bot.command("idu_master_plan_review", async (ctx) => {
+	if (!(await guard(ctx))) return;
+	await replyLong(
+		ctx,
+		formatMasterPlanReview(
+			reviewMasterPlan({
+				stateRoot: activeProjectStateRoot(),
+				pathOrLatest: commandArg(ctx.message?.text ?? "") || "latest",
+			}),
+		),
+	);
+});
+
+bot.command("idu_master_plan_approve", async (ctx) => {
+	if (!(await guard(ctx))) return;
+	await replyLong(
+		ctx,
+		formatMasterPlanOperation(
+			approveMasterPlan({
+				stateRoot: activeProjectStateRoot(),
+				pathOrLatest: commandArg(ctx.message?.text ?? "") || "latest",
+				source: "telegram",
+			}),
+		),
+	);
+});
+
+bot.command("idu_master_plan_reject", async (ctx) => {
+	if (!(await guard(ctx))) return;
+	const args = commandArg(ctx.message?.text ?? "");
+	const [pathOrLatest = "latest", ...reasonParts] = args
+		.split(/\s+/u)
+		.filter(Boolean);
+	await replyLong(
+		ctx,
+		formatMasterPlanOperation(
+			rejectMasterPlan({
+				stateRoot: activeProjectStateRoot(),
+				pathOrLatest,
+				reason: reasonParts.join(" ").trim() || undefined,
+			}),
+		),
+	);
+});
+
+bot.command("idu_master_plan_redraft", async (ctx) => {
+	if (!(await guard(ctx))) return;
+	const args = commandArg(ctx.message?.text ?? "");
+	const reason = args === "latest" ? "" : args;
+	await replyLong(
+		ctx,
+		formatMasterPlanOperation(
+			redraftMasterPlan({
+				projectId: currentProjectId(),
+				projectPath: activeProjectPath(),
+				stateRoot: activeProjectStateRoot(),
+				gitHead: readGitHead(activeProjectPath()),
+				reason: reason || undefined,
+			}),
+		),
 	);
 });
 

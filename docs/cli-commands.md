@@ -98,6 +98,37 @@ idu-pi postflight
 idu-pi lab-review-plan postflight
 ```
 
+## Plan Maestro
+
+`idu-pi idu` genera o muestra un Plan Maestro draft/approved/stale en el `stateRoot` del proyecto. Es determinista, no usa IA externa, no aplica flows y no confirma Project Core/Constitution.
+
+| Comando | Uso |
+| --- | --- |
+| `idu-pi master-plan-status` | Muestra estado del Plan Maestro actual. |
+| `idu-pi master-plan-review latest` | Muestra el markdown del Plan Maestro. |
+| `idu-pi master-plan-approve latest` | Marca el plan como approved; no aplica flows. |
+| `idu-pi master-plan-reject latest [motivo]` | Marca el plan como rejected con motivo opcional. |
+| `idu-pi master-plan-redraft latest` | Crea un nuevo draft sin borrar el anterior. |
+
+Aliases con prefijo Idu-pi:
+
+```text
+idu-pi idu-master-plan-status
+idu-pi idu-master-plan-review latest
+idu-pi idu-master-plan-approve latest
+idu-pi idu-master-plan-reject latest "objetivo incompleto"
+idu-pi idu-master-plan-redraft latest
+```
+
+Artefactos por proyecto:
+
+```text
+<stateRoot>/reports/master-plan-YYYYMMDD-HHMMSS.json
+<stateRoot>/reports/master-plan-YYYYMMDD-HHMMSS.md
+<stateRoot>/master-plan.current.json
+<stateRoot>/master-plan.memory.json
+```
+
 ## Cola y tareas
 
 | Comando | Uso |

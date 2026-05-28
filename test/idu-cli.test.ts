@@ -837,7 +837,7 @@ function fakePrepare(projectPath: string): IduPrepareResult {
 }
 
 function fakeRuntime(projectPath: string, workspaceRoot: string): CliRuntime {
-	return {
+	const runtime: CliRuntime = {
 		projectId: "pi-telegram-bridge",
 		projectPath,
 		workspaceRoot,
@@ -888,6 +888,37 @@ function fakeRuntime(projectPath: string, workspaceRoot: string): CliRuntime {
 		prepare: () => fakePrepare(projectPath),
 		formatPrepare: (result) =>
 			["Idu-pi Prepare", "", "Proyecto:", result.projectId].join("\n"),
+		masterPlanStatus: () =>
+			({
+				status: "draft",
+				currentPlanJson: join(workspaceRoot, "reports", "master-plan.json"),
+			}) as any,
+		masterPlanReview: () =>
+			({
+				markdown: "# Plan Maestro Idu-pi\n",
+				plan: { status: "draft" },
+			}) as any,
+		masterPlanApprove: () =>
+			({
+				plan: { status: "approved" },
+				current: { status: "approved" },
+			}) as any,
+		masterPlanReject: () =>
+			({
+				plan: { status: "rejected" },
+				current: { status: "rejected" },
+			}) as any,
+		masterPlanRedraft: () =>
+			({
+				plan: { status: "draft" },
+				current: { status: "draft" },
+			}) as any,
+		formatMasterPlanStatus: (status: { status?: string }) =>
+			["Master Plan Status", String(status.status)].join("\n"),
+		formatMasterPlanReview: (review: { markdown?: string }) =>
+			String(review.markdown),
+		formatMasterPlanOperation: (result: { plan: { status: string } }) =>
+			["Master Plan", String(result.plan.status)].join("\n"),
 		labReviewPlan: () => ({
 			shouldReview: false,
 			risk: "low",
@@ -1196,6 +1227,7 @@ function fakeRuntime(projectPath: string, workspaceRoot: string): CliRuntime {
 		queueApprove: fakeTask,
 		queueReject: fakeTask,
 	};
+	return runtime;
 }
 
 test("cli status muestra estado sin escribir archivos", async () => {
@@ -1233,6 +1265,38 @@ test("cli status sin runtime no crea registry faltante", async () => {
 		process.env = previous;
 		await rm(root, { recursive: true, force: true });
 	}
+});
+
+test("CLI master-plan commands are wired with aliases", async () => {
+	await withRuntime(async (runtime) => {
+		const status = await runCliCommand(["master-plan-status"], runtime);
+		assert.equal(status.exitCode, 0);
+		assert.match(status.stdout, /Master Plan Status/u);
+		const review = await runCliCommand(
+			["idu-master-plan-review", "latest"],
+			runtime,
+		);
+		assert.equal(review.exitCode, 0);
+		assert.match(review.stdout, /Plan Maestro Idu-pi/u);
+		const approve = await runCliCommand(
+			["master-plan-approve", "latest"],
+			runtime,
+		);
+		assert.equal(approve.exitCode, 0);
+		assert.match(approve.stdout, /approved/u);
+		const reject = await runCliCommand(
+			["idu-master-plan-reject", "latest", "objetivo incompleto"],
+			runtime,
+		);
+		assert.equal(reject.exitCode, 0);
+		assert.match(reject.stdout, /rejected/u);
+		const redraft = await runCliCommand(
+			["master-plan-redraft", "latest"],
+			runtime,
+		);
+		assert.equal(redraft.exitCode, 0);
+		assert.match(redraft.stdout, /draft/u);
+	});
 });
 
 test("cli idu activa sesión persistente", async () => {

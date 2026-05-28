@@ -34,6 +34,7 @@ These are ignored and should stay local/generated:
   - `agentlab-review-request-*.json`
   - `agentlab-review-run-*.json`
   - `agentlab-consolidation-*.json`
+  - `master-plan-*.json` / `master-plan-*.md` under project `stateRoot/reports`
 
 ## Project-local config
 

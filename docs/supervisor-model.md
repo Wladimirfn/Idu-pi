@@ -39,7 +39,7 @@ El humano decide. El orquestador ejecuta. Idu-pi supervisa. AgentLabs inspeccion
 idu-pi idu
 ```
 
-Al activarse, Idu-pi empieza a usar guardrails automáticos sobre el proyecto actual.
+Al activarse desde CLI/Pi slash, Idu-pi hace bootstrap/start, revisa o genera el Plan Maestro draft con AutoDepth y activa guardrails automáticos sobre el proyecto actual. En Telegram, `/idu` activa guardrails y muestra el estado del Plan Maestro del proyecto activo ya configurado.
 
 ```text
 /idu_status
@@ -70,6 +70,18 @@ Incluye:
 - restricciones humanas o técnicas.
 
 Un draft de Project Core no es verdad por sí solo. Necesita confirmación humana.
+
+## Plan Maestro AutoDepth
+
+El Plan Maestro es un snapshot operativo derivado en `stateRoot`: resume objetivo inferido, alcance, riesgos, módulos, flujos, preguntas y próximos pasos. Se genera sin IA externa y no modifica el repo del usuario.
+
+AutoDepth decide automáticamente:
+
+- `quick`: proyecto pequeño, escaneo barato, 0-1 AgentLab como metadata.
+- `standard`: proyecto mediano con DB/UI/auth o estructura suficiente, hasta 3 AgentLabs recomendados.
+- `deep_required`: proyecto grande/crítico; no se ejecuta deep review sin aprobación humana.
+
+Aprobar el Plan Maestro sólo registra decisión humana sobre ese draft. No aplica flows, no confirma Project Core/Constitution y no ejecuta AgentLabs.
 
 ## Constitution
 

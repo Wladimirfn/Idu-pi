@@ -25,6 +25,11 @@ La fuente operativa del catálogo vive en `src/command-catalog.ts`.
 | `/idu_status` | Muestra estado de Idu-pi. |
 | `/idu_prepare` | Ejecuta preparación segura del proyecto. |
 | `/idu_supervisor_tick` | Ejecuta ciclo supervisor seguro si corresponde. |
+| `/idu_master_plan_status` | Muestra estado del Plan Maestro. |
+| `/idu_master_plan_review [latest]` | Muestra el Plan Maestro sin aplicarlo. |
+| `/idu_master_plan_approve [latest]` | Aprueba el Plan Maestro sin aplicar flows. |
+| `/idu_master_plan_reject [latest] [motivo]` | Rechaza el Plan Maestro. |
+| `/idu_master_plan_redraft [motivo]` | Genera nuevo draft determinista. |
 
 `/idu` no significa “usar Telegram”. Significa activar el supervisor sobre el proyecto actual ya configurado. El bootstrap/enrolamiento cómodo vive en CLI/Pi slash y las herramientas MCP explícitas; Telegram mantiene `/idu_projects` como cambio de proyecto enrolado, sin auto-enroll.
 
