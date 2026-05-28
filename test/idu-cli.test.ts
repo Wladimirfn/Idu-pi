@@ -1215,6 +1215,26 @@ test("cli status muestra estado sin escribir archivos", async () => {
 	});
 });
 
+test("cli status sin runtime no crea registry faltante", async () => {
+	const root = mkdtempSync(join(tmpdir(), "idu-cli-status-readonly-"));
+	const registryPath = join(root, "data", "projects.json");
+	const previous = { ...process.env };
+	try {
+		process.env.DEFAULT_CWD = root;
+		process.env.ALLOWED_ROOTS = root;
+		process.env.AGENT_WORKSPACE_ROOT = join(root, "state");
+		process.env.IDU_PI_REGISTRY_PATH = registryPath;
+		process.env.TELEGRAM_BOT_TOKEN = "test-token";
+		process.env.ALLOWED_USER_ID = "1";
+		const result = await runCliCommand(["status"]);
+		assert.equal(result.exitCode, 1);
+		assert.equal(existsSync(registryPath), false);
+	} finally {
+		process.env = previous;
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
 test("cli idu activa sesión persistente", async () => {
 	await withRuntime(async (runtime, { workspaceRoot }) => {
 		const result = await runCliCommand(["idu"], runtime);

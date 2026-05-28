@@ -28,7 +28,7 @@ Nada crítico se aplica sin confirmación humana.
 
 ## Cómo funciona en 30 segundos
 
-1. Activás Idu-pi con `/idu` o `idu-pi idu`.
+1. Iniciás Idu-pi desde la superficie disponible: `idu-pi idu` / Pi slash `/idu` como flujo cómodo de bootstrap/start local, o Telegram `/idu` para activar guardrails remotos sobre un proyecto ya configurado.
 2. Idu-pi revisa Project Core, Constitution, flows, reportes y memoria disponible.
 3. Interpreta la intención humana con señales deterministas.
 4. Bloquea o pide confirmación cuando detecta riesgo alto.
@@ -164,7 +164,7 @@ idu-pi idu-status
 idu-pi idu-off
 ```
 
-`/idu` activa guardrails automáticos para el proyecto actual. Desde ese momento, Idu-pi puede revisar intención, riesgo, Project Core, Constitution y cola antes de que el orquestador avance.
+En CLI y Pi slash, `idu-pi idu` / `/idu` es el flujo cómodo de bootstrap/start: puede enrolar un proyecto permitido, crear estado aislado y drafts de Project Core/Constitution si faltan, activar guardrails y mostrar el dashboard. En Telegram, `/idu` es activación remota sobre el proyecto activo ya configurado; no crea un segundo core ni auto-enrola proyectos.
 
 `/idu_off` apaga esos guardrails automáticos. Los comandos manuales siguen disponibles.
 

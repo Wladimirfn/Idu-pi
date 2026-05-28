@@ -490,6 +490,7 @@ function sameRuntimePath(left: string, right: string): boolean {
 export type CreateCliRuntimeOptions = {
 	projectPath?: string;
 	requireTelegramConfig?: boolean;
+	createRegistryIfMissing?: boolean;
 };
 
 export function createCliRuntime(
@@ -502,6 +503,7 @@ export function createCliRuntime(
 	process.env.AGENT_WORKSPACE_ROOT ??= config.agentWorkspaceRoot;
 	const registry = loadRegistry(config.defaultCwd, config.allowedRoots, {
 		registryPath: resolveIduRegistryPath(),
+		createIfMissing: options.createRegistryIfMissing ?? true,
 	});
 	const activeProject = resolveRuntimeProject(
 		registry,
@@ -657,8 +659,8 @@ export function createCliRuntime(
 				workspaceRoot: runtimeWorkspaceRoot,
 				trigger: "manual",
 				options: {
-					allowSemanticDraft: options.allowSemanticDraft ?? true,
-					allowAgentTaskPlan: options.allowAgentTaskPlan ?? true,
+					allowSemanticDraft: options.allowSemanticDraft ?? false,
+					allowAgentTaskPlan: options.allowAgentTaskPlan ?? false,
 					dryRun: false,
 				},
 				repository: labDbRepository,
@@ -867,7 +869,11 @@ export async function runCliCommand(
 		if (command === "idu" && !runtime) {
 			return ok(await runBootstrapIduCommand());
 		}
-		const activeRuntime = runtime ?? createCliRuntime();
+		const activeRuntime =
+			runtime ??
+			createCliRuntime({
+				createRegistryIfMissing: command !== "status",
+			});
 		configureIduSessionStore(
 			activeRuntime.sessionStatePath
 				? {
@@ -1846,7 +1852,7 @@ export function helpText(): string {
 		"  idu-pi idu-agentlab-request-create postflight",
 		"  idu-pi idu-agentlab-request-create skill-draft latest",
 		"  idu-pi idu-agentlab-request-review latest",
-		"  idu-pi idu-agentlab-review-run latest",
+		"  idu-pi idu-agentlab-review-run latest  # ejecuta AgentLab review-only en clone/sandbox",
 		"  idu-pi idu-agentlab-review-status latest",
 		"  idu-pi idu-agentlab-report-consolidate latest",
 		"  idu-pi idu-agentlab-report-consolidation-status latest",
@@ -1864,7 +1870,7 @@ export function helpText(): string {
 		"",
 		"Notas:",
 		"- Usa AGENT_WORKSPACE_ROOT y el registro de proyectos del bridge.",
-		"- No usa IA, no ejecuta AgentLabs y no aplica project-flows.",
+		"- No ejecuta AgentLabs salvo el comando explícito idu-agentlab-review-run, que corre review-only en clone/sandbox.",
 		"- Las mejoras del supervisor son propuestas de revisión; no aplican reglas ni skills.",
 	].join("\n");
 }

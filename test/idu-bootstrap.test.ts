@@ -44,6 +44,8 @@ test("idu bootstrap enrolls project and creates state, core, constitution, bluep
 		assert.equal(existsSync(registryPath), true);
 		assert.equal(existsSync(result.statePaths.stateRoot), true);
 		assert.equal(existsSync(result.statePaths.agentLabReportsDir), true);
+		assert.ok(result.created.includes(result.statePaths.stateRoot));
+		assert.ok(result.created.includes(result.statePaths.reportsDir));
 		assert.equal(
 			existsSync(join(projectPath, "config", "project-core.json")),
 			true,

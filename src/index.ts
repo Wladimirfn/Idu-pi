@@ -1446,8 +1446,8 @@ bot.command("idu_supervisor_tick", async (ctx) => {
 				workspaceRoot: config.agentWorkspaceRoot,
 				trigger: "manual",
 				options: {
-					allowSemanticDraft: true,
-					allowAgentTaskPlan: true,
+					allowSemanticDraft: false,
+					allowAgentTaskPlan: false,
 					dryRun: false,
 				},
 				repository: labDbRepository,

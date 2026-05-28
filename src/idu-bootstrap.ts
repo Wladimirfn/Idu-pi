@@ -100,7 +100,6 @@ export function runIduBootstrap(input: IduBootstrapInput): IduBootstrapResult {
 		projectPath,
 	});
 	project.stateRoot = statePaths.stateRoot;
-	ensureProjectStateDirs(statePaths);
 	for (const directory of [
 		statePaths.stateRoot,
 		statePaths.reportsDir,
@@ -111,7 +110,7 @@ export function runIduBootstrap(input: IduBootstrapInput): IduBootstrapResult {
 		if (existsSync(directory)) existing.push(directory);
 		else created.push(directory);
 	}
-	// ensureProjectStateDirs creates before the existence loop on repeat; keep visible semantic marker.
+	ensureProjectStateDirs(statePaths);
 	if (!existing.includes("state directories ready"))
 		existing.push("state directories ready");
 

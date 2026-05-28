@@ -20,13 +20,13 @@ La fuente operativa del catálogo vive en `src/command-catalog.ts`.
 
 | Comando | Uso |
 | --- | --- |
-| `/idu` | Activa guardrails Idu-pi para el proyecto actual. |
+| `/idu` | Activa guardrails Idu-pi para el proyecto activo ya configurado; no auto-enrola proyectos. |
 | `/idu_off` | Desactiva guardrails automáticos. |
 | `/idu_status` | Muestra estado de Idu-pi. |
 | `/idu_prepare` | Ejecuta preparación segura del proyecto. |
 | `/idu_supervisor_tick` | Ejecuta ciclo supervisor seguro si corresponde. |
 
-`/idu` no significa “usar Telegram”. Significa activar el supervisor sobre el proyecto actual.
+`/idu` no significa “usar Telegram”. Significa activar el supervisor sobre el proyecto actual ya configurado. El bootstrap/enrolamiento cómodo vive en CLI/Pi slash y las herramientas MCP explícitas; Telegram mantiene `/idu_projects` como cambio de proyecto enrolado, sin auto-enroll.
 
 ## Menú remoto y proyectos
 

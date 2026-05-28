@@ -58,7 +58,7 @@ Guía: [Instalador y estado por proyecto](installer.md).
 | Comando | Uso |
 | --- | --- |
 | `idu-pi status` | Muestra estado operativo del proyecto/agente. |
-| `idu-pi idu` | Bootstrap inteligente: enrola si falta, crea estado/config/Core/Constitution draft, activa guardrails y prepara análisis seguro. |
+| `idu-pi idu` | Bootstrap/start cómodo: enrola si falta y el path está permitido, crea estado/config/Core/Constitution draft, activa guardrails y prepara análisis seguro. Pi slash `/idu` usa este mismo flujo CLI; Telegram `/idu` es activación remota sobre un proyecto ya configurado. |
 | `idu-pi idu-off` | Desactiva guardrails automáticos. |
 | `idu-pi idu-status` | Muestra estado de sesión Idu-pi. |
 

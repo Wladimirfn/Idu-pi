@@ -28,7 +28,7 @@ y agregá al `PATH` la ruta que muestra el instalador, normalmente:
 C:\Users\<user>\AppData\Local\idu-pi\bin
 ```
 
-El instalador siempre informa: **No modifiqué PATH automáticamente.**
+El instalador no modifica `PATH` salvo confirmación interactiva o `--add-path` / `-AddPath` explícito. Si no se autorizó ese cambio, informa: **No modifiqué PATH automáticamente.**
 
 ## Dry-run
 
