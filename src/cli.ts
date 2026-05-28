@@ -7,6 +7,7 @@ import {
 	canonicalDirectory,
 	isAllowedCwd,
 	loadConfig,
+	parseAgentProfiles,
 	type BridgeConfig,
 } from "./config.js";
 import { AgentRouter } from "./agent-router.js";
@@ -24,6 +25,7 @@ import {
 	formatSetupPathHelp,
 	formatSupervisorStatus,
 	formatTaskQueueStatus,
+	formatTelegramRemoteMenu,
 	formatTelegramRemoteStatus,
 	formatSetupWizardNonInteractive,
 	resolveCliPackageRoot,
@@ -249,6 +251,26 @@ import {
 } from "./task-templates.js";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
+import {
+	bridgeLifecycleReply,
+	launchBridgeLifecycle,
+	type BridgeLifecycleAction,
+} from "./bridge-lifecycle.js";
+import {
+	formatBridgeEnvStatus,
+	packageEnvPath,
+	readEnvDraft,
+	tailTextFile,
+	validateBridgeEnvDraft,
+	writeEnvDraftWithBackup,
+} from "./env-config.js";
+import {
+	IDU_MODEL_ROLES,
+	applySupervisorModelAssignment,
+	formatModelAssignments,
+	loadModelAssignments,
+	saveModelAssignment,
+} from "./model-assignments.js";
 
 export type CliResult = {
 	exitCode: number;
@@ -431,6 +453,7 @@ export type CliRuntime = {
 	queueClearStructured: () => number;
 	queueApprove: (idOrPrefix: string) => StructuredTask | undefined;
 	queueReject: (idOrPrefix: string) => StructuredTask | undefined;
+	activeProfileId?: () => string;
 };
 
 type RuntimeContext = {
@@ -539,6 +562,14 @@ export function createCliRuntime(
 		workspaceRoot: runtimeWorkspaceRoot,
 		workspaceMode: config.agentWorkspaceMode,
 	});
+	const modelAssignments = projectStatePaths
+		? loadModelAssignments(projectStatePaths.stateRoot)
+		: { version: 1 as const, assignments: {} };
+	applySupervisorModelAssignment(
+		agentRouter,
+		modelAssignments,
+		config.agentProfiles,
+	);
 	const context = {
 		config,
 		registry,
@@ -767,6 +798,7 @@ export function createCliRuntime(
 				projectId: activeProject.id,
 				projectPath: activeProject.path,
 				router: agentRouter,
+				modelAssignments,
 			}),
 		formatAgentLabReviewRunResult,
 		agentLabReviewStatus: (pathOrLatest) =>
@@ -797,6 +829,7 @@ export function createCliRuntime(
 		queueClearStructured: () => structuredTaskQueue.clearPersisted(),
 		queueApprove: (id) => approveStructuredTaskById(structuredTaskQueue, id),
 		queueReject: (id) => rejectStructuredTaskById(structuredTaskQueue, id),
+		activeProfileId: () => agentRouter.activeProfile().id,
 	};
 }
 
@@ -1864,6 +1897,9 @@ function shouldRunInteractiveHome(args: string[]): boolean {
 
 type CliQuestion = (message: string) => Promise<string>;
 type CliPrint = (message: string) => void;
+type CliHomeActionOptions = {
+	bridgeLauncher?: (action: BridgeLifecycleAction, root: string) => void;
+};
 
 type MenuOption = { label: string; value: string };
 
@@ -1900,12 +1936,9 @@ export async function runInteractiveHome(): Promise<string> {
 			return "Salida sin cambios.";
 		}
 		if (choice === "telegram") {
-			const result = await showTextView(
-				"Telegram remoto",
-				formatTelegramRemoteStatus(status),
-			);
-			if (result === "back") continue;
-			return "Salida sin cambios.";
+			const result = await runTelegramRemoteMenuTui(status);
+			if (result === "__back") continue;
+			return result;
 		}
 		if (choice === "models") {
 			const result = await runModelProfilesMenuTui(status);
@@ -1984,14 +2017,59 @@ async function runInstallationMenuTui(): Promise<string> {
 	}
 }
 
+function telegramRemoteMenuOptions(): MenuOption[] {
+	return [
+		{ label: "Ver estado remoto", value: "status" },
+		{ label: "Configurar acceso remoto", value: "configure" },
+		{ label: "Sincronizar comandos remotos", value: "sync" },
+		{ label: "Iniciar puente remoto", value: "run" },
+		{ label: "Detener puente remoto", value: "off" },
+		{ label: "Reiniciar puente remoto", value: "restart" },
+		{ label: "Ver logs", value: "logs" },
+		{ label: "Save", value: "save" },
+		{ label: "Descartar", value: "discard" },
+		{ label: "← Volver", value: "back" },
+		{ label: "Exit", value: "exit" },
+	];
+}
+
+async function runTelegramRemoteMenuTui(
+	status: ReturnType<typeof buildCliHomeStatus>,
+	options: CliHomeActionOptions = {},
+): Promise<string> {
+	while (true) {
+		const choice = await selectMenu(
+			"Telegram remoto",
+			telegramRemoteMenuOptions(),
+			undefined,
+			formatTelegramRemoteStatus(status),
+		);
+		if (choice === "back") return "__back";
+		if (choice === "exit") return "Salida sin cambios.";
+		const rl = createInterface({
+			input: process.stdin,
+			output: process.stdout,
+		});
+		try {
+			const result = await handleTelegramRemoteChoice(
+				choice,
+				(message: string) => rl.question(message),
+				status,
+				options,
+			);
+			await showTextView("Telegram remoto", result);
+		} finally {
+			rl.close();
+		}
+	}
+}
+
 function modelProfilesMenuOptions(): MenuOption[] {
 	return [
 		{ label: "Ver perfiles actuales", value: "status" },
 		{ label: "Editar perfiles", value: "edit" },
 		{ label: "Asignar modelos por rol", value: "assign" },
 		{ label: "Validar configuración", value: "validate" },
-		{ label: "Save", value: "save" },
-		{ label: "Descartar", value: "discard" },
 		{ label: "← Volver", value: "back" },
 		{ label: "Exit", value: "exit" },
 	];
@@ -2017,19 +2095,21 @@ async function runModelProfilesMenuTui(
 			if (result === "exit") return "Salida sin cambios.";
 			continue;
 		}
-		const messages: Record<string, string> = {
-			edit: "Editar perfiles va a usar un panel con Save/Descartar y backup antes de tocar configuración. Todavía no modifiqué .env.",
-			assign:
-				"Asignar modelos por rol va a guardar en stateRoot/model-assignments.json, no en .env. Todavía no escribí cambios.",
-			validate:
-				"Configuración válida para lectura: los perfiles cargaron y las asignaciones usan fallback seguro.",
-			save: "No hay cambios pendientes para guardar.",
-			discard: "Cambios descartados. No había cambios pendientes.",
-		};
-		const result = await showTextView(
-			"Modelos y perfiles",
-			messages[choice] ?? "Opción no reconocida.",
-		);
+		const rl = createInterface({
+			input: process.stdin,
+			output: process.stdout,
+		});
+		let message: string;
+		try {
+			message = await handleModelProfilesChoice(
+				choice,
+				(prompt: string) => rl.question(prompt),
+				status,
+			);
+		} finally {
+			rl.close();
+		}
+		const result = await showTextView("Modelos y perfiles", message);
 		if (result === "exit") return "Salida sin cambios.";
 	}
 }
@@ -2149,6 +2229,7 @@ function contentLines(content: string, _width: number): string[] {
 export async function runInteractiveHomeWithQuestion(
 	question: CliQuestion,
 	print: CliPrint = () => {},
+	options: CliHomeActionOptions = {},
 ): Promise<string> {
 	const status = buildCliHomeStatus({
 		argvPath: process.argv[1],
@@ -2160,7 +2241,8 @@ export async function runInteractiveHomeWithQuestion(
 		return "Salida sin cambios.";
 	if (choice === "1") return runInstallationMenu(question, print);
 	if (choice === "2") return formatCliProjectStatus(status);
-	if (choice === "3") return formatTelegramRemoteStatus(status);
+	if (choice === "3")
+		return runTelegramRemoteMenu(question, print, status, options);
 	if (choice === "4") return runModelProfilesMenu(question, print, status);
 	if (choice === "5") return formatSupervisorStatus(status);
 	if (choice === "6") return formatTaskQueueStatus();
@@ -2171,26 +2253,223 @@ export async function runInteractiveHomeWithQuestion(
 	].join("\n");
 }
 
+async function handleModelProfilesChoice(
+	choice: string,
+	question: CliQuestion,
+	status: ReturnType<typeof buildCliHomeStatus>,
+): Promise<string> {
+	if (choice === "status") return formatModelProfilesStatus(status);
+	if (choice === "edit") return editAgentProfiles(question, status);
+	if (choice === "assign") return assignModelRole(question, status);
+	if (choice === "validate") return validateAgentProfiles(status);
+	return "Opción no reconocida. No ejecuté acciones.";
+}
+
+async function editAgentProfiles(
+	question: CliQuestion,
+	status: ReturnType<typeof buildCliHomeStatus>,
+): Promise<string> {
+	const raw = (await question("PI_AGENT_PROFILES: ")).trim();
+	try {
+		parseAgentProfiles(raw);
+	} catch (error) {
+		return `PI_AGENT_PROFILES inválido. No escribí .env.\n${error instanceof Error ? error.message : String(error)}`;
+	}
+	if (
+		!(await confirmAction(
+			question,
+			"Guardar PI_AGENT_PROFILES en .env con backup?",
+		))
+	) {
+		return "Cancelado sin cambios.";
+	}
+	const envPath = packageEnvPath(status.packageRoot);
+	const result = writeEnvDraftWithBackup(envPath, readEnvDraft(envPath), {
+		PI_AGENT_PROFILES: raw,
+	});
+	return [
+		"Perfiles guardados en .env.",
+		...(result.backupPath ? [`Backup: ${result.backupPath}`] : []),
+	].join("\n");
+}
+
+async function assignModelRole(
+	question: CliQuestion,
+	status: ReturnType<typeof buildCliHomeStatus>,
+): Promise<string> {
+	const stateRoot = status.project.stateRoot;
+	if (!stateRoot)
+		return "No hay stateRoot. Enrolá o bootstrappeá el proyecto antes de asignar modelos por rol.";
+	const roleId = (
+		await question(
+			`role id (${IDU_MODEL_ROLES.map((role) => role.id).join(", ")}): `,
+		)
+	).trim();
+	const profileId = (
+		await question(
+			`profile id (${status.agentProfiles.map((profile) => profile.id).join(", ")}): `,
+		)
+	).trim();
+	try {
+		const saved = saveModelAssignment(
+			stateRoot,
+			roleId,
+			profileId,
+			status.agentProfiles,
+		);
+		return [
+			"Asignación guardada.",
+			formatModelAssignments(saved, status.agentProfiles),
+			...(saved.backupPath ? [`Backup: ${saved.backupPath}`] : []),
+		].join("\n");
+	} catch (error) {
+		return `No pude guardar asignación.\n${error instanceof Error ? error.message : String(error)}`;
+	}
+}
+
+function validateAgentProfiles(
+	status: ReturnType<typeof buildCliHomeStatus>,
+): string {
+	try {
+		parseAgentProfiles(
+			status.agentProfiles
+				.map(
+					(profile) =>
+						`${profile.id}|${profile.label}|${profile.piArgs.join(" ")}`,
+				)
+				.join(";"),
+		);
+		return [
+			"Configuración de perfiles válida.",
+			`perfiles: ${status.agentProfiles.length}`,
+			...(status.project.stateRoot
+				? [
+						formatModelAssignments(
+							loadModelAssignments(status.project.stateRoot),
+							status.agentProfiles,
+						),
+					]
+				: ["model assignments: sin stateRoot"]),
+		].join("\n");
+	} catch (error) {
+		return `Configuración inválida: ${error instanceof Error ? error.message : String(error)}`;
+	}
+}
+
+async function runTelegramRemoteMenu(
+	question: CliQuestion,
+	print: CliPrint,
+	status: ReturnType<typeof buildCliHomeStatus>,
+	options: CliHomeActionOptions = {},
+): Promise<string> {
+	print(formatTelegramRemoteMenu());
+	const choice = (await question("\nElegí una opción [1-11]: ")).trim();
+	if (choice === "10" || /^volver$/iu.test(choice))
+		return "Volver sin cambios.";
+	if (choice === "11" || /^exit|salir$/iu.test(choice))
+		return "Salida sin cambios.";
+	return handleTelegramRemoteChoice(choice, question, status, options);
+}
+
+async function handleTelegramRemoteChoice(
+	choice: string,
+	question: CliQuestion,
+	status: ReturnType<typeof buildCliHomeStatus>,
+	options: CliHomeActionOptions = {},
+): Promise<string> {
+	const envPath = packageEnvPath(status.packageRoot);
+	const logPath = join(status.packageRoot, "logs", "bridge.log");
+	if (choice === "status" || choice === "1") {
+		const draft = readEnvDraft(envPath);
+		return formatBridgeEnvStatus({
+			envPath,
+			exists: existsSync(envPath),
+			values: draft.values,
+			packageRoot: status.packageRoot,
+			startScriptExists: existsSync(
+				join(status.packageRoot, "scripts", "start-bridge.ps1"),
+			),
+			stopScriptExists: existsSync(
+				join(status.packageRoot, "scripts", "stop-bridge.ps1"),
+			),
+			logPath,
+			logExists: existsSync(logPath),
+			bridgeStatus: "unknown (sin shell riesgosa)",
+		});
+	}
+	if (choice === "configure" || choice === "2") {
+		const token = (await question("TELEGRAM_BOT_TOKEN: ")).trim();
+		const userId = (await question("ALLOWED_USER_ID: ")).trim();
+		const errors = validateBridgeEnvDraft({
+			TELEGRAM_BOT_TOKEN: token,
+			ALLOWED_USER_ID: userId,
+		});
+		if (errors.length)
+			return `Configuración inválida:\n- ${errors.join("\n- ")}`;
+		if (!(await confirmAction(question, "Guardar .env con backup?")))
+			return "Cancelado sin cambios.";
+		const result = writeEnvDraftWithBackup(envPath, readEnvDraft(envPath), {
+			TELEGRAM_BOT_TOKEN: token,
+			ALLOWED_USER_ID: userId,
+		});
+		return [
+			"Acceso remoto guardado.",
+			...(result.backupPath ? [`Backup: ${result.backupPath}`] : []),
+			"Token guardado enmascarado; no se imprime el secreto.",
+		].join("\n");
+	}
+	if (choice === "sync" || choice === "3") {
+		return "La sincronización real de comandos remotos requiere el bot corriendo: usá /config sync_commands desde Telegram. No hay contexto bot.api en el CLI local.";
+	}
+	if (choice === "run" || choice === "4")
+		return runBridgeLifecycleChoice("run", question, status, options);
+	if (choice === "off" || choice === "5")
+		return runBridgeLifecycleChoice("off", question, status, options);
+	if (choice === "restart" || choice === "6")
+		return runBridgeLifecycleChoice("restart", question, status, options);
+	if (choice === "logs" || choice === "7") return tailTextFile(logPath, 80);
+	if (choice === "save" || choice === "8")
+		return "No hay draft pendiente; Configurar acceso remoto guarda con Save dentro del flujo.";
+	if (choice === "discard" || choice === "9")
+		return "No hay draft pendiente para descartar.";
+	return "Opción Telegram remoto no reconocida. No ejecuté acciones.";
+}
+
+async function runBridgeLifecycleChoice(
+	action: BridgeLifecycleAction,
+	question: CliQuestion,
+	status: ReturnType<typeof buildCliHomeStatus>,
+	options: CliHomeActionOptions,
+): Promise<string> {
+	if (
+		!(await confirmAction(
+			question,
+			`${bridgeLifecycleReply(action)} ¿Continuar?`,
+		))
+	) {
+		return "Cancelado sin cambios.";
+	}
+	(options.bridgeLauncher ?? launchBridgeLifecycle)(action, status.packageRoot);
+	return bridgeLifecycleReply(action);
+}
+
 async function runModelProfilesMenu(
 	question: CliQuestion,
 	print: CliPrint,
 	status: ReturnType<typeof buildCliHomeStatus>,
 ): Promise<string> {
 	print(formatModelProfilesMenu());
-	const choice = (await question("\nElegí una opción [1-8]: ")).trim();
-	if (choice === "7" || /^volver$/iu.test(choice)) return "Volver sin cambios.";
-	if (choice === "8" || /^exit|salir$/iu.test(choice))
+	const choice = (await question("\nElegí una opción [1-6]: ")).trim();
+	if (choice === "5" || /^volver$/iu.test(choice)) return "Volver sin cambios.";
+	if (choice === "6" || /^exit|salir$/iu.test(choice))
 		return "Salida sin cambios.";
 	if (choice === "1") return formatModelProfilesStatus(status);
-	if (choice === "2")
-		return "Editar perfiles requiere el próximo panel editable con Save/Descartar. No modifiqué .env.";
-	if (choice === "3")
-		return "Asignar modelos por rol guardará en stateRoot/model-assignments.json. No escribí cambios.";
-	if (choice === "4")
-		return "Configuración válida para lectura: perfiles cargados y fallbacks seguros.";
-	if (choice === "5") return "No hay cambios pendientes para guardar.";
-	if (choice === "6")
-		return "Cambios descartados. No había cambios pendientes.";
+	if (choice === "2" || choice === "edit")
+		return editAgentProfiles(question, status);
+	if (choice === "3" || choice === "assign")
+		return assignModelRole(question, status);
+	if (choice === "4" || choice === "validate")
+		return validateAgentProfiles(status);
 	return "Opción no reconocida. No ejecuté acciones.";
 }
 

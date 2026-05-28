@@ -2,7 +2,8 @@ import { Bot, type Context } from "grammy";
 import { existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
 	AgentRouter,
 	formatAgentProfiles,
@@ -270,6 +271,16 @@ import {
 	parseUiRequestAnswer,
 } from "./telegram-ui.js";
 import {
+	bridgeLifecycleReply,
+	launchBridgeLifecycle,
+} from "./bridge-lifecycle.js";
+import {
+	formatBridgeEnvStatus,
+	packageEnvPath,
+	readEnvDraft,
+	tailTextFile,
+} from "./env-config.js";
+import {
 	buildIduRemoteMenuKeyboard,
 	buildIduRemoteMenuText,
 	buildIduRemoteProjectKeyboard,
@@ -398,6 +409,58 @@ async function runIduRemoteCommand(
 	ctx: Context,
 	command: IduRemoteCommand,
 ): Promise<void> {
+	const packageRoot = resolvePackageRootForTelegram();
+	if (command === "remote_status") {
+		const envPath = packageEnvPath(packageRoot);
+		const logPath = join(packageRoot, "logs", "bridge.log");
+		await replyLong(
+			ctx,
+			formatBridgeEnvStatus({
+				envPath,
+				exists: existsSync(envPath),
+				values: readEnvDraft(envPath).values,
+				packageRoot,
+				startScriptExists: existsSync(
+					join(packageRoot, "scripts", "start-bridge.ps1"),
+				),
+				stopScriptExists: existsSync(
+					join(packageRoot, "scripts", "stop-bridge.ps1"),
+				),
+				logPath,
+				logExists: existsSync(logPath),
+				bridgeStatus: "activo (este bot está respondiendo)",
+			}),
+		);
+		return;
+	}
+	if (command === "remote_logs") {
+		await replyLong(
+			ctx,
+			tailTextFile(join(packageRoot, "logs", "bridge.log"), 80),
+		);
+		return;
+	}
+	if (command === "sync_commands") {
+		const commands = telegramCommandsForApi();
+		await bot.api.setMyCommands(commands);
+		await ctx.reply(`Comandos remotos sincronizados: ${commands.length}.`);
+		return;
+	}
+	if (
+		command === "bridge_start" ||
+		command === "bridge_restart" ||
+		command === "bridge_stop"
+	) {
+		const action =
+			command === "bridge_stop"
+				? "off"
+				: command === "bridge_restart"
+					? "restart"
+					: "run";
+		await ctx.reply(bridgeLifecycleReply(action));
+		launchBridgeLifecycle(action, packageRoot);
+		return;
+	}
 	if (command === "idu") {
 		const projectId = currentProjectId();
 		activateIduSession(projectId);
@@ -456,6 +519,13 @@ async function runIduRemoteCommand(
 	await replyLong(
 		ctx,
 		`Proyectos registrados:\n\n${formatProjectChoices() || "(ninguno)"}\n\nRespondé con número o id para activar un proyecto, o /cancel para salir.`,
+	);
+}
+
+function resolvePackageRootForTelegram(): string {
+	return dirname(fileURLToPath(import.meta.url)).replace(
+		/[\\/]dist[\\/]src$/u,
+		"",
 	);
 }
 

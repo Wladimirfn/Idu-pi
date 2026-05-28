@@ -229,22 +229,36 @@ export function formatCliConfigurationStatus(status: CliHomeStatus): string {
 	].join("\n");
 }
 
+export function formatTelegramRemoteMenu(): string {
+	return [
+		"Telegram remoto",
+		"",
+		"1. Ver estado remoto",
+		"2. Configurar acceso remoto",
+		"3. Sincronizar comandos remotos",
+		"4. Iniciar puente remoto",
+		"5. Detener puente remoto",
+		"6. Reiniciar puente remoto",
+		"7. Ver logs",
+		"8. Save",
+		"9. Descartar",
+		"10. ← Volver",
+		"11. Exit",
+	].join("\n");
+}
+
 export function formatTelegramRemoteStatus(status: CliHomeStatus): string {
 	return [
 		"Telegram remoto",
 		"",
-		"Telegram es una interfaz remota opcional del flujo CLI/supervisor.",
-		"El core de IDU-Pi no depende de Telegram.",
-		"",
+		"Telegram replica el CLI/supervisor en remoto; no es otro core.",
 		`package root: ${status.packageRoot}`,
 		`config esperada: ${join(status.packageRoot, ".env")}`,
+		`start script: ${join(status.packageRoot, "scripts", "start-bridge.ps1")}`,
+		`stop script: ${join(status.packageRoot, "scripts", "stop-bridge.ps1")}`,
+		`logs: ${join(status.packageRoot, "logs", "bridge.log")}`,
 		"",
-		"Acciones disponibles por ahora:",
-		"- Configurar Telegram remoto: scripts/setup-env.mjs",
-		"- Iniciar Telegram remoto: scripts/start-bridge.ps1",
-		"- Detener Telegram remoto: scripts/stop-bridge.ps1",
-		"",
-		"MVP seguro: esta pantalla no inicia Telegram ni modifica .env.",
+		"Usá el submenu para configurar, sincronizar comandos, iniciar/detener el puente o ver logs.",
 	].join("\n");
 }
 
@@ -256,10 +270,8 @@ export function formatModelProfilesMenu(): string {
 		"2. Editar perfiles",
 		"3. Asignar modelos por rol",
 		"4. Validar configuración",
-		"5. Save",
-		"6. Descartar",
-		"7. ← Volver",
-		"8. Exit",
+		"5. ← Volver",
+		"6. Exit",
 	].join("\n");
 }
 
@@ -307,9 +319,9 @@ export function formatModelProfilesStatus(status: CliHomeStatus): string {
 		"- Editar perfiles",
 		"- Asignar modelos por rol",
 		"- Validar configuración",
-		"- Save / Descartar",
 		"",
-		"MVP seguro: las acciones editables muestran el flujo previsto. No modifica .env todavía.",
+		"Editar perfiles guarda PI_AGENT_PROFILES en .env con backup.",
+		"Asignar modelos por rol guarda stateRoot/model-assignments.json.",
 	].join("\n");
 }
 

@@ -26,6 +26,11 @@ import {
 	type AgentLabReviewRequestPlan,
 } from "./agentlab-review-requests.js";
 import { cleanAgentOutput, summarizeOutput } from "./lab-reports.js";
+import {
+	profileForModelRole,
+	type IduModelRoleId,
+	type ModelAssignments,
+} from "./model-assignments.js";
 
 export type AgentLabReviewRunStatus =
 	| "completed"
@@ -83,6 +88,7 @@ export type RunAgentLabReviewRequestFileInput = {
 	projectPath: string;
 	router: AgentRouter;
 	profileId?: string;
+	modelAssignments?: ModelAssignments;
 	now?: () => Date;
 };
 
@@ -91,6 +97,7 @@ export type RunAgentLabReviewRequestInput = {
 	projectPath: string;
 	router: AgentRouter;
 	profile?: AgentProfile;
+	modelAssignments?: ModelAssignments;
 	now?: () => Date;
 };
 
@@ -152,6 +159,7 @@ export async function runAgentLabReviewRequestFile(
 			projectPath: input.projectPath,
 			router: input.router,
 			profileId: input.profileId,
+			modelAssignments: input.modelAssignments,
 			now: input.now,
 		});
 	}
@@ -183,7 +191,11 @@ export async function runAgentLabReviewRequest(
 	}
 	const profile =
 		input.profile ??
-		selectAgentLabProfile(input.router, input.request.specialty);
+		selectAgentLabProfile(
+			input.router,
+			input.request.specialty,
+			input.modelAssignments,
+		);
 	if (!profile) {
 		return skippedRun(
 			input.request,
@@ -466,11 +478,25 @@ function buildReviewPrompt(
 	].join("\n");
 }
 
-function selectAgentLabProfile(
+export function selectAgentLabProfile(
 	router: AgentRouter,
 	specialty: AgentLabSpecialty,
+	modelAssignments?: ModelAssignments,
 ): AgentProfile | undefined {
 	const profiles = router.labProfiles();
+	const assigned = modelAssignments
+		? profileForModelRole(
+				modelAssignments,
+				agentLabRoleForSpecialty(specialty),
+				router.profiles,
+			)
+		: undefined;
+	if (
+		assigned?.source === "assigned" &&
+		profiles.some((profile) => profile.id === assigned.profile.id)
+	) {
+		return assigned.profile;
+	}
 	const patterns = specialtyPatterns(specialty);
 	return (
 		profiles.find((profile) =>
@@ -479,6 +505,29 @@ function selectAgentLabProfile(
 		profiles.find((profile) => profileMatches(profile, /general/iu)) ??
 		profiles[0]
 	);
+}
+
+function agentLabRoleForSpecialty(
+	specialty: AgentLabSpecialty,
+): IduModelRoleId {
+	switch (specialty) {
+		case "security":
+			return "agentlab-security";
+		case "architecture":
+		case "project_understanding":
+			return "agentlab-architecture";
+		case "performance":
+		case "token_cost":
+			return "agentlab-performance";
+		case "code_quality":
+		case "skill_review":
+			return "agentlab-code-quality";
+		case "general":
+		case "database":
+		case "ui_ux":
+		case "docs":
+			return "agentlab-general";
+	}
 }
 
 function specialtyPatterns(specialty: AgentLabSpecialty): RegExp[] {
@@ -516,6 +565,7 @@ async function runPlanRequests(input: {
 	projectPath: string;
 	router: AgentRouter;
 	profileId?: string;
+	modelAssignments?: ModelAssignments;
 	now?: () => Date;
 }): Promise<AgentLabReviewRunSummary[]> {
 	const forcedProfile = input.profileId
@@ -531,6 +581,7 @@ async function runPlanRequests(input: {
 				projectPath: input.projectPath,
 				router: input.router,
 				profile: forcedProfile,
+				modelAssignments: input.modelAssignments,
 				now: input.now,
 			}),
 		);

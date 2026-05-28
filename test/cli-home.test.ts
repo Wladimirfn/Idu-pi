@@ -23,8 +23,14 @@ import {
 	formatModelProfilesMenu,
 	formatModelProfilesStatus,
 	formatSetupPathHelp,
+	formatTelegramRemoteMenu,
 } from "../src/cli-home.js";
-import { runCliCommand, runInteractiveHomeWithQuestion } from "../src/cli.js";
+import {
+	createCliRuntime,
+	runCliCommand,
+	runInteractiveHomeWithQuestion,
+} from "../src/cli.js";
+import { saveModelAssignment } from "../src/model-assignments.js";
 
 function tempDir(prefix = "idu-cli-home-"): string {
 	return mkdtempSync(join(tmpdir(), prefix));
@@ -37,11 +43,14 @@ function snapshotEnv(): EnvSnapshot {
 		DEFAULT_CWD: process.env.DEFAULT_CWD,
 		ALLOWED_ROOTS: process.env.ALLOWED_ROOTS,
 		AGENT_WORKSPACE_ROOT: process.env.AGENT_WORKSPACE_ROOT,
+		AGENT_WORKSPACE_MODE: process.env.AGENT_WORKSPACE_MODE,
 		PI_CODING_AGENT_DIR: process.env.PI_CODING_AGENT_DIR,
 		PNPM_HOME: process.env.PNPM_HOME,
 		PATH: process.env.PATH,
 		Path: process.env.Path,
 		PI_AGENT_PROFILES: process.env.PI_AGENT_PROFILES,
+		IDU_PI_ENV_PATH: process.env.IDU_PI_ENV_PATH,
+		IDU_PI_REGISTRY_PATH: process.env.IDU_PI_REGISTRY_PATH,
 	};
 }
 
@@ -302,6 +311,61 @@ test("project status renderer shows enrolled and unregistered project states", (
 	rmSync(root, { recursive: true, force: true });
 });
 
+test("telegram remote submenu exposes real management actions", () => {
+	const menu = formatTelegramRemoteMenu();
+	assert.match(menu, /1\. Ver estado remoto/u);
+	assert.match(menu, /2\. Configurar acceso remoto/u);
+	assert.match(menu, /3\. Sincronizar comandos remotos/u);
+	assert.match(menu, /4\. Iniciar puente remoto/u);
+	assert.match(menu, /5\. Detener puente remoto/u);
+	assert.match(menu, /6\. Reiniciar puente remoto/u);
+	assert.match(menu, /7\. Ver logs/u);
+});
+
+test("interactive telegram remote config writes masked env with backup", async () => {
+	const root = tempDir();
+	const envPath = join(root, ".env");
+	const tokenKey = `TELEGRAM_BOT_${"TOKEN"}`;
+	writeFileSync(
+		envPath,
+		`CUSTOM_KEEP=yes\n${tokenKey}=old-secret\nALLOWED_USER_ID=123\n`,
+		"utf8",
+	);
+	const previous = snapshotEnv();
+	try {
+		process.env.IDU_PI_ENV_PATH = envPath;
+		const answers = ["3", "2", "new-secret-token", "456", "s"];
+		const output = await runInteractiveHomeWithQuestion(
+			async () => answers.shift() ?? "n",
+		);
+		assert.match(output, /Acceso remoto guardado/u);
+		assert.doesNotMatch(output, /new-secret-token/u);
+		assert.match(
+			readFileSync(envPath, "utf8"),
+			new RegExp(`${tokenKey}=new-secret-token`, "u"),
+		);
+		assert.match(readFileSync(envPath, "utf8"), /CUSTOM_KEEP=yes/u);
+		assert.ok(
+			readdirSync(root).some((entry) => entry.startsWith(".env.backup-")),
+		);
+	} finally {
+		restoreEnv(previous);
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("interactive telegram remote lifecycle uses injected launcher", async () => {
+	const calls: string[] = [];
+	const answers = ["3", "4", "s"];
+	const output = await runInteractiveHomeWithQuestion(
+		async () => answers.shift() ?? "n",
+		() => {},
+		{ bridgeLauncher: (action) => calls.push(action) },
+	);
+	assert.deepEqual(calls, ["run"]);
+	assert.match(output, /Abriendo bridge/u);
+});
+
 test("model profile panel renders current profiles and planned Idu-pi roles", () => {
 	const status = buildCliHomeStatus({
 		env: {
@@ -321,7 +385,7 @@ test("model profile panel renders current profiles and planned Idu-pi roles", ()
 	assert.match(panel, /Supervisor principal.*Pi default/u);
 	assert.match(panel, /AgentLab general.*Barato/u);
 	assert.match(panel, /AgentLab seguridad.*Seguridad/u);
-	assert.match(panel, /No modifica \.env/u);
+	assert.match(panel, /guarda PI_AGENT_PROFILES en \.env con backup/u);
 });
 
 test("model profiles submenu exposes navigable actions", () => {
@@ -330,9 +394,9 @@ test("model profiles submenu exposes navigable actions", () => {
 	assert.match(menu, /2\. Editar perfiles/u);
 	assert.match(menu, /3\. Asignar modelos por rol/u);
 	assert.match(menu, /4\. Validar configuración/u);
-	assert.match(menu, /5\. Save/u);
-	assert.match(menu, /7\. ← Volver/u);
-	assert.match(menu, /8\. Exit/u);
+	assert.doesNotMatch(menu, /Save/u);
+	assert.match(menu, /5\. ← Volver/u);
+	assert.match(menu, /6\. Exit/u);
 });
 
 test("interactive home model option is non-mutating", async () => {
@@ -352,6 +416,138 @@ test("interactive home model option is non-mutating", async () => {
 		assert.match(output, /Modelos y perfiles/u);
 		assert.match(output, /Supervisor principal/u);
 		assert.deepEqual(after, before);
+	} finally {
+		process.chdir(previousCwd);
+		restoreEnv(previous);
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("interactive model profile edit writes env with backup", async () => {
+	const root = tempDir();
+	const envPath = join(root, ".env");
+	const tokenKey = `TELEGRAM_BOT_${"TOKEN"}`;
+	writeFileSync(
+		envPath,
+		`${tokenKey}=secret\nALLOWED_USER_ID=123\nPI_AGENT_PROFILES=default|Pi default\n`,
+		"utf8",
+	);
+	const previous = snapshotEnv();
+	try {
+		process.env.IDU_PI_ENV_PATH = envPath;
+		const answers = [
+			"4",
+			"2",
+			"default|Pi default;codex|GPT Codex|--model openai-codex/gpt",
+			"s",
+		];
+		const output = await runInteractiveHomeWithQuestion(
+			async () => answers.shift() ?? "n",
+		);
+		assert.match(output, /Perfiles guardados/u);
+		assert.match(readFileSync(envPath, "utf8"), /codex\|GPT Codex/u);
+		assert.match(readFileSync(envPath, "utf8"), new RegExp(`${tokenKey}=secret`, "u"));
+		assert.ok(
+			readdirSync(root).some((entry) => entry.startsWith(".env.backup-")),
+		);
+	} finally {
+		restoreEnv(previous);
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("createCliRuntime applies supervisor-main model assignment", () => {
+	const root = tempDir();
+	const projectPath = join(root, "project");
+	const workspaceRoot = join(root, "workspace");
+	mkdirSync(projectPath, { recursive: true });
+	mkdirSync(join(root, "data"), { recursive: true });
+	writeFileSync(
+		join(root, "data", "projects.json"),
+		JSON.stringify({
+			activeProjectId: "project",
+			projects: [
+				{
+					id: "project",
+					name: "project",
+					path: projectPath,
+					stateRoot: join(workspaceRoot, "projects", "project"),
+				},
+			],
+		}),
+		"utf8",
+	);
+	const previous = snapshotEnv();
+	const previousCwd = process.cwd();
+	try {
+		process.chdir(projectPath);
+		process.env.DEFAULT_CWD = projectPath;
+		process.env.ALLOWED_ROOTS = root;
+		process.env.AGENT_WORKSPACE_ROOT = workspaceRoot;
+		process.env.AGENT_WORKSPACE_MODE = "direct";
+		process.env.IDU_PI_REGISTRY_PATH = join(root, "data", "projects.json");
+		process.env.PI_AGENT_PROFILES =
+			"default|Pi default;codex|GPT Codex|--model openai-codex/gpt";
+		saveModelAssignment(
+			join(workspaceRoot, "projects", "project"),
+			"supervisor-main",
+			"codex",
+			[
+				{ id: "default", label: "Pi default", provider: "pi", piArgs: [] },
+				{
+					id: "codex",
+					label: "GPT Codex",
+					provider: "pi",
+					piArgs: ["--model", "openai-codex/gpt"],
+				},
+			],
+		);
+
+		const runtime = createCliRuntime({ requireTelegramConfig: false });
+
+		assert.equal(runtime.activeProfileId?.(), "codex");
+	} finally {
+		process.chdir(previousCwd);
+		restoreEnv(previous);
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("interactive model role assignment writes project state", async () => {
+	const root = tempDir();
+	const projectPath = join(root, "project");
+	const stateRoot = join(root, "state");
+	mkdirSync(join(root, "data"), { recursive: true });
+	mkdirSync(projectPath, { recursive: true });
+	writeFileSync(
+		join(root, "data", "projects.json"),
+		JSON.stringify({
+			activeProjectId: "project",
+			projects: [
+				{ id: "project", name: "project", path: projectPath, stateRoot },
+			],
+		}),
+		"utf8",
+	);
+	const previous = snapshotEnv();
+	const previousCwd = process.cwd();
+	try {
+		process.chdir(projectPath);
+		process.env.DEFAULT_CWD = projectPath;
+		process.env.ALLOWED_ROOTS = root;
+		process.env.AGENT_WORKSPACE_ROOT = join(root, "workspace");
+		process.env.IDU_PI_REGISTRY_PATH = join(root, "data", "projects.json");
+		process.env.PI_AGENT_PROFILES =
+			"default|Pi default;codex|GPT Codex|--model openai-codex/gpt";
+		const answers = ["4", "3", "agentlab-security", "codex"];
+		const output = await runInteractiveHomeWithQuestion(
+			async () => answers.shift() ?? "",
+		);
+		assert.match(output, /Asignación guardada/u);
+		assert.match(
+			readFileSync(join(stateRoot, "model-assignments.json"), "utf8"),
+			/agentlab-security/u,
+		);
 	} finally {
 		process.chdir(previousCwd);
 		restoreEnv(previous);

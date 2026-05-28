@@ -18,6 +18,7 @@ import {
 	parseAgentLabReviewReportFromOutput,
 	runAgentLabReviewRequest,
 	runAgentLabReviewRequestFile,
+	selectAgentLabProfile,
 } from "../src/agentlab-review-runner.js";
 import type { AgentProfile } from "../src/config.js";
 import type { PiRpcProgressEvent, PiRpcPromptResult } from "../src/pi-rpc.js";
@@ -200,6 +201,36 @@ function gitProject(): string {
 	git(["commit", "-m", "init"], projectPath);
 	return projectPath;
 }
+
+test("selectAgentLabProfile uses assigned role profile before specialty fallback", () => {
+	const { router } = routerWith(validReport());
+	const selected = selectAgentLabProfile(router, "security", {
+		version: 1,
+		assignments: { "agentlab-security": "general" },
+	});
+
+	assert.equal(selected?.id, "general");
+});
+
+test("selectAgentLabProfile ignores missing assignment and keeps specialty fallback", () => {
+	const { router } = routerWith(validReport());
+	const selected = selectAgentLabProfile(router, "security", {
+		version: 1,
+		assignments: { "agentlab-security": "missing" },
+	});
+
+	assert.equal(selected?.id, "security");
+});
+
+test("selectAgentLabProfile does not allow default direct profile for AgentLabs", () => {
+	const { router } = routerWith(validReport());
+	const selected = selectAgentLabProfile(router, "security", {
+		version: 1,
+		assignments: { "agentlab-security": "default" },
+	});
+
+	assert.equal(selected?.id, "security");
+});
 
 test("run latest lee request válido", async () => {
 	const { router, projectPath, workspaceRoot } = routerWith(validReport());

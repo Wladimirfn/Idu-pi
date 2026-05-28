@@ -15,7 +15,13 @@ export type IduRemoteCommand =
 	| "queue_detail"
 	| "dashboard"
 	| "doctor"
-	| "projects";
+	| "projects"
+	| "remote_status"
+	| "remote_logs"
+	| "sync_commands"
+	| "bridge_start"
+	| "bridge_restart"
+	| "bridge_stop";
 
 const REMOTE_CALLBACK_PREFIX = "idu-remote";
 const SAFE_PROJECT_ID_PATTERN = /^[a-z0-9._-]{1,40}$/u;
@@ -27,6 +33,12 @@ const REMOTE_COMMANDS = new Set<IduRemoteCommand>([
 	"dashboard",
 	"doctor",
 	"projects",
+	"remote_status",
+	"remote_logs",
+	"sync_commands",
+	"bridge_start",
+	"bridge_restart",
+	"bridge_stop",
 ]);
 
 export function buildIduRemoteMenuText(activeProjectLabel = "unknown"): string {
@@ -62,6 +74,18 @@ export function buildIduRemoteMenuKeyboard(): TelegramInlineKeyboard {
 			[
 				remoteRunButton("🏠 Dashboard", "dashboard"),
 				remoteRunButton("📚 Proyectos", "projects"),
+			],
+			[
+				remoteRunButton("🔎 Remoto", "remote_status"),
+				remoteRunButton("📜 Logs", "remote_logs"),
+			],
+			[
+				remoteRunButton("🔄 Sync comandos", "sync_commands"),
+				remoteRunButton("▶️ Start bridge", "bridge_start"),
+			],
+			[
+				remoteRunButton("⏹ Stop bridge", "bridge_stop"),
+				remoteRunButton("♻️ Restart bridge", "bridge_restart"),
 			],
 		],
 	};
@@ -109,6 +133,12 @@ export function formatIduRemoteCommandHint(command: IduRemoteCommand): string {
 		dashboard: "Ver panel operativo",
 		doctor: "Ejecutar diagnóstico",
 		projects: "Listar proyectos enrolados",
+		remote_status: "Ver estado del puente remoto",
+		remote_logs: "Ver logs del puente remoto",
+		sync_commands: "Sincronizar comandos visibles del bot",
+		bridge_start: "Iniciar el puente remoto",
+		bridge_restart: "Reiniciar el puente remoto",
+		bridge_stop: "Detener el puente remoto",
 	};
 	return [
 		`Atajo remoto: /${command}`,

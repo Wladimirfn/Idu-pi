@@ -147,8 +147,8 @@ Muestra:
 - estado básico de Project Core;
 - comandos recomendados;
 - pantalla de configuración con package root, Pi agent dir, MCP config, extensión slash y registry;
-- panel no mutante de Telegram remoto;
-- panel no mutante de modelos/perfiles para supervisor y AgentLabs;
+- submenu Telegram remoto con estado, configuración `.env` con backup, instrucciones de sincronización, ciclo de vida start/stop/restart y logs;
+- submenu modelos/perfiles con edición de `PI_AGENT_PROFILES` en `.env` con backup y asignaciones por rol en `stateRoot/model-assignments.json`;
 - ayuda si el bin global de pnpm no está en `PATH`.
 
 Si stdin/stdout son interactivos, muestra el logo y un único menú principal:

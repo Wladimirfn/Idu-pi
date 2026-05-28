@@ -220,6 +220,15 @@ export class AgentRouter {
 						candidate.label.toLowerCase() === normalized,
 				);
 		if (!profile) return undefined;
+		this.setActiveProfile(profile.id);
+		return profile;
+	}
+
+	setActiveProfile(profileId: string): AgentProfile | undefined {
+		const profile = this.options.profiles.find(
+			(candidate) => candidate.id === profileId,
+		);
+		if (!profile) return undefined;
 		this.activeProfileByProject.set(this.projectId, profile.id);
 		this.runtimeFor(this.projectId, this.cwd, profile);
 		return profile;

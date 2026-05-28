@@ -20,10 +20,22 @@ test("remote menu explains Telegram as a guided CLI control surface", () => {
 		{ text: "🚦 Activar supervisor", callback_data: "idu-remote:run:idu" },
 		{ text: "📊 Estado", callback_data: "idu-remote:run:idu_status" },
 	]);
+	const buttons = keyboard.inline_keyboard.flat();
+	assert.ok(buttons.some((button) => button.text === "📁 Cambiar proyecto"));
 	assert.ok(
-		keyboard.inline_keyboard
-			.flat()
-			.some((button) => button.text === "📁 Cambiar proyecto"),
+		buttons.some(
+			(button) => button.callback_data === "idu-remote:run:remote_status",
+		),
+	);
+	assert.ok(
+		buttons.some(
+			(button) => button.callback_data === "idu-remote:run:sync_commands",
+		),
+	);
+	assert.ok(
+		buttons.some(
+			(button) => button.callback_data === "idu-remote:run:bridge_stop",
+		),
 	);
 });
 
@@ -60,6 +72,14 @@ test("remote callback parser accepts only Idu remote callbacks", () => {
 	assert.deepEqual(parseIduRemoteCallback("idu-remote:run:queue_detail"), {
 		type: "run",
 		command: "queue_detail",
+	});
+	assert.deepEqual(parseIduRemoteCallback("idu-remote:run:sync_commands"), {
+		type: "run",
+		command: "sync_commands",
+	});
+	assert.deepEqual(parseIduRemoteCallback("idu-remote:run:bridge_restart"), {
+		type: "run",
+		command: "bridge_restart",
 	});
 	assert.deepEqual(parseIduRemoteCallback("idu-remote:project:sistema"), {
 		type: "project",
