@@ -15,6 +15,7 @@ import {
 	formatCliTaskResult,
 	rejectStructuredTaskById,
 	runCliCommand,
+	normalizeCliArgs,
 	type CliRuntime,
 } from "../src/cli.js";
 import { LabDbRepository } from "../src/lab-db-repository.js";
@@ -1337,15 +1338,51 @@ test("cli idu-status lee el mismo estado persistido", async () => {
 	});
 });
 
-test("cli ignora separador -- que agrega pnpm run", async () => {
+test("cli normaliza separador -- sin perder comandos ni argumentos", async () => {
+	assert.deepEqual(normalizeCliArgs(["idu"]), ["idu"]);
+	assert.deepEqual(normalizeCliArgs(["--", "idu"]), ["idu"]);
+	assert.deepEqual(normalizeCliArgs(["--"]), []);
+	assert.deepEqual(normalizeCliArgs(["--", "idu-task", "fallo login"]), [
+		"idu-task",
+		"fallo login",
+	]);
+	assert.deepEqual(
+		normalizeCliArgs(["--", "idu-master-plan-review", "latest"]),
+		["idu-master-plan-review", "latest"],
+	);
+});
+
+test("cli acepta separador -- estilo node/corepack", async () => {
 	await withRuntime(async (runtime) => {
 		await runCliCommand(["idu"], runtime);
 
-		const result = await runCliCommand(["--", "idu-status"], runtime);
+		const iduStatus = await runCliCommand(["--", "idu-status"], runtime);
+		assert.equal(iduStatus.exitCode, 0);
+		assert.match(iduStatus.stdout, /Estado:\nactive/u);
+		assert.equal(iduStatus.stderr, "");
 
-		assert.equal(result.exitCode, 0);
-		assert.match(result.stdout, /Estado:\nactive/u);
-		assert.equal(result.stderr, "");
+		const home = await runCliCommand(["--"], runtime);
+		assert.equal(home.exitCode, 0);
+		assert.match(home.stdout, /Idu-pi|Estado:/u);
+
+		let capturedDetails = "";
+		const task = await runCliCommand(["--", "idu-task", "fallo login"], {
+			...runtime,
+			createTask: (kind, details) => {
+				capturedDetails = details;
+				return runtime.createTask(kind, details);
+			},
+		});
+		assert.equal(task.exitCode, 0);
+		assert.equal(capturedDetails, "fallo login");
+		assert.match(task.stdout, /Idu-pi Task/u);
+
+		const review = await runCliCommand(
+			["--", "idu-master-plan-review", "latest"],
+			runtime,
+		);
+		assert.equal(review.exitCode, 0);
+		assert.match(review.stdout, /Plan Maestro Idu-pi/u);
 	});
 });
 

@@ -899,12 +899,16 @@ export function createCliRuntime(
 	};
 }
 
+export function normalizeCliArgs(args: string[]): string[] {
+	return args[0] === "--" ? args.slice(1) : args;
+}
+
 export async function runCliCommand(
 	args: string[],
 	runtime?: CliRuntime,
 ): Promise<CliResult> {
 	applyPackageEnvDefaults();
-	const normalizedArgs = args[0] === "--" ? args.slice(1) : args;
+	const normalizedArgs = normalizeCliArgs(args);
 	const [command, ...rest] = normalizedArgs;
 	try {
 		if (command === "help" || command === "--help" || command === "-h") {
@@ -2023,7 +2027,7 @@ export function helpText(): string {
 
 async function main(): Promise<void> {
 	const args = process.argv.slice(2);
-	const normalizedArgs = args[0] === "--" ? args.slice(1) : args;
+	const normalizedArgs = normalizeCliArgs(args);
 	if (shouldRunInteractiveHome(normalizedArgs)) {
 		const output = await runInteractiveHome();
 		if (output) console.log(output);

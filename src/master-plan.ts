@@ -614,11 +614,16 @@ function walkProject(
 	visit: (path: string, stats: Stats) => void,
 ): void {
 	for (const entry of readdirSync(root, { withFileTypes: true })) {
-		if (SKIPPED_DIRS.has(entry.name)) continue;
+		if (SKIPPED_DIRS.has(entry.name) || entry.isSymbolicLink()) continue;
 		const path = join(root, entry.name);
-		const stats = statSync(path);
+		let stats: Stats;
+		try {
+			stats = statSync(path);
+		} catch {
+			continue;
+		}
 		visit(path, stats);
-		if (entry.isDirectory()) walkProject(path, visit);
+		if (stats.isDirectory()) walkProject(path, visit);
 	}
 }
 

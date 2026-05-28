@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import {
 	existsSync,
 	mkdirSync,
@@ -6,6 +7,7 @@ import {
 	readdirSync,
 	readFileSync,
 	rmSync,
+	symlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -99,6 +101,17 @@ function listRelativeFiles(root: string): string[] {
 	return files.sort();
 }
 
+function writeBrokenDirectoryLink(linkPath: string, targetPath: string): void {
+	try {
+		symlinkSync(targetPath, linkPath, "dir");
+	} catch (error) {
+		if (process.platform !== "win32") throw error;
+		mkdirSync(targetPath, { recursive: true });
+		execFileSync("cmd.exe", ["/c", "mklink", "/J", linkPath, targetPath]);
+		rmSync(targetPath, { recursive: true, force: true });
+	}
+}
+
 test("genera Plan Maestro draft en stateRoot/reports sin modificar repo del usuario", () => {
 	const root = tempRoot();
 	try {
@@ -136,6 +149,32 @@ test("genera Plan Maestro draft en stateRoot/reports sin modificar repo del usua
 			/# Plan Maestro Idu-pi/u,
 		);
 		assert.deepEqual(listRelativeFiles(projectPath), before);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("Plan Maestro ignora links rotos durante escaneo del proyecto", () => {
+	const root = tempRoot();
+	try {
+		const projectPath = join(root, "project");
+		const stateRoot = join(root, "state", "projects", "demo");
+		mkdirSync(join(projectPath, ".adal", "skills"), { recursive: true });
+		writeSmallProject(projectPath);
+		writeBrokenDirectoryLink(
+			join(projectPath, ".adal", "skills", "supabase"),
+			join(projectPath, ".agents", "skills", "supabase"),
+		);
+
+		const result = generateMasterPlanDraft({
+			projectId: "demo",
+			projectPath,
+			stateRoot,
+			gitHead: "head1",
+		});
+
+		assert.equal(result.plan.status, "draft");
+		assert.equal(existsSync(join(stateRoot, "master-plan.current.json")), true);
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}
