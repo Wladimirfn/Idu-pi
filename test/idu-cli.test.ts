@@ -1556,7 +1556,7 @@ test("CLI agentlab request commands funcionan", async () => {
 		assert.equal(review.exitCode, 0);
 		assert.match(review.stdout, /AgentLab Review Request Review/u);
 		assert.equal(simpleReview.exitCode, 0);
-		assert.match(simpleReview.stdout, /Idu-pi revisión del proyecto/u);
+		assert.match(simpleReview.stdout, /Revisión del supervisor/u);
 		assert.match(simpleReview.stdout, /Repo real: sin modificar/u);
 	});
 });

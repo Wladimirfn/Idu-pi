@@ -1522,6 +1522,8 @@ async function runBootstrapIduCommand(): Promise<string> {
 	];
 	if (bootstrap.criticalDecisions.length > 0) {
 		sections.push("", "Análisis pausado por decisión crítica humana.");
+	} else if (masterPlan.plan?.autoDepth.mode === "deep_required") {
+		sections.push("", await runOrReuseMasterPlanDeepReview(activeRuntime));
 	}
 	return sections.join("\n");
 }
@@ -2038,7 +2040,7 @@ async function runMasterPlanDeepReview(
 	const run = await runtime.agentLabReviewRun("latest");
 	if (mode === "simple") {
 		return [
-			"Idu-pi revisión del proyecto",
+			"Revisión del supervisor",
 			"",
 			`Requests: ${plan.requests.length}`,
 			"Deep review: ejecutado en sandbox/clone.",
@@ -2054,6 +2056,22 @@ async function runMasterPlanDeepReview(
 		"",
 		runtime.formatAgentLabReviewRunResult(run),
 	].join("\n");
+}
+
+async function runOrReuseMasterPlanDeepReview(
+	runtime: CliRuntime,
+): Promise<string> {
+	const status = runtime.agentLabReviewStatus("latest");
+	if (status.valid && status.result && status.result.runs.length > 0) {
+		return [
+			"Revisión del supervisor",
+			"",
+			"Estado: ya existe deep review vigente; no lo repetí.",
+			"",
+			runtime.formatAgentLabReviewStatus(status),
+		].join("\n");
+	}
+	return runMasterPlanDeepReview(runtime, "simple");
 }
 
 export function helpText(): string {
@@ -2135,7 +2153,7 @@ async function main(): Promise<void> {
 	const result = await runCliCommand(args);
 	if (result.stdout) console.log(result.stdout);
 	if (result.stderr) console.error(result.stderr);
-	process.exitCode = result.exitCode;
+	process.exit(result.exitCode);
 }
 
 function shouldRunInteractiveHome(args: string[]): boolean {

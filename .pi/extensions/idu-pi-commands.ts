@@ -84,7 +84,7 @@ export default function (pi: ExtensionAPI) {
 			const processConfig = cliProcess(cliArgs);
 			const result = await pi.exec(processConfig.command, processConfig.args, {
 				cwd: ctx.cwd,
-				timeout: 120_000,
+				timeout: 1_200_000,
 			});
 			const text = formatCliResult(
 				command,
@@ -138,12 +138,6 @@ export default function (pi: ExtensionAPI) {
 	registerIduAliases("idu", {
 		description: "Crear o activar el plan supervisor Idu-pi",
 		cliArgs: () => ["idu"],
-	});
-
-	registerIduAliases("idu-review", {
-		description: "Revisión simple del proyecto con Plan Maestro",
-		cliArgs: () => ["idu-review"],
-		usage: "/idu-review",
 	});
 
 	registerIduAliases("idu-off", {

@@ -2,7 +2,7 @@
 
 El CLI es la superficie principal para usar el core de Idu-pi. Telegram es una interfaz remota opcional para ejecutar comandos, revisar estado, cambiar de proyecto enrolado y confirmar decisiones sin estar en la terminal. Telegram no tiene otro core: sus botones son atajos al mismo CLI/supervisor.
 
-Usá `idu-pi` para abrir el home CLI con estado y acciones recomendadas. Para usuarios normales, la acción principal es `idu-pi revisar`: Idu-pi prepara el deep review desde el Plan Maestro y lo ejecuta en sandbox sin tocar el repo real. Los comandos largos quedan para depuración/orquestadores avanzados. Desde el repo, el equivalente es:
+Usá `idu-pi` como entrada única: activa el supervisor, muestra/reutiliza el Plan Maestro y, cuando corresponde, reutiliza o ejecuta la revisión profunda en sandbox sin tocar el repo real. Los comandos largos quedan para depuración/orquestadores avanzados. Desde el repo, el equivalente es:
 
 ```text
 corepack pnpm cli
@@ -225,7 +225,7 @@ Los comandos de skills no modifican skills reales automáticamente.
 
 | Comando | Uso |
 | --- | --- |
-| `idu-pi revisar` / `idu-pi review` / `idu-pi idu-review` | Revisión simple del proyecto: usa Plan Maestro `latest`, crea solicitudes y ejecuta deep review review-only en sandbox/clone. |
+| `idu-pi idu` | Entrada única: activa supervisor, muestra/reutiliza Plan Maestro y reutiliza/ejecuta deep review si el plan lo requiere. |
 | `idu-pi idu-agentlab-request-create postflight` | Crea solicitudes formales desde postflight. |
 | `idu-pi idu-agentlab-request-create master-plan latest` | Comando avanzado equivalente para Plan Maestro: crea solicitudes y ejecuta automáticamente el deep review review-only en sandbox/clone. |
 | `idu-pi idu-agentlab-request-create skill-draft latest` | Crea solicitud para revisar draft de skill. |
