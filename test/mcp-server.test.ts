@@ -549,7 +549,8 @@ test("idu_preflight detects high auth/login risk", async () => {
 	assert.equal(result.data.requiresHumanConfirmation, true);
 	assert.deepEqual(result.data.detectedImpact, ["auth/seguridad", "login"]);
 	assert.deepEqual(
-		(result.data.alignmentAdvisory as { audience: string; severity: string }).audience,
+		(result.data.alignmentAdvisory as { audience: string; severity: string })
+			.audience,
 		"orchestrator",
 	);
 	assert.equal(

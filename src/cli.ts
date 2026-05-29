@@ -1141,7 +1141,9 @@ export async function runCliCommand(
 				const source = rest[0] ?? "postflight";
 				const selector = rest.slice(1).join(" ").trim() || "latest";
 				if (source === "master-plan") {
-					return ok(await runMasterPlanDeepReview(activeRuntime, "advanced", selector));
+					return ok(
+						await runMasterPlanDeepReview(activeRuntime, "advanced", selector),
+					);
 				}
 				return ok(
 					activeRuntime.formatAgentLabReviewRequestPlan(
@@ -2031,7 +2033,8 @@ async function runMasterPlanDeepReview(
 	selector = "latest",
 ): Promise<string> {
 	const plan = runtime.agentLabRequestCreate("master-plan", selector);
-	if (plan.errors.length > 0) return runtime.formatAgentLabReviewRequestPlan(plan);
+	if (plan.errors.length > 0)
+		return runtime.formatAgentLabReviewRequestPlan(plan);
 	const run = await runtime.agentLabReviewRun("latest");
 	if (mode === "simple") {
 		return [

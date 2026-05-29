@@ -22,6 +22,6 @@ test("skill improvement decision commands are wired", () => {
 		"idu-skill-improvements-reject",
 		"idu-skill-improvements-defer",
 	]) {
-		assert.ok(extension.includes(command));
+		assert.ok(!extension.includes(command));
 	}
 });

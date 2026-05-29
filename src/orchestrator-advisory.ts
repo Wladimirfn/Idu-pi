@@ -23,17 +23,27 @@ export type OrchestratorAdvisory = {
 export function buildPreflightOrchestratorAdvisory(
 	report: ProjectPreflightReport,
 ): OrchestratorAdvisory {
-	const requiresHuman = report.requiresHumanConfirmation || report.risk === "blocker";
+	const requiresHuman =
+		report.requiresHumanConfirmation || report.risk === "blocker";
 	return {
 		audience: "orchestrator",
-		severity: report.risk === "blocker" ? "needs_approval" : requiresHuman ? "needs_approval" : report.risk === "medium" ? "warning" : "info",
+		severity:
+			report.risk === "blocker"
+				? "needs_approval"
+				: requiresHuman
+					? "needs_approval"
+					: report.risk === "medium"
+						? "warning"
+						: "info",
 		summary: requiresHuman
 			? "Supervisor detectó riesgo antes de ejecutar."
 			: "Supervisor no detectó bloqueo para esta intención.",
 		alignment: alignmentFromAreas(report.affectedAreas),
 		recommendedNext: compactActions([
 			report.recommendedNext,
-			...(report.shouldRunAgentLab ? ["Pedir revisión AgentLab antes de aplicar."] : []),
+			...(report.shouldRunAgentLab
+				? ["Pedir revisión AgentLab antes de aplicar."]
+				: []),
 		]),
 		requiresHuman,
 		evidenceRefs: compactActions([
@@ -50,13 +60,24 @@ export function buildPreflightOrchestratorAdvisory(
 export function buildProjectAdvisoryForOrchestrator(
 	advisory: ProjectAdvisory,
 ): OrchestratorAdvisory {
-	const requiresHuman = advisory.requiresHumanConfirmation || advisory.level === "blocker";
+	const requiresHuman =
+		advisory.requiresHumanConfirmation || advisory.level === "blocker";
 	return {
 		audience: "orchestrator",
-		severity: advisory.level === "blocker" ? "needs_approval" : requiresHuman ? "needs_approval" : advisory.level === "warning" || advisory.level === "risk" ? "warning" : "info",
+		severity:
+			advisory.level === "blocker"
+				? "needs_approval"
+				: requiresHuman
+					? "needs_approval"
+					: advisory.level === "warning" || advisory.level === "risk"
+						? "warning"
+						: "info",
 		summary: advisory.title,
 		alignment: alignmentFromAreas(advisory.affectedAreas),
-		recommendedNext: compactActions([advisory.recommendation, ...advisory.actions]),
+		recommendedNext: compactActions([
+			advisory.recommendation,
+			...advisory.actions,
+		]),
 		requiresHuman,
 		evidenceRefs: compactActions([
 			`level:${advisory.level}`,
@@ -73,7 +94,12 @@ export function buildSupervisorLoopOrchestratorAdvisory(
 ): OrchestratorAdvisory {
 	return {
 		audience: "orchestrator",
-		severity: result.status === "warning" ? "grave_failure" : result.reason === "idu_inactive" ? "warning" : "info",
+		severity:
+			result.status === "warning"
+				? "grave_failure"
+				: result.reason === "idu_inactive"
+					? "warning"
+					: "info",
 		summary: result.summary,
 		alignment:
 			result.reason === "idu_inactive"
@@ -95,7 +121,12 @@ export function buildSupervisorHookOrchestratorAdvisory(
 ): OrchestratorAdvisory {
 	return {
 		audience: result.reason === "supervisor_failed" ? "human" : "orchestrator",
-		severity: result.reason === "supervisor_failed" ? "grave_failure" : result.status === "warning" ? "warning" : "info",
+		severity:
+			result.reason === "supervisor_failed"
+				? "grave_failure"
+				: result.status === "warning"
+					? "warning"
+					: "info",
 		summary: result.summary,
 		alignment:
 			result.reason === "supervisor_failed"

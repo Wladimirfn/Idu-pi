@@ -427,14 +427,22 @@ export function formatAgentLabReviewStatus(
 export function parseAgentLabReviewReportFromOutput(
 	output: string,
 	request: AgentLabReviewRequest,
-): { report?: AgentLabReviewReport; errors: string[]; qualityWarnings?: string[] } {
+): {
+	report?: AgentLabReviewReport;
+	errors: string[];
+	qualityWarnings?: string[];
+} {
 	return extractAgentLabReviewReportFromOutput(output, request);
 }
 
 export function extractAgentLabReviewReportFromOutput(
 	output: string,
 	request: AgentLabReviewRequest,
-): { report?: AgentLabReviewReport; errors: string[]; qualityWarnings?: string[] } {
+): {
+	report?: AgentLabReviewReport;
+	errors: string[];
+	qualityWarnings?: string[];
+} {
 	const errors: string[] = [];
 	for (const candidate of jsonCandidates(output)) {
 		try {
@@ -914,8 +922,8 @@ function completedRun(
 		recommendations: parsed.report?.recommendations ?? [],
 		testsSuggested: parsed.report?.testsSuggested ?? [],
 		...(parsed.qualityWarnings?.length
-				? { qualityWarnings: parsed.qualityWarnings }
-				: {}),
+			? { qualityWarnings: parsed.qualityWarnings }
+			: {}),
 		requiresHumanApproval:
 			parsed.report?.requiresHumanApproval ?? request.requiresHumanApproval,
 	};

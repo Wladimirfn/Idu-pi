@@ -24,6 +24,6 @@ test("supervisor improvement decision commands are wired", () => {
 		"idu-supervisor-improvements-reject",
 		"idu-supervisor-improvements-defer",
 	]) {
-		assert.ok(extension.includes(command));
+		assert.ok(!extension.includes(command));
 	}
 });

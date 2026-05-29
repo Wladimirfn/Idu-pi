@@ -61,6 +61,7 @@ config/project-*.backup-*.json
 !.pi/extensions/
 !.pi/extensions/idu-pi-commands.ts
 .pi/extensions/*.backup-*.ts
+.pi/extensions/*.backup-*.bak
 .atl/*
 !.atl/skill-registry.md
 openspec/

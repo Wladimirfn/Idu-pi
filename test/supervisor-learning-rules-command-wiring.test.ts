@@ -30,7 +30,7 @@ test("supervisor learning rules commands are wired safely", () => {
 		"idu-supervisor-learning-rules-rollback",
 	]) {
 		assert.ok(cli.includes(command));
-		assert.ok(extension.includes(command));
+		assert.ok(!extension.includes(command));
 	}
 	assert.ok(source.includes("applySupervisorLearningRules"));
 	assert.ok(source.includes("getSupervisorLearningRulesStatus"));

@@ -133,7 +133,7 @@ test("mcp-init leaves matching global slash extension without backup", () => {
 	assert.equal(result.commandExtensionBackupPath, undefined);
 	assert.equal(
 		existsSync(
-			join(root, "extensions", "idu-pi-commands.backup-20260525-010203.ts"),
+			join(root, "extensions", "idu-pi-commands.backup-20260525-010203.bak"),
 		),
 		false,
 	);
@@ -160,7 +160,7 @@ test("mcp-init backs up changed global slash extension before overwriting", () =
 	});
 	const expectedBackup = join(
 		extensionDir,
-		"idu-pi-commands.backup-20260525-010203.ts",
+		"idu-pi-commands.backup-20260525-010203.bak",
 	);
 	assert.equal(result.commandExtensionStatus, "installed");
 	assert.equal(result.commandExtensionBackupPath, expectedBackup);
@@ -198,7 +198,7 @@ test("mcp-init force backs up changed global slash extension", () => {
 	});
 	const expectedBackup = join(
 		extensionDir,
-		"idu-pi-commands.backup-20260525-010203.ts",
+		"idu-pi-commands.backup-20260525-010203.bak",
 	);
 	assert.equal(result.status, "installed");
 	assert.equal(result.commandExtensionStatus, "installed");
@@ -232,7 +232,7 @@ test("mcp-init dry-run does not write extension backup", () => {
 	assert.equal(result.commandExtensionBackupPath, undefined);
 	assert.equal(readFileSync(extensionDestination, "utf8"), "old extension");
 	assert.equal(
-		existsSync(join(extensionDir, "idu-pi-commands.backup-20260525-010203.ts")),
+		existsSync(join(extensionDir, "idu-pi-commands.backup-20260525-010203.bak")),
 		false,
 	);
 	rmSync(root, { recursive: true, force: true });
@@ -257,7 +257,7 @@ test("mcp-init missing extension source does not touch existing destination", ()
 		"existing extension",
 	);
 	assert.equal(
-		existsSync(join(extensionDir, "idu-pi-commands.backup-20260525-010203.ts")),
+		existsSync(join(extensionDir, "idu-pi-commands.backup-20260525-010203.bak")),
 		false,
 	);
 	rmSync(root, { recursive: true, force: true });
@@ -276,11 +276,11 @@ test("gitignore keeps source extension versionable and backup ignored", () => {
 			"check-ignore",
 			"-v",
 			"--no-index",
-			".pi/extensions/idu-pi-commands.backup-20260527-120000.ts",
+			".pi/extensions/idu-pi-commands.backup-20260527-120000.bak",
 		],
 		{ encoding: "utf8" },
 	);
-	assert.match(backupRule, /\.pi\/extensions\/\*\.backup-\*\.ts/u);
+	assert.match(backupRule, /\.pi\/extensions\/\*\.backup-\*\.bak/u);
 });
 
 test("setup formatter shows command extension backup path", () => {
@@ -294,13 +294,13 @@ test("setup formatter shows command extension backup path", () => {
 		commandExtensionBackupPath: join(
 			root,
 			"extensions",
-			"idu-pi-commands.backup-20260525-010203.ts",
+			"idu-pi-commands.backup-20260525-010203.bak",
 		),
 		config: { mcpServers: {} },
 		summary: "MCP idu-pi y comandos slash globales configurados.",
 	});
 	assert.match(text, /commandExtensionBackupPath:/u);
-	assert.match(text, /idu-pi-commands\.backup-20260525-010203\.ts/u);
+	assert.match(text, /idu-pi-commands\.backup-20260525-010203\.bak/u);
 	rmSync(root, { recursive: true, force: true });
 });
 

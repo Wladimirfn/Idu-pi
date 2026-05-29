@@ -1,5 +1,12 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { canonicalDirectory, isAllowedCwd } from "./config.js";
@@ -312,6 +319,7 @@ function installGlobalPiCommandExtension(
 		readFileSync(input.sourcePath, "utf8"),
 		input.packageRoot,
 	);
+	cleanupLegacyCommandExtensionBackups(dirname(destination));
 	let backupPath: string | undefined;
 	if (existsSync(destination)) {
 		const current = readFileSync(destination, "utf8");
@@ -409,10 +417,19 @@ function backupCommandExtensionFile(
 ): string {
 	const backupPath = join(
 		dirname(destination),
-		`idu-pi-commands.backup-${timestamp(now())}.ts`,
+		`idu-pi-commands.backup-${timestamp(now())}.bak`,
 	);
 	writeFileSync(backupPath, readFileSync(destination, "utf8"), "utf8");
 	return backupPath;
+}
+
+function cleanupLegacyCommandExtensionBackups(extensionDir: string): void {
+	if (!existsSync(extensionDir)) return;
+	for (const entry of readdirSync(extensionDir)) {
+		if (/^idu-pi-commands\.backup-\d{8}-\d{6}\.ts$/u.test(entry)) {
+			rmSync(join(extensionDir, entry), { force: true });
+		}
+	}
 }
 
 export function backupAgentConfigFile(

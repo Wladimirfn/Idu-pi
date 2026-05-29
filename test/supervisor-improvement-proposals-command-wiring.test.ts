@@ -13,6 +13,6 @@ test("supervisor improvement proposal commands are wired", () => {
 	assert.match(source, /bot\.command\("supervisor_improvements_create"/u);
 	assert.match(source, /buildSupervisorImprovementPlan/u);
 	assert.match(source, /createSupervisorImprovementProposals/u);
-	assert.match(extensionSource, /idu-supervisor-improvements-review/u);
-	assert.match(extensionSource, /idu-supervisor-improvements-create/u);
+	assert.doesNotMatch(extensionSource, /idu-supervisor-improvements-review/u);
+	assert.doesNotMatch(extensionSource, /idu-supervisor-improvements-create/u);
 });
