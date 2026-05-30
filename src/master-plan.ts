@@ -22,6 +22,7 @@ import { loadProjectConstitution } from "./project-constitution.js";
 import { loadProjectCore } from "./project-core.js";
 import { loadProjectFlows } from "./project-flows.js";
 import type { AgentLabSpecialty } from "./agentlab-supervisor-contract.js";
+import type { AgentLabReviewRunResult } from "./agentlab-review-runner.js";
 
 export type MasterPlanStatus =
 	| "draft"
@@ -175,6 +176,11 @@ export type MasterPlanNaturalDecisionResult =
 			handled: true;
 			action: "approved" | "rejected" | "redrafted";
 			result: MasterPlanDraftResult;
+	  }
+	| {
+			handled: true;
+			action: "interactive";
+			review: MasterPlanReview;
 	  };
 
 export type MasterPlan = {
@@ -505,6 +511,121 @@ export function getMasterPlanStatus(input: {
 	return { ...current, exists: true };
 }
 
+export function recordMasterPlanLabReviewDone(input: {
+	stateRoot: string;
+	run: AgentLabReviewRunResult;
+}): MasterPlanDraftResult | undefined {
+	const stateRoot = resolve(input.stateRoot);
+	const current = readCurrent(stateRoot);
+	if (!current) return undefined;
+	const planPath = safePlanPath(stateRoot, current.currentPlanJson);
+	const plan = readPlan(planPath);
+	if (!plan) return undefined;
+	const generatedAt = new Date().toISOString();
+	const qualityWarnings = input.run.runs.flatMap(
+		(run) => run.qualityWarnings ?? [],
+	);
+	const highFindings = input.run.consolidatedFindings
+		.filter(
+			(finding) =>
+				finding.severity === "high" || finding.severity === "critical",
+		)
+		.map((finding) => finding.title);
+	const architectureFindings = input.run.consolidatedFindings
+		.filter((finding) => finding.category === "architecture")
+		.map((finding) => finding.title);
+	const frontendStackIsContested = input.run.consolidatedFindings.some(
+		(finding) => /inconsistencia de stack de frontend/i.test(finding.title),
+	);
+	const correctedFrontend = frontendStackIsContested
+		? inferReviewedFrontendStack(plan)
+		: undefined;
+	const nextPlan: MasterPlan = {
+		...plan,
+		deepStage: "lab_review_done",
+		deepReviewRecommended: false,
+		deepReviewRequiresApproval: false,
+		safeActionsPerformed: dedupeStrings([
+			...plan.safeActionsPerformed,
+			"Ejecuté o reutilicé deep review AgentLab en sandbox/clone.",
+			"Consolidé hallazgos AgentLab sin modificar el repo real.",
+		]),
+		criticalRisks: dedupeStrings([...plan.criticalRisks, ...highFindings]),
+		qualityRisks: dedupeStrings([...plan.qualityRisks, ...qualityWarnings]),
+		architectureRisks: dedupeStrings([
+			...plan.architectureRisks,
+			...architectureFindings,
+		]),
+		architecture: {
+			...plan.architecture,
+			frontend: correctedFrontend ?? plan.architecture.frontend,
+			frameworks: correctedFrontend
+				? dedupeStrings(
+						plan.architecture.frameworks.filter(
+							(framework) => framework.toLowerCase() !== "react",
+						),
+					)
+				: plan.architecture.frameworks,
+			evidence: dedupeStrings([
+				...plan.architecture.evidence,
+				...(correctedFrontend
+					? [
+							`Supervisor corrigió frontend a ${correctedFrontend} usando evidencia AgentLab y archivos HTML/JS.`,
+						]
+					: frontendStackIsContested
+						? [
+								"AgentLab detectó inconsistencia en la clasificación del stack frontend; revisar evidencia antes de aprobar.",
+							]
+						: []),
+			]),
+		},
+		openQuestions: dedupeStrings([
+			...plan.openQuestions,
+			...(qualityWarnings.length
+				? [
+						"Algunos AgentLabs devolvieron reportes parciales/fallback; verificar evidencia antes de aprobar el Plan Maestro.",
+					]
+				: []),
+		]),
+		recommendedNext: dedupeStrings([
+			"Revisar hallazgos AgentLab y ajustar Plan Maestro antes de aprobar.",
+			"Verificar evidencia real de findings high/critical.",
+			...plan.recommendedNext.filter(
+				(item) => !/preparar agentlabs|deep review|no ejecutar/iu.test(item),
+			),
+		]),
+		agentLabReviews: input.run.runs.map((run) => ({
+			specialty: run.specialty,
+			status: run.status === "completed" ? "selected" : "skipped",
+			reason:
+				run.status === "completed"
+					? "Deep review ejecutado en sandbox/clone."
+					: `Deep review no completado: ${run.status}.`,
+			maxCommands: run.commandsExecuted.length,
+		})),
+	};
+	writeFileSync(planPath, `${JSON.stringify(nextPlan, null, 2)}\n`, "utf8");
+	const markdownPath = safePathInsideState(stateRoot, current.currentPlanMd);
+	writeFileSync(
+		markdownPath,
+		`${formatMasterPlanMarkdown(nextPlan)}\n`,
+		"utf8",
+	);
+	const nextCurrent = writeCurrent(stateRoot, {
+		...current,
+		status: nextPlan.status,
+		updatedAt: generatedAt,
+	});
+	const memory = writeMemory(stateRoot, nextPlan, nextCurrent);
+	return {
+		plan: nextPlan,
+		current: nextCurrent,
+		memory,
+		jsonPath: planPath,
+		markdownPath,
+	};
+}
+
 export function reviewMasterPlan(input: {
 	stateRoot: string;
 	pathOrLatest: string;
@@ -643,6 +764,16 @@ export function handleMasterPlanNaturalDecision(input: {
 		clearMasterPlanPendingAction(input.stateRoot);
 		return { handled: true, action: "rejected", result };
 	}
+	if (decision === "interactive") {
+		return {
+			handled: true,
+			action: "interactive",
+			review: reviewMasterPlan({
+				stateRoot: input.stateRoot,
+				pathOrLatest: "latest",
+			}),
+		};
+	}
 	const result = redraftMasterPlan({
 		projectId: input.projectId,
 		projectPath: input.projectPath,
@@ -651,6 +782,86 @@ export function handleMasterPlanNaturalDecision(input: {
 		reason: input.text,
 	});
 	return { handled: true, action: "redrafted", result };
+}
+
+export function formatIduSupervisorPlanReport(input: {
+	bootstrap: { project: { id: string }; criticalDecisions: string[] };
+	masterPlan:
+		| MasterPlanDraftResult
+		| { status: MasterPlanStatusResult; plan?: MasterPlan };
+	reviewHandled: boolean;
+}): string {
+	const { bootstrap, masterPlan, reviewHandled } = input;
+	const isDraftResult = "current" in masterPlan;
+	const plan = masterPlan.plan;
+	const status = isDraftResult
+		? masterPlan.plan.status
+		: masterPlan.status.status;
+	const planJson = isDraftResult
+		? masterPlan.jsonPath
+		: masterPlan.status.exists
+			? masterPlan.status.currentPlanJson
+			: MASTER_PLAN_JSON_FILE;
+	const planMd = isDraftResult
+		? masterPlan.markdownPath
+		: masterPlan.status.exists
+			? masterPlan.status.currentPlanMd
+			: MASTER_PLAN_MD_FILE;
+	const criticalCount = plan?.criticalRisks.length ?? 0;
+	const qualityCount = plan?.qualityRisks.length ?? 0;
+	const architectureCount = plan?.architectureRisks.length ?? 0;
+	const requiresHumanCore = bootstrap.criticalDecisions.length > 0;
+	const reliable =
+		status === "approved" &&
+		!requiresHumanCore &&
+		criticalCount === 0 &&
+		qualityCount === 0;
+	const reviewState = reviewHandled
+		? "revisado automáticamente con AgentLabs según riesgo/tamaño"
+		: plan?.autoDepth.mode === "deep_required"
+			? "revisión profunda pendiente"
+			: "revisión automática suficiente";
+	const resultLine = reliable
+		? "Plan fiable y actualizado. Sin cambios requeridos."
+		: "Plan preparado para decisión humana. No se aplica nada hasta que apruebes.";
+	const lines = [
+		"Idu-pi — Supervisor del Plan Maestro",
+		"",
+		`Proyecto: ${bootstrap.project.id}`,
+		`Resultado: ${resultLine}`,
+		`Estado del plan: ${status}`,
+		`Revisión: ${reviewState}`,
+		"",
+		"Plan generado/actualizado:",
+		`- JSON: ${planJson}`,
+		`- MD: ${planMd}`,
+		"",
+		"Resumen del plan:",
+		`- Objetivo: ${plan?.inferredObjective ?? "por confirmar"}`,
+		`- Arquitectura: ${plan ? shortArchitectureLine(plan) : "por confirmar"}`,
+		`- Flujos: ${
+			plan?.detectedFlows
+				.slice(0, 3)
+				.map((flow) => flow.name)
+				.join("; ") || "por confirmar"
+		}`,
+		`- Riesgos integrados: críticos ${criticalCount}, arquitectura ${architectureCount}, calidad ${qualityCount}`,
+	];
+	if (requiresHumanCore) {
+		lines.push(
+			"",
+			"Antes de aprobar:",
+			...bootstrap.criticalDecisions.map((decision) => `- ${decision}`),
+		);
+	}
+	lines.push(
+		"",
+		"Elegí una opción:",
+		'1. Aprobar plan: responder "aprobar" o ejecutar `idu-pi idu-master-plan-approve latest`',
+		'2. Desaprobar plan: responder "desaprobar" o ejecutar `idu-pi idu-master-plan-reject latest <motivo>`',
+		'3. Trabajarlo interactivo: responder "hagamoslo interactivo" y revisamos el MD por partes',
+	);
+	return lines.join("\n");
 }
 
 export function formatMasterPlanSummaryForIdu(
@@ -722,19 +933,53 @@ export function formatMasterPlanSummaryForIdu(
 		"Usá idu-pi y elegí Proyecto actual / Plan Maestro. Si falta esa pantalla, queda como siguiente etapa CLI-UX-PLAN-1.",
 	];
 	if (plan?.autoDepth.mode === "deep_required") {
-		lines.push(
-			"",
-			"Advertencias:",
-			"- Deep review costoso requiere aprobación humana explícita.",
-			"- No ejecutar AgentLabs largos automáticamente.",
-		);
+		lines.push("", "Advertencias:");
+		if (plan.deepStage === "lab_review_done") {
+			lines.push(
+				"- Deep review ya fue ejecutado/reutilizado; no se repite automáticamente.",
+				"- El plan sigue en draft hasta que una persona revise los hallazgos.",
+			);
+		} else {
+			lines.push(
+				"- Deep review costoso requiere aprobación humana explícita.",
+				"- No ejecutar AgentLabs largos automáticamente.",
+			);
+		}
 	}
 	return lines.join("\n");
 }
 
+function dedupeStrings(values: string[]): string[] {
+	return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function inferReviewedFrontendStack(plan: MasterPlan): string | undefined {
+	const files = [...plan.sourceFiles, ...plan.architecture.evidence].map(
+		(file) => file.replace(/\\/gu, "/").toLowerCase(),
+	);
+	const htmlCount = files.filter((file) => file.endsWith(".html")).length;
+	const plainJsCount = files.filter(
+		(file) => file.endsWith(".js") && !file.endsWith(".jsx"),
+	).length;
+	const reactSourceCount = files.filter(
+		(file) =>
+			file.endsWith(".jsx") ||
+			file.endsWith(".tsx") ||
+			file.includes("/src/app.") ||
+			file.includes("/src/main.") ||
+			file.includes("/src/index."),
+	).length;
+	if (htmlCount >= 3 && plainJsCount >= 3 && reactSourceCount === 0) {
+		return "HTML/JavaScript plano";
+	}
+	return undefined;
+}
+
 function formatAutoDepthSummary(plan: MasterPlan): string {
 	if (plan.autoDepth.mode === "deep_required") {
-		return `${plan.autoDepth.mode} — análisis seguro etapa 1 completado; deep review requiere aprobación`;
+		return plan.deepStage === "lab_review_done"
+			? `${plan.autoDepth.mode} — deep review ejecutado; falta revisar/ajustar antes de aprobar`
+			: `${plan.autoDepth.mode} — análisis seguro etapa 1 completado; deep review requiere aprobación`;
 	}
 	return `${plan.autoDepth.mode} — ${plan.autoDepth.reason}`;
 }
@@ -744,12 +989,19 @@ function masterPlanActionLines(
 	plan?: MasterPlan,
 ): string[] {
 	if (status === "draft") {
+		if (plan?.deepStage === "lab_review_done") {
+			return [
+				"Deep review ya ejecutado. El supervisor recomienda:",
+				"1. Revisar hallazgos y evidencia.",
+				"2. Ajustar o rehacer Plan Maestro si hay clasificación incorrecta.",
+				"3. Aprobar sólo cuando el plan sea fuente confiable.",
+			];
+		}
 		return [
-			'Responder "ok" para aprobar, "rehacer" para regenerar, o usar:',
+			'Responder "ok" para aprobar, "rehacer" para regenerar, o usar /idu para continuar el flujo supervisor.',
 			"1. Ver detalles: idu-pi master-plan-review latest",
 			"2. Aprobar: idu-pi master-plan-approve latest",
 			"3. Rehacer: idu-pi master-plan-redraft latest",
-			"4. Ejecutar deep review: idu-pi agentlab-request-create master-plan latest",
 		];
 	}
 	if (status === "approved") {
@@ -2269,6 +2521,8 @@ function writeMasterPlanPendingAction(
 		],
 		rejectedInputs: [
 			"no",
+			"desaprobar",
+			"no aprobar",
 			"rechaza",
 			"rechazar",
 			"cancelar",
@@ -2303,7 +2557,7 @@ function clearMasterPlanPendingAction(stateRoot: string): void {
 function classifyMasterPlanNaturalDecision(
 	text: string,
 	pending: MasterPlanPendingAction,
-): "approve" | "reject" | "redraft" | undefined {
+): "approve" | "reject" | "redraft" | "interactive" | undefined {
 	const normalized = normalizeNaturalDecisionText(text);
 	if (!normalized) return undefined;
 	const tokens = normalized.split(" ").filter(Boolean);
@@ -2320,6 +2574,12 @@ function classifyMasterPlanNaturalDecision(
 		tokens.every((token) => accepted.has(token))
 	)
 		return "approve";
+	if (
+		["hagamoslo interactivo", "modo interactivo", "interactivo"].includes(
+			normalized,
+		)
+	)
+		return "interactive";
 	if (["rehacer", "redraft"].includes(normalized)) return "redraft";
 	if (rejected.has(normalized)) return "reject";
 	return undefined;

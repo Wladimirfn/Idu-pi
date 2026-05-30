@@ -53,17 +53,18 @@ import {
 	runIduPrepare,
 	type IduPrepareResult,
 } from "./idu-prepare.js";
-import { formatIduBootstrapResult, runIduBootstrap } from "./idu-bootstrap.js";
+import { runIduBootstrap } from "./idu-bootstrap.js";
 import {
 	approveMasterPlan,
 	ensureMasterPlanForIdu,
+	formatIduSupervisorPlanReport,
 	formatMasterPlanOperation,
 	formatMasterPlanReview,
 	formatMasterPlanStatus,
-	formatMasterPlanSummaryForIdu,
 	getMasterPlanStatus,
 	handleMasterPlanNaturalDecision,
 	readGitHead,
+	recordMasterPlanLabReviewDone,
 	redraftMasterPlan,
 	rejectMasterPlan,
 	reviewMasterPlan,
@@ -999,7 +1000,12 @@ export async function runCliCommand(
 				naturalMasterPlanDecision,
 			);
 			if (decision.handled && activeRuntime.formatMasterPlanOperation) {
-				return ok(activeRuntime.formatMasterPlanOperation(decision.result));
+				return decision.action === "interactive"
+					? ok(
+							activeRuntime.formatMasterPlanReview?.(decision.review) ??
+								decision.review.markdown,
+						)
+					: ok(activeRuntime.formatMasterPlanOperation(decision.result));
 			}
 		}
 		switch (command) {
@@ -1513,31 +1519,26 @@ async function runBootstrapIduCommand(): Promise<string> {
 		stateRoot: bootstrap.statePaths.stateRoot,
 		gitHead: bootstrap.currentGitHead,
 	});
-	const connection = activeRuntime.inspectConnection();
-	const sections = [
-		formatIduBootstrapResult(bootstrap),
-		"",
-		formatMasterPlanSummaryForIdu(masterPlan),
-		...formatMasterPlanSecondaryWarnings(connection),
-	];
-	if (bootstrap.criticalDecisions.length > 0) {
-		sections.push("", "Análisis pausado por decisión crítica humana.");
-	} else if (masterPlan.plan?.autoDepth.mode === "deep_required") {
-		sections.push("", await runOrReuseMasterPlanDeepReview(activeRuntime));
+	let reviewHandled = false;
+	let displayMasterPlan = masterPlan;
+	if (
+		bootstrap.criticalDecisions.length === 0 &&
+		masterPlan.plan?.autoDepth.mode === "deep_required"
+	) {
+		await runOrReuseMasterPlanDeepReview(activeRuntime);
+		reviewHandled = true;
+		displayMasterPlan = ensureMasterPlanForIdu({
+			projectId: bootstrap.project.id,
+			projectPath: bootstrap.project.path,
+			stateRoot: bootstrap.statePaths.stateRoot,
+			gitHead: bootstrap.currentGitHead,
+		});
 	}
-	return sections.join("\n");
-}
-
-function formatMasterPlanSecondaryWarnings(
-	report: ProjectConnectionReport,
-): string[] {
-	if (report.alignmentStatus !== "pending_scan") return [];
-	return [
-		"",
-		"Advertencias breves:",
-		"- Estado de alineación secundario: pending_scan.",
-		"- idu-pi idu-prepare sigue disponible, pero el Plan Maestro dirige la acción principal.",
-	];
+	return formatIduSupervisorPlanReport({
+		bootstrap,
+		masterPlan: displayMasterPlan,
+		reviewHandled,
+	});
 }
 
 function handleSetupCommand(rest: string[]): string {
@@ -2038,6 +2039,10 @@ async function runMasterPlanDeepReview(
 	if (plan.errors.length > 0)
 		return runtime.formatAgentLabReviewRequestPlan(plan);
 	const run = await runtime.agentLabReviewRun("latest");
+	recordMasterPlanLabReviewDone({
+		stateRoot: runtime.workspaceRoot,
+		run,
+	});
 	if (mode === "simple") {
 		return [
 			"Revisión del supervisor",
@@ -2063,6 +2068,10 @@ async function runOrReuseMasterPlanDeepReview(
 ): Promise<string> {
 	const status = runtime.agentLabReviewStatus("latest");
 	if (status.valid && status.result && status.result.runs.length > 0) {
+		recordMasterPlanLabReviewDone({
+			stateRoot: runtime.workspaceRoot,
+			run: status.result,
+		});
 		return [
 			"Revisión del supervisor",
 			"",

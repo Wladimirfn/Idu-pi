@@ -713,7 +713,7 @@ test("AutoDepth elige deep_required para proyecto grande y no ejecuta AgentLabs"
 		);
 		assert.match(
 			formatMasterPlanSummaryForIdu(result),
-			/Ejecutar deep review: idu-pi agentlab-request-create master-plan latest/u,
+			/usar \/idu para continuar el flujo supervisor/u,
 		);
 		assert.doesNotMatch(
 			formatMasterPlanSummaryForIdu(result),

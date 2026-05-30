@@ -208,6 +208,7 @@ function gitProject(): string {
 	git(["init"], projectPath);
 	git(["config", "user.email", "test@example.com"], projectPath);
 	git(["config", "user.name", "Test"], projectPath);
+	git(["config", "core.autocrlf", "false"], projectPath);
 	writeFileSync(join(projectPath, "tracked.txt"), "base\n", "utf8");
 	git(["add", "tracked.txt"], projectPath);
 	git(["commit", "-m", "init"], projectPath);

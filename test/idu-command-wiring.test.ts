@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
-test("/idu activates automatic guardrails and shows master plan summary", () => {
+test("/idu activates automatic guardrails and shows supervisor plan report", () => {
 	const source = readFileSync("src/index.ts", "utf8");
 	const handler = source.slice(source.indexOf('bot.command("idu"'));
 	const handlerBlock = handler.slice(
@@ -11,9 +11,10 @@ test("/idu activates automatic guardrails and shows master plan summary", () => 
 	);
 
 	assert.match(handlerBlock, /activateIduSession\(projectId\)/);
-	assert.match(handlerBlock, /inspectProjectConnection\(/);
-	assert.match(handlerBlock, /formatMasterPlanSummaryForIdu\(masterPlan\)/);
-	assert.match(handlerBlock, /formatMasterPlanSecondaryWarnings\(report\)/);
+	assert.match(handlerBlock, /ensureMasterPlanForIdu\(/);
+	assert.match(handlerBlock, /runOrReuseTelegramMasterPlanDeepReview\(\)/);
+	assert.match(handlerBlock, /formatIduSupervisorPlanReport\(/);
+	assert.doesNotMatch(handlerBlock, /formatMasterPlanSecondaryWarnings/);
 	assert.doesNotMatch(handlerBlock, /iduProjectDashboardText\(report\)/);
 });
 

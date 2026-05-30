@@ -24,7 +24,7 @@ test("/idu_prepare is wired without unsafe operations", () => {
 	);
 });
 
-test("/idu response keeps prepare as secondary to master plan", () => {
+test("/idu response keeps prepare hidden behind supervisor plan report", () => {
 	const source = readFileSync("src/index.ts", "utf8");
 	const handler = source.slice(source.indexOf('bot.command("idu"'));
 	const handlerBlock = handler.slice(
@@ -32,8 +32,9 @@ test("/idu response keeps prepare as secondary to master plan", () => {
 		handler.indexOf('bot.command("idu_prepare"'),
 	);
 
-	assert.match(handlerBlock, /formatMasterPlanSummaryForIdu\(masterPlan\)/u);
-	assert.match(handlerBlock, /formatMasterPlanSecondaryWarnings\(report\)/u);
+	assert.match(handlerBlock, /formatIduSupervisorPlanReport\(/u);
+	assert.match(handlerBlock, /ensureMasterPlanForIdu\(/u);
+	assert.doesNotMatch(handlerBlock, /formatMasterPlanSecondaryWarnings/u);
 	assert.doesNotMatch(handlerBlock, /iduProjectDashboardText\(report\)/u);
 	assert.doesNotMatch(
 		handlerBlock,

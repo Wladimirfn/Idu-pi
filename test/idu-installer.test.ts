@@ -232,7 +232,9 @@ test("mcp-init dry-run does not write extension backup", () => {
 	assert.equal(result.commandExtensionBackupPath, undefined);
 	assert.equal(readFileSync(extensionDestination, "utf8"), "old extension");
 	assert.equal(
-		existsSync(join(extensionDir, "idu-pi-commands.backup-20260525-010203.bak")),
+		existsSync(
+			join(extensionDir, "idu-pi-commands.backup-20260525-010203.bak"),
+		),
 		false,
 	);
 	rmSync(root, { recursive: true, force: true });
@@ -257,7 +259,9 @@ test("mcp-init missing extension source does not touch existing destination", ()
 		"existing extension",
 	);
 	assert.equal(
-		existsSync(join(extensionDir, "idu-pi-commands.backup-20260525-010203.bak")),
+		existsSync(
+			join(extensionDir, "idu-pi-commands.backup-20260525-010203.bak"),
+		),
 		false,
 	);
 	rmSync(root, { recursive: true, force: true });
@@ -539,8 +543,8 @@ test("CLI /idu bootstraps external project and second call fast-paths", async ()
 		setCliEnv({ projectPath, workspaceRoot, agentDir, allowedRoot: root });
 		const first = await runCliCommand(["idu"]);
 		assert.equal(first.exitCode, 0);
-		assert.match(first.stdout, /Idu-pi bootstrap/u);
-		assert.match(first.stdout, /Project Core\/Constitution quedan como draft/u);
+		assert.match(first.stdout, /Idu-pi — Supervisor del Plan Maestro/u);
+		assert.match(first.stdout, /Plan preparado para decisión humana/u);
 		assert.equal(
 			existsSync(join(projectPath, "config", "project-core.json")),
 			true,
@@ -561,25 +565,21 @@ test("CLI /idu bootstraps external project and second call fast-paths", async ()
 			).length,
 			0,
 		);
-		assert.match(first.stdout, /Plan Maestro:/u);
-		assert.match(
-			first.stdout,
-			/Responder "ok" para aprobar, "rehacer" para regenerar/u,
-		);
-		assert.doesNotMatch(
-			first.stdout,
-			/Acción principal:\n(?:.*\n){0,3}.*idu-pi idu-prepare/u,
-		);
-		assert.match(first.stdout, /Advertencias breves:[\s\S]*pending_scan/u);
+		assert.match(first.stdout, /Plan generado\/actualizado:/u);
+		assert.match(first.stdout, /Aprobar plan:/u);
+		assert.match(first.stdout, /Desaprobar plan:/u);
+		assert.match(first.stdout, /Trabajarlo interactivo:/u);
+		assert.doesNotMatch(first.stdout, /idu-pi idu-prepare/u);
+		assert.doesNotMatch(first.stdout, /Advertencias breves:/u);
 		const approve = await runCliCommand(["master-plan-approve", "latest"]);
 		assert.equal(approve.exitCode, 0);
 		const second = await runCliCommand(["idu"]);
 		assert.equal(second.exitCode, 0);
-		assert.match(second.stdout, /ya existía en este proyecto/u);
-		assert.match(second.stdout, /Plan Maestro:\napproved/u);
+		assert.match(second.stdout, /Idu-pi — Supervisor del Plan Maestro/u);
+		assert.match(second.stdout, /Estado del plan: approved/u);
 		assert.match(
 			second.stdout,
-			/Continuar con prepare\/flows según corresponda/u,
+			/Plan fiable y actualizado|Plan preparado para decisión humana/u,
 		);
 		assert.equal(
 			readdirSync(join(stateRoot, "reports")).filter((entry) =>

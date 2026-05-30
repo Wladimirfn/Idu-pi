@@ -70,13 +70,14 @@ import { formatIduProjectDashboard } from "./idu-project-dashboard.js";
 import {
 	approveMasterPlan,
 	ensureMasterPlanForIdu,
+	formatIduSupervisorPlanReport,
 	formatMasterPlanOperation,
 	formatMasterPlanReview,
 	formatMasterPlanStatus,
-	formatMasterPlanSummaryForIdu,
 	getMasterPlanStatus,
 	handleMasterPlanNaturalDecision,
 	readGitHead,
+	recordMasterPlanLabReviewDone,
 	redraftMasterPlan,
 	rejectMasterPlan,
 	reviewMasterPlan,
@@ -733,16 +734,38 @@ function buildPreflightReport(request: string): ProjectPreflightReport {
 	});
 }
 
-function formatMasterPlanSecondaryWarnings(
-	report: ReturnType<typeof inspectProjectConnection>,
-): string[] {
-	if (report.alignmentStatus !== "pending_scan") return [];
-	return [
-		"",
-		"Advertencias breves:",
-		"- Estado de alineación secundario: pending_scan.",
-		"- /idu_prepare sigue disponible, pero el Plan Maestro dirige la acción principal.",
-	];
+async function runOrReuseTelegramMasterPlanDeepReview(): Promise<void> {
+	const currentStatus = getAgentLabReviewStatus("latest", reportsPath());
+	if (
+		currentStatus.valid &&
+		currentStatus.result &&
+		currentStatus.result.runs.length > 0
+	) {
+		recordMasterPlanLabReviewDone({
+			stateRoot: activeProjectStateRoot(),
+			run: currentStatus.result,
+		});
+		return;
+	}
+	const requestPlan = createAgentLabReviewRequests({
+		source: "master_plan",
+		reportsPath: reportsPath(),
+		projectId: currentProjectId(),
+		projectPath: activeProjectPath(),
+		masterPlanPathOrLatest: "latest",
+	});
+	if (requestPlan.errors.length > 0) return;
+	const run = await runAgentLabReviewRequestFile({
+		pathOrLatest: "latest",
+		reportsPath: reportsPath(),
+		projectId: currentProjectId(),
+		projectPath: activeProjectPath(),
+		router: agentRouter,
+	});
+	recordMasterPlanLabReviewDone({
+		stateRoot: activeProjectStateRoot(),
+		run,
+	});
 }
 
 function iduProjectDashboardText(
@@ -1432,34 +1455,43 @@ bot.command("idu_projects", async (ctx) => {
 bot.command("idu", async (ctx) => {
 	if (!(await guard(ctx))) return;
 	const projectId = currentProjectId();
+	const projectPath = activeProjectPath();
+	const stateRoot = activeProjectStateRoot();
 	activateIduSession(projectId);
 	maybeRunSupervisorOnIduActivation({
 		projectId,
-		projectPath: activeProjectPath(),
+		projectPath,
 		workspaceRoot: config.agentWorkspaceRoot,
 		repository: labDbRepository,
 		queue: structuredTaskQueue,
 	});
-	const report = inspectProjectConnection({
-		registry,
-		defaultCwd: config.defaultCwd,
-		allowedRoots: config.allowedRoots,
-		workspaceRoot: config.agentWorkspaceRoot,
-	});
-	const masterPlan = ensureMasterPlanForIdu({
+	let masterPlan = ensureMasterPlanForIdu({
 		projectId,
-		projectPath: activeProjectPath(),
-		stateRoot: activeProjectStateRoot(),
-		gitHead: readGitHead(activeProjectPath()),
+		projectPath,
+		stateRoot,
+		gitHead: readGitHead(projectPath),
 	});
+	let reviewHandled = false;
+	if (masterPlan.plan?.autoDepth.mode === "deep_required") {
+		await runOrReuseTelegramMasterPlanDeepReview();
+		reviewHandled = true;
+		masterPlan = ensureMasterPlanForIdu({
+			projectId,
+			projectPath,
+			stateRoot,
+			gitHead: readGitHead(projectPath),
+		});
+	}
 	await replyLong(
 		ctx,
-		[
-			"Guardrails automáticos activados para el proyecto activo.",
-			"",
-			formatMasterPlanSummaryForIdu(masterPlan),
-			...formatMasterPlanSecondaryWarnings(report),
-		].join("\n"),
+		formatIduSupervisorPlanReport({
+			bootstrap: {
+				project: { id: projectId },
+				criticalDecisions: [],
+			},
+			masterPlan,
+			reviewHandled,
+		}),
 	);
 });
 
@@ -3141,7 +3173,12 @@ bot.on("message:text", async (ctx) => {
 		source: "telegram",
 	});
 	if (masterPlanDecision.handled) {
-		await replyLong(ctx, formatMasterPlanOperation(masterPlanDecision.result));
+		await replyLong(
+			ctx,
+			masterPlanDecision.action === "interactive"
+				? formatMasterPlanReview(masterPlanDecision.review)
+				: formatMasterPlanOperation(masterPlanDecision.result),
+		);
 		return;
 	}
 
