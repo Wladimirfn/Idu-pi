@@ -80,6 +80,19 @@ export default function (pi: ExtensionAPI) {
 	) {
 		await ctx.waitForIdle();
 		ctx.ui.setStatus("idu-pi", `running ${command}`);
+		if (command === "idu") {
+			pi.sendMessage({
+				customType: "idu-pi-progress",
+				content: [
+					"[idu-pi] ⚙️  Escaneando repositorio... [RUNNING]",
+					"[idu-pi] 🧠  Preparando ingeniería inversa de flujos y arquitectura... [QUEUED]",
+					"[idu-pi] 📝  Forjando Plan Maestro A-Z y matriz de riesgos... [QUEUED]",
+					"[idu-pi] 🔒  Manteniendo repo real en cuarentena hasta aprobación humana... [OK]",
+				].join("\n"),
+				display: true,
+				details: { command, cliArgs, phase: "start" },
+			});
+		}
 		try {
 			const processConfig = cliProcess(cliArgs);
 			const result = await pi.exec(processConfig.command, processConfig.args, {

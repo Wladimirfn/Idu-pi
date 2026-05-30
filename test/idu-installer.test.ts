@@ -543,8 +543,11 @@ test("CLI /idu bootstraps external project and second call fast-paths", async ()
 		setCliEnv({ projectPath, workspaceRoot, agentDir, allowedRoot: root });
 		const first = await runCliCommand(["idu"]);
 		assert.equal(first.exitCode, 0);
-		assert.match(first.stdout, /Idu-pi — Supervisor del Plan Maestro/u);
-		assert.match(first.stdout, /Plan preparado para decisión humana/u);
+		assert.match(
+			first.stdout,
+			/PLAN MAESTRO DE INGENIERÍA Y ARQUITECTURA \(A-Z\)/u,
+		);
+		assert.match(first.stdout, /Plan preparado para firma humana/u);
 		assert.equal(
 			existsSync(join(projectPath, "config", "project-core.json")),
 			true,
@@ -565,21 +568,25 @@ test("CLI /idu bootstraps external project and second call fast-paths", async ()
 			).length,
 			0,
 		);
-		assert.match(first.stdout, /Plan generado\/actualizado:/u);
-		assert.match(first.stdout, /Aprobar plan:/u);
-		assert.match(first.stdout, /Desaprobar plan:/u);
-		assert.match(first.stdout, /Trabajarlo interactivo:/u);
+		assert.match(first.stdout, /Documentos: JSON=/u);
+		assert.match(first.stdout, /Aprobar plan —/u);
+		assert.match(first.stdout, /Desaprobar plan —/u);
+		assert.match(first.stdout, /Trabajarlo interactivo —/u);
+		assert.match(first.stdout, /Reevaluar en profundidad —/u);
 		assert.doesNotMatch(first.stdout, /idu-pi idu-prepare/u);
 		assert.doesNotMatch(first.stdout, /Advertencias breves:/u);
 		const approve = await runCliCommand(["master-plan-approve", "latest"]);
 		assert.equal(approve.exitCode, 0);
 		const second = await runCliCommand(["idu"]);
 		assert.equal(second.exitCode, 0);
-		assert.match(second.stdout, /Idu-pi — Supervisor del Plan Maestro/u);
-		assert.match(second.stdout, /Estado del plan: approved/u);
 		assert.match(
 			second.stdout,
-			/Plan fiable y actualizado|Plan preparado para decisión humana/u,
+			/PLAN MAESTRO DE INGENIERÍA Y ARQUITECTURA \(A-Z\)/u,
+		);
+		assert.match(second.stdout, /Estado del Documento: APROBADO/u);
+		assert.match(
+			second.stdout,
+			/Plan fiable y actualizado|Plan preparado para firma humana/u,
 		);
 		assert.equal(
 			readdirSync(join(stateRoot, "reports")).filter((entry) =>

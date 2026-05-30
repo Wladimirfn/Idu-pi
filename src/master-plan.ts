@@ -540,8 +540,12 @@ export function recordMasterPlanLabReviewDone(input: {
 	const correctedFrontend = frontendStackIsContested
 		? inferReviewedFrontendStack(plan)
 		: undefined;
+	const reviewedObjective = reviewedPlanObjective(plan);
+	const reviewedProblem = reviewedPlanProblemStatement(plan, highFindings);
 	const nextPlan: MasterPlan = {
 		...plan,
+		inferredObjective: reviewedObjective,
+		problemStatement: reviewedProblem,
 		deepStage: "lab_review_done",
 		deepReviewRecommended: false,
 		deepReviewRequiresApproval: false,
@@ -816,36 +820,88 @@ export function formatIduSupervisorPlanReport(input: {
 		!requiresHumanCore &&
 		criticalCount === 0 &&
 		qualityCount === 0;
-	const reviewState = reviewHandled
-		? "revisado automáticamente con AgentLabs según riesgo/tamaño"
-		: plan?.autoDepth.mode === "deep_required"
-			? "revisión profunda pendiente"
-			: "revisión automática suficiente";
+	const filesSignal = plan ? signalValue(plan, "files") : "?";
+	const dirsSignal = plan ? signalValue(plan, "dirs") : "?";
+	const scanId = `scan-${filesSignal}-files-${dirsSignal}-dirs`;
 	const resultLine = reliable
 		? "Plan fiable y actualizado. Sin cambios requeridos."
-		: "Plan preparado para decisión humana. No se aplica nada hasta que apruebes.";
+		: "Plan preparado para firma humana. No aplico cambios al repo hasta que apruebes.";
 	const lines = [
-		"Idu-pi — Supervisor del Plan Maestro",
+		`[idu-pi] ⚙️  Escaneando repositorio (${filesSignal} archivos, ${dirsSignal} carpetas)... [OK]`,
+		"[idu-pi] 🧠  Ejecutando ingeniería inversa de flujos y arquitectura... [OK]",
+		"[idu-pi] 📝  Forjando Plan Maestro A-Z y matriz de riesgos... [OK]",
+		`[idu-pi] 🔒  Sistema en cuarentena. Documentos generados en ${planJson} y ${planMd}`,
 		"",
-		`Proyecto: ${bootstrap.project.id}`,
+		"📘 PLAN MAESTRO DE INGENIERÍA Y ARQUITECTURA (A-Z)",
+		"",
+		`Proyecto: ${plan?.inferredObjective ?? bootstrap.project.id} (${bootstrap.project.id})`,
+		`ID de Escaneo: ${scanId}`,
+		`Estado del Documento: ${status === "approved" ? "APROBADO" : "DRAFT_INTERACTIVO (Esperando firma del Ingeniero)"}`,
+		"Nivel de Restricción: Máximo (Strict Invariants Enforced)",
 		`Resultado: ${resultLine}`,
-		`Estado del plan: ${status}`,
-		`Revisión: ${reviewState}`,
+		`Revisión: ${reviewHandled ? "AgentLabs usados/reutilizados según riesgo/tamaño" : "Análisis determinista + señales locales"}`,
+		`Riesgos integrados: críticos ${criticalCount}, arquitectura ${architectureCount}, calidad ${qualityCount}`,
 		"",
-		"Plan generado/actualizado:",
-		`- JSON: ${planJson}`,
-		`- MD: ${planMd}`,
+		"1. COMPRENSIÓN DEL NEGOCIO Y EL PROBLEMA",
 		"",
-		"Resumen del plan:",
-		`- Objetivo: ${plan?.inferredObjective ?? "por confirmar"}`,
-		`- Arquitectura: ${plan ? shortArchitectureLine(plan) : "por confirmar"}`,
-		`- Flujos: ${
-			plan?.detectedFlows
-				.slice(0, 3)
-				.map((flow) => flow.name)
-				.join("; ") || "por confirmar"
-		}`,
-		`- Riesgos integrados: críticos ${criticalCount}, arquitectura ${architectureCount}, calidad ${qualityCount}`,
+		"1.1. Planteamiento del Problema",
+		plan?.problemStatement ??
+			"El sistema necesita una fuente de verdad técnica antes de delegar trabajo a agentes.",
+		"",
+		"1.2. Objetivo Estratégico General",
+		plan?.inferredObjective ??
+			"Consolidar arquitectura, riesgos y flujos operativos del proyecto.",
+		"",
+		"2. LÍMITES DEL SISTEMA (Scope Baseline)",
+		"",
+		"🟢 EN ALCANCE",
+		...topBullets(plan?.scope ?? [], 5),
+		"",
+		"🔴 FUERA DE ALCANCE",
+		...topBullets(plan?.outOfScope ?? [], 5),
+		"",
+		"3. CONSTITUCIÓN ARQUITECTÓNICA (Invariants)",
+		`- Frontend: ${plan?.architecture.frontend ?? "por confirmar"}`,
+		`- Backend: ${plan?.architecture.backend ?? "por confirmar"}`,
+		`- Capa de datos: ${plan?.architecture.database ?? "por confirmar"}`,
+		`- Autenticación: ${plan?.architecture.auth ?? "por confirmar"}`,
+		"- Supervisor: prohibido aplicar cambios, confirmar Project Core/Constitution, commitear o pushear sin aprobación humana.",
+		"",
+		"4. MAPA DE FLUJOS CRÍTICOS Y GATEWAYS",
+		...(plan?.detectedFlows
+			.slice(0, 4)
+			.flatMap((flow, index) => [
+				`Flujo ${index + 1}: ${flow.name} (riesgo ${flow.riskLevel})`,
+				`- Entrada: ${flow.from}`,
+				`- Gateway: ${flow.through.slice(0, 4).join(" → ") || "por confirmar"}`,
+				`- Salida: ${flow.to}`,
+			]) ?? ["- por confirmar"]),
+		"",
+		"5. MATRIZ DE RIESGOS Y DEUDA TÉCNICA",
+		...topBullets(
+			[
+				...(plan?.criticalRisks ?? []),
+				...(plan?.architectureRisks ?? []),
+				...(plan?.securityRisks ?? []),
+				...(plan?.qualityRisks ?? []),
+			],
+			8,
+		),
+		"",
+		"6. CRITERIOS DE ACEPTACIÓN (Definition of Done)",
+		"- No se agregan dependencias sin autorización explícita.",
+		"- Cambios de auth/session requieren revisión de seguridad.",
+		"- Cambios de datos requieren migración/rollback o justificación explícita.",
+		"- Tests/linter/build deben pasar antes de cerrar tareas.",
+		"- El repo real queda protegido hasta aprobación humana.",
+		"",
+		"7. ORDEN DE OPERACIONES DEL SISTEMA IDU-PI",
+		"- Aprobar plan: fija esta versión como fuente de verdad para el orquestador.",
+		"- Desaprobar plan: rechaza el análisis actual y exige nuevo criterio.",
+		"- Trabajarlo interactivo: abre el Plan Maestro A-Z para lectura/edición guiada.",
+		"- Reevaluar en profundidad: fuerza nuevo análisis AgentLab extendido y reescribe el draft.",
+		"",
+		`Documentos: JSON=${planJson} | MD=${planMd}`,
 	];
 	if (requiresHumanCore) {
 		lines.push(
@@ -856,12 +912,29 @@ export function formatIduSupervisorPlanReport(input: {
 	}
 	lines.push(
 		"",
-		"Elegí una opción:",
-		'1. Aprobar plan: responder "aprobar" o ejecutar `idu-pi idu-master-plan-approve latest`',
-		'2. Desaprobar plan: responder "desaprobar" o ejecutar `idu-pi idu-master-plan-reject latest <motivo>`',
-		'3. Trabajarlo interactivo: responder "hagamoslo interactivo" y revisamos el MD por partes',
+		"Elegí una opción ejecutiva:",
+		"1. Aprobar plan — aplica esta fuente de verdad y habilita trabajo de agentes bajo reglas.",
+		"2. Desaprobar plan — rechaza el análisis, conserva evidencia y aborta este draft.",
+		"3. Trabajarlo interactivo — abre el Plan Maestro A-Z para lectura/edición guiada.",
+		"4. Reevaluar en profundidad — fuerza AgentLabs de análisis extendido y regenera el plan.",
 	);
 	return lines.join("\n");
+}
+
+function signalValue(plan: MasterPlan, key: string): string {
+	const prefix = `${key}=`;
+	return (
+		plan.autoDepth.signals
+			.find((signal) => signal.startsWith(prefix))
+			?.slice(prefix.length) ?? "?"
+	);
+}
+
+function topBullets(values: string[], limit: number): string[] {
+	const items = values.slice(0, limit);
+	return items.length
+		? items.map((value) => `- ${value}`)
+		: ["- por confirmar"];
 }
 
 export function formatMasterPlanSummaryForIdu(
@@ -951,6 +1024,34 @@ export function formatMasterPlanSummaryForIdu(
 
 function dedupeStrings(values: string[]): string[] {
 	return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function reviewedPlanObjective(plan: MasterPlan): string {
+	const flowNames = plan.detectedFlows.map((flow) => flow.name.toLowerCase());
+	if (
+		plan.securityModel.authDetected &&
+		plan.dataStores.length > 0 &&
+		flowNames.some((name) => /ingesta|carga|reporte|visualización/u.test(name))
+	) {
+		return "Estabilizar, asegurar y optimizar la operación industrial: autenticación segura, ingesta confiable de datos y reporting operativo como fuente de verdad.";
+	}
+	return plan.inferredObjective;
+}
+
+function reviewedPlanProblemStatement(
+	plan: MasterPlan,
+	highFindings: string[],
+): string {
+	const hasSessionRisk = highFindings.some((finding) =>
+		/token|jwt|localstorage|sesion|sesión/iu.test(finding),
+	);
+	const hasDataRisk = highFindings.some((finding) =>
+		/migraci[oó]n|persistid|datos|database|db/iu.test(finding),
+	);
+	if (hasSessionRisk || hasDataRisk) {
+		return "Las operaciones del sistema dependen de autenticación, ingesta y reporting sobre datos sensibles. La revisión detectó exposición de sesión/JWT, persistencia cliente y riesgos de consistencia de datos; el supervisor debe consolidar un plan de trabajo seguro antes de habilitar agentes sobre el repo real.";
+	}
+	return plan.problemStatement;
 }
 
 function inferReviewedFrontendStack(plan: MasterPlan): string | undefined {
@@ -2131,8 +2232,18 @@ function inferObjective(projectPath: string, signals: ProjectSignals): string {
 			.find(Boolean);
 		if (firstLine) return firstLine;
 	}
+	const flowNames = signals.flowCandidates.map((flow) =>
+		flow.name.toLowerCase(),
+	);
+	if (
+		signals.hasDb &&
+		signals.hasAuth &&
+		flowNames.some((name) => /ingesta|carga|reporte|visualización/u.test(name))
+	) {
+		return "Estabilizar, asegurar y optimizar la operación industrial: autenticación segura, ingesta confiable de datos y reporting operativo como fuente de verdad.";
+	}
 	if (signals.hasDb && signals.hasAuth)
-		return "Sistema con autenticación, datos persistentes y flujos operativos por confirmar.";
+		return "Asegurar y gobernar un sistema operativo con autenticación, datos persistentes y flujos críticos.";
 	return `Entender y supervisar ${basename(projectPath)} sin aplicar cambios automáticos.`;
 }
 
@@ -2145,11 +2256,15 @@ function buildExecutiveSummary(
 }
 
 function buildProblemStatement(
-	source: MasterPlanSource,
+	_source: MasterPlanSource,
 	signals: ProjectSignals,
 ): string {
-	if (source.projectCoreStatus !== "confirmed")
-		return "El proyecto necesita un Plan Maestro revisable antes de tratar Project Core/Constitution como fuente de verdad.";
+	const criticalFlows = signals.flowCandidates
+		.filter((flow) => flow.riskLevel === "high")
+		.map((flow) => flow.name.toLowerCase());
+	if (signals.hasDb && signals.hasAuth && criticalFlows.length > 0) {
+		return "El sistema concentra autenticación, persistencia y flujos operativos sensibles. La evidencia muestra exposición de sesión, dependencia de almacenamiento cliente y rutas de ingesta/reporting que requieren una arquitectura gobernada antes de delegar cambios a agentes.";
+	}
 	if (signals.hasDb || signals.hasAuth)
 		return "El proyecto combina datos/autenticación y requiere guardrails explícitos antes de cambios funcionales.";
 	return "Mantener alineación entre intención humana, estructura real y próximos cambios.";
@@ -2517,6 +2632,8 @@ function writeMasterPlanPendingAction(
 			"confirmo",
 			"aprueba",
 			"aprobar",
+			"realizar plan",
+			"ejecutar plan",
 			"continuar",
 		],
 		rejectedInputs: [
@@ -2580,7 +2697,17 @@ function classifyMasterPlanNaturalDecision(
 		)
 	)
 		return "interactive";
-	if (["rehacer", "redraft"].includes(normalized)) return "redraft";
+	if (
+		[
+			"rehacer",
+			"redraft",
+			"reevaluar",
+			"reevaluar en profundidad",
+			"realizar en profundidad",
+			"analisis profundo",
+		].includes(normalized)
+	)
+		return "redraft";
 	if (rejected.has(normalized)) return "reject";
 	return undefined;
 }
