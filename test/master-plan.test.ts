@@ -267,9 +267,27 @@ test("Plan Maestro separa tooling y detecta arquitectura datos auth y flujos fun
 		assert.match(summary, /Auth:/u);
 		assert.match(summary, /Flujos principales:/u);
 		assert.doesNotMatch(summary, /\.agents|\.adal|\.augment/u);
-		const markdown = formatMasterPlanReview(
-			reviewMasterPlan({ stateRoot, pathOrLatest: "latest" }),
+		const review = reviewMasterPlan({ stateRoot, pathOrLatest: "latest" });
+		assert.ok(review.revisionAntesDeZarpar.projectUnderstanding.length > 0);
+		assert.ok(
+			review.revisionAntesDeZarpar.requiredContracts.some(
+				(contract) => contract.category === "objective",
+			),
 		);
+		assert.ok(
+			review.revisionAntesDeZarpar.requiredContracts.some(
+				(contract) => contract.category === "information_sources",
+			),
+		);
+		assert.ok(
+			review.revisionAntesDeZarpar.beforeSailingChecklist.some((item) =>
+				/aprobar plan maestro/iu.test(item),
+			),
+		);
+		const markdown = formatMasterPlanReview(review);
+		assert.match(markdown, /## Revisión antes de zarpar/u);
+		assert.match(markdown, /Contratos necesarios/u);
+		assert.match(markdown, /Fuentes de información/u);
 		assert.match(markdown, /## Arquitectura detectada/u);
 		assert.match(markdown, /## Stack\/lenguajes/u);
 		assert.match(markdown, /## Persistencia \/ datos/u);
@@ -337,6 +355,82 @@ test("Plan Maestro renderiza documento normativo y separa flujos permanentes", (
 		};
 		assert.equal(flows.projectId, "idu-pi");
 		assert.ok(flows.flows.some((flow) => flow.name.includes("MCP")));
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("revisionAntesDeZarpar usa Doc root sanitizado y distingue falta de herramientas", () => {
+	const root = tempRoot();
+	try {
+		const projectPath = join(root, "project");
+		const stateRoot = join(root, "state", "projects", "demo");
+		mkdirSync(join(projectPath, "src"), { recursive: true });
+		writeFileSync(join(projectPath, "README.md"), "# Demo", "utf8");
+		writeFileSync(
+			join(projectPath, "src", "index.ts"),
+			"export const ok = true;",
+			"utf8",
+		);
+		const result = generateMasterPlanDraft({
+			projectId: "Proyecto Ácido/Uno",
+			projectPath,
+			stateRoot,
+			gitHead: "head1",
+		});
+		const approvedPlan = {
+			...result.plan,
+			status: "approved",
+			criticalRisks: [],
+			canonicalClaims: [
+				...result.plan.canonicalClaims,
+				{
+					title: "Contrato humano aprobado",
+					statement: "El usuario aprobó objetivo y contratos mínimos.",
+					source: "human_approved",
+					status: "confirmed",
+					confidence: 0.9,
+					evidence: ["conversación humana"],
+				},
+			],
+		};
+		writeFileSync(
+			result.jsonPath,
+			`${JSON.stringify(approvedPlan, null, 2)}\n`,
+			"utf8",
+		);
+
+		const missingSourceReview = reviewMasterPlan({
+			stateRoot,
+			pathOrLatest: "latest",
+		});
+		assert.equal(
+			missingSourceReview.revisionAntesDeZarpar.status,
+			"needs_tools",
+		);
+		assert.equal(
+			missingSourceReview.revisionAntesDeZarpar.missingDefinitions.some(
+				(item) => /biblioteca de fuentes/iu.test(item),
+			),
+			false,
+		);
+
+		mkdirSync(join(stateRoot, "Doc", "proyecto_cido_uno"), {
+			recursive: true,
+		});
+		writeFileSync(
+			join(stateRoot, "Doc", "proyecto_cido_uno", "source-index.json"),
+			"{}\n",
+			"utf8",
+		);
+		const readyReview = reviewMasterPlan({ stateRoot, pathOrLatest: "latest" });
+		assert.equal(readyReview.revisionAntesDeZarpar.status, "ready");
+		assert.equal(
+			readyReview.revisionAntesDeZarpar.currentProblems.some((item) =>
+				/source-index/iu.test(item),
+			),
+			false,
+		);
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}

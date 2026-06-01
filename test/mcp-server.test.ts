@@ -184,6 +184,39 @@ function fakeRuntime(projectPath = "C:/projects/sistema"): CliRuntime {
 				jsonPath:
 					"C:/idu/workspace/projects/sistema_de_mantencion/master-plan.json",
 				markdown: "# Plan Maestro\n\n## Identidad del proyecto",
+				revisionAntesDeZarpar: {
+					status: "needs_user_definition",
+					confidence: 0.72,
+					projectUnderstanding: [
+						"Sistema de mantenimiento con Plan Maestro draft.",
+					],
+					requiredContracts: [
+						{
+							category: "objective",
+							title: "Contrato de objetivo",
+							status: "needs_user_confirmation",
+							requirement: "Confirmar objetivo y alcance antes de zarpar.",
+							evidence: ["master-plan.json"],
+							nextAction: "Pedir confirmación al usuario.",
+						},
+					],
+					missingDefinitions: ["Plan Maestro sigue en draft."],
+					requiredInformationSources: ["Doc/<project>/source-index.json"],
+					recommendedExternalSources: ["npm security advisories"],
+					recommendedMcpTools: ["idu_task_context"],
+					recommendedAgentLabs: [
+						{
+							name: "AgentLab seguridad",
+							purpose: "Auditar auth, secretos y superficie de ataque.",
+							trigger: "Antes de aprobar cambios sensibles.",
+							evidence: ["plan.securityModel"],
+						},
+					],
+					currentProblems: ["Contratos aprobados vacíos."],
+					repairStrategy: ["Confirmar contratos mínimos con el usuario."],
+					questionsForUser: ["¿Confirmás el objetivo del proyecto?"],
+					beforeSailingChecklist: ["Aprobar Plan Maestro."],
+				},
 				plan: {
 					status: "draft",
 					criticalRisks: [],
@@ -525,6 +558,24 @@ test("MCP exposes direct Master Plan lifecycle tools", async () => {
 	);
 	assert.equal(review.ok, true);
 	assert.match(String(review.data.markdown), /Plan Maestro/u);
+	assert.equal(
+		(
+			review.data.revisionAntesDeZarpar as {
+				requiredContracts: Array<{ category: string }>;
+			}
+		).requiredContracts.some((contract) => contract.category === "objective"),
+		true,
+	);
+	assert.match(
+		String(
+			(
+				review.data.revisionAntesDeZarpar as {
+					recommendedAgentLabs: Array<{ name: string }>;
+				}
+			).recommendedAgentLabs[0]?.name,
+		),
+		/seguridad/iu,
+	);
 });
 
 test("idu_status works with explicit projectPath", async () => {

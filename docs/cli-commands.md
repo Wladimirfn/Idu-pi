@@ -101,12 +101,12 @@ idu-pi lab-review-plan postflight
 
 ## Plan Maestro
 
-`idu-pi idu` genera o muestra un Plan Maestro draft/approved/stale en el `stateRoot` del proyecto. Es determinista, no usa IA externa, no aplica flows y no confirma Project Core/Constitution. El Plan Maestro es normativo: describe qué es el proyecto, su alcance, arquitectura, stack, contratos, documentación declarada versus realidad construida y referencia flujos permanentes en un artefacto separado.
+`idu-pi idu` genera o muestra un Plan Maestro draft/approved/stale en el `stateRoot` del proyecto. Es determinista, no usa IA externa, no aplica flows y no confirma Project Core/Constitution. El Plan Maestro es normativo: describe qué es el proyecto, su alcance, arquitectura, stack, contratos, documentación declarada versus realidad construida y referencia flujos permanentes en un artefacto separado. `master-plan-review` antepone `revisionAntesDeZarpar`, una revisión para el orquestador con contratos de preparación, fuentes, herramientas/MCP, AgentLabs recomendados, problemas, estrategia de arreglo, preguntas al usuario y checklist antes de ejecutar trabajo grande.
 
 | Comando | Uso |
 | --- | --- |
 | `idu-pi master-plan-status` | Muestra estado del Plan Maestro actual. |
-| `idu-pi master-plan-review latest` | Muestra el markdown del Plan Maestro. |
+| `idu-pi master-plan-review latest` | Muestra `revisionAntesDeZarpar` y el markdown del Plan Maestro. |
 | `idu-pi master-plan-approve latest` | Marca el plan como approved; no aplica flows. |
 | `idu-pi master-plan-reject latest [motivo]` | Marca el plan como rejected con motivo opcional. |
 | `idu-pi master-plan-redraft latest` | Rehace el draft actual actualizando el Plan Maestro canónico. |
@@ -130,6 +130,8 @@ Artefactos por proyecto:
 <stateRoot>/master-plan.memory.json
 <stateRoot>/master-plan.flows.json
 <stateRoot>/project-index.json
+<stateRoot>/Doc/<project>/source-index.json        # futuro índice recomendado de fuentes locales/normativas
+<stateRoot>/Doc/<project>/sources/local/           # futuro lugar para PDFs, normas, leyes, libros o docs descargadas
 <stateRoot>/agentlabs/
 ```
 

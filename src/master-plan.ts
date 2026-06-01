@@ -239,6 +239,50 @@ export type MasterPlanFlowArtifact = {
 	detectedFlows: MasterPlanFunctionalFlow[];
 };
 
+export type MasterPlanReadinessContractCategory =
+	| "objective"
+	| "stack"
+	| "architecture"
+	| "data"
+	| "security"
+	| "navigation"
+	| "information_sources"
+	| "agentlabs"
+	| "testing"
+	| "delivery";
+
+export type MasterPlanReadinessContract = {
+	category: MasterPlanReadinessContractCategory;
+	title: string;
+	status: "confirmed" | "missing" | "recommended" | "needs_user_confirmation";
+	requirement: string;
+	evidence: string[];
+	nextAction: string;
+};
+
+export type MasterPlanRecommendedAgentLab = {
+	name: string;
+	purpose: string;
+	trigger: string;
+	evidence: string[];
+};
+
+export type MasterPlanRevisionAntesDeZarpar = {
+	status: "ready" | "needs_user_definition" | "needs_tools" | "blocked";
+	confidence: number;
+	projectUnderstanding: string[];
+	requiredContracts: MasterPlanReadinessContract[];
+	missingDefinitions: string[];
+	requiredInformationSources: string[];
+	recommendedExternalSources: string[];
+	recommendedMcpTools: string[];
+	recommendedAgentLabs: MasterPlanRecommendedAgentLab[];
+	currentProblems: string[];
+	repairStrategy: string[];
+	questionsForUser: string[];
+	beforeSailingChecklist: string[];
+};
+
 export type MasterPlanApproval = {
 	approvedAt?: string;
 	rejectedAt?: string;
@@ -388,6 +432,7 @@ export type MasterPlanReview = {
 	plan: MasterPlan;
 	current?: MasterPlanCurrent;
 	markdown: string;
+	revisionAntesDeZarpar: MasterPlanRevisionAntesDeZarpar;
 	jsonPath: string;
 	markdownPath?: string;
 };
@@ -857,7 +902,14 @@ export function reviewMasterPlan(input: {
 	const markdown = existsSync(markdownPath)
 		? readFileSync(markdownPath, "utf8")
 		: formatMasterPlanMarkdown(plan);
-	return { plan, current, markdown, jsonPath, markdownPath };
+	return {
+		plan,
+		current,
+		markdown,
+		revisionAntesDeZarpar: buildRevisionAntesDeZarpar(plan, stateRoot),
+		jsonPath,
+		markdownPath,
+	};
 }
 
 export function approveMasterPlan(input: {
@@ -1950,7 +2002,63 @@ export function formatMasterPlanStatus(result: MasterPlanStatusResult): string {
 }
 
 export function formatMasterPlanReview(review: MasterPlanReview): string {
-	return review.markdown;
+	return [
+		formatRevisionAntesDeZarpar(review.revisionAntesDeZarpar),
+		"",
+		review.markdown,
+	].join("\n");
+}
+
+function formatRevisionAntesDeZarpar(
+	revision: MasterPlanRevisionAntesDeZarpar,
+): string {
+	return [
+		"## Revisión antes de zarpar",
+		`Estado: ${revision.status}`,
+		`Confianza: ${revision.confidence}`,
+		"",
+		"### Entendimiento del proyecto",
+		...bulletList(revision.projectUnderstanding),
+		"",
+		"### Contratos necesarios",
+		...bulletList(
+			revision.requiredContracts.map(
+				(contract) =>
+					`${contract.title} (${contract.category}/${contract.status}) — ${contract.requirement} Acción: ${contract.nextAction}`,
+			),
+		),
+		"",
+		"### Definiciones faltantes",
+		...bulletList(revision.missingDefinitions),
+		"",
+		"### Fuentes de información",
+		...bulletList(revision.requiredInformationSources),
+		"",
+		"### Fuentes externas vivas recomendadas",
+		...bulletList(revision.recommendedExternalSources),
+		"",
+		"### MCP/herramientas necesarias",
+		...bulletList(revision.recommendedMcpTools),
+		"",
+		"### AgentLabs recomendados",
+		...bulletList(
+			revision.recommendedAgentLabs.map(
+				(lab) => `${lab.name}: ${lab.purpose} Disparador: ${lab.trigger}`,
+			),
+		),
+		"",
+		"### Problemas actuales",
+		...bulletList(revision.currentProblems),
+		"",
+		"### Estrategia de arreglo",
+		...bulletList(revision.repairStrategy),
+		"",
+		"### Preguntas para el usuario",
+		...bulletList(revision.questionsForUser),
+		"",
+		"### Checklist antes de zarpar",
+		...bulletList(revision.beforeSailingChecklist),
+	].join("\n");
 }
 
 export function formatMasterPlanOperation(
@@ -2007,6 +2115,383 @@ function formatDrift(finding: MasterPlanDriftFinding): string {
 
 function formatProjectFlow(flow: MasterPlanProjectFlow): string {
 	return `${flow.name} (${flow.category}) — ${flow.purpose}; entradas=${flow.entrypoints.join(", ") || "—"}; módulos=${flow.modules.join(", ") || "—"}; salidas=${flow.outputs.join(", ") || "—"}; reglas=${flow.rules.join(" | ") || "—"}`;
+}
+
+function buildRevisionAntesDeZarpar(
+	plan: MasterPlan,
+	stateRoot: string,
+): MasterPlanRevisionAntesDeZarpar {
+	const sourceIndexPath = join(
+		projectDocRoot(stateRoot, plan.projectId),
+		"source-index.json",
+	);
+	const hasSourceIndex = existsSync(sourceIndexPath);
+	const hasApprovedContract = plan.canonicalClaims.some(
+		(claim) => claim.source === "human_approved",
+	);
+	const problems = dedupeStrings([
+		...(plan.status !== "approved"
+			? ["Plan Maestro sigue en draft/no aprobado."]
+			: []),
+		...(!hasApprovedContract ? ["Contratos aprobados todavía vacíos."] : []),
+		...(plan.source.blueprintStatus !== "project-local"
+			? [
+					"Project Blueprint no confirmado como fuente local; no debe tratarse como ley del proyecto.",
+				]
+			: []),
+		...(!hasSourceIndex
+			? [
+					"No existe biblioteca local indexada de fuentes normativas en Doc/<project>/source-index.json.",
+				]
+			: []),
+		...plan.contractViolations.map((violation) => violation.title),
+		...plan.criticalRisks,
+	]);
+	const requiredContracts = buildReadinessContracts(plan, hasSourceIndex);
+	const missingDefinitions = dedupeStrings([
+		...(plan.status !== "approved"
+			? ["Aprobación humana explícita del Plan Maestro."]
+			: []),
+		...(!hasApprovedContract
+			? [
+					"Contratos aprobados por usuario: objetivo, stack, arquitectura, datos, seguridad, navegación, fuentes, AgentLabs, testing y entrega.",
+				]
+			: []),
+	]);
+	const status: MasterPlanRevisionAntesDeZarpar["status"] =
+		plan.status === "incompatible" || plan.criticalRisks.length > 0
+			? "blocked"
+			: missingDefinitions.length > 0
+				? "needs_user_definition"
+				: !hasSourceIndex
+					? "needs_tools"
+					: "ready";
+	return {
+		status,
+		confidence: readinessConfidence(plan, hasSourceIndex, hasApprovedContract),
+		projectUnderstanding: buildProjectUnderstanding(plan),
+		requiredContracts,
+		missingDefinitions,
+		requiredInformationSources: dedupeStrings([
+			...plan.canonicalClaims
+				.filter((claim) => claim.source === "canonical_doc")
+				.flatMap((claim) => claim.evidence),
+			"Doc/<project>/source-index.json",
+			"Doc/<project>/sources/local/ para PDFs, libros, normas, leyes y documentación humana descargada.",
+		]),
+		recommendedExternalSources: [
+			"npm security advisories para riesgos vivos de supply chain.",
+			"OWASP ASVS/Top 10 para contratos de seguridad web.",
+			"Documentación oficial de servicios externos usados por el proyecto.",
+		],
+		recommendedMcpTools: buildRecommendedMcpTools(plan),
+		recommendedAgentLabs: buildRecommendedAgentLabs(plan),
+		currentProblems: problems,
+		repairStrategy: buildRepairStrategy(plan, hasSourceIndex),
+		questionsForUser: buildQuestionsForUser(plan, hasSourceIndex),
+		beforeSailingChecklist: buildBeforeSailingChecklist(plan, hasSourceIndex),
+	};
+}
+
+function buildReadinessContracts(
+	plan: MasterPlan,
+	hasSourceIndex: boolean,
+): MasterPlanReadinessContract[] {
+	const evidence = (items: string[]): string[] =>
+		items.filter(Boolean).slice(0, 6);
+	return [
+		{
+			category: "objective",
+			title: "Contrato de objetivo",
+			status:
+				plan.status === "approved" ? "confirmed" : "needs_user_confirmation",
+			requirement:
+				"Confirmar qué se construye, para quién, alcance, no-alcance y criterio de terminado.",
+			evidence: evidence([plan.inferredObjective, ...plan.scope]),
+			nextAction:
+				"El usuario debe confirmar o ajustar el objetivo antes de ejecutar cambios grandes.",
+		},
+		{
+			category: "stack",
+			title: "Contrato de stack",
+			status: plan.architecture.languages.length > 0 ? "confirmed" : "missing",
+			requirement:
+				"Acordar lenguajes, frameworks, base de datos, auth, deploy y servicios externos permitidos.",
+			evidence: evidence([
+				...plan.architecture.languages,
+				...plan.architecture.frameworks,
+				plan.architecture.database,
+				plan.architecture.auth,
+			]),
+			nextAction:
+				"Confirmar stack real y prohibir incorporaciones no justificadas.",
+		},
+		{
+			category: "architecture",
+			title: "Contrato de arquitectura",
+			status:
+				plan.architecture.projectKind !== "unknown" ? "confirmed" : "missing",
+			requirement:
+				"Definir core, adapters, capas, módulos dueños y límites que los agentes no deben mezclar.",
+			evidence: evidence(plan.architecture.evidence),
+			nextAction:
+				"Revisar arquitectura declarada contra realidad construida y aprobar invariantes.",
+		},
+		{
+			category: "data",
+			title: "Contrato de datos",
+			status: plan.dataStores.length > 0 ? "confirmed" : "recommended",
+			requirement:
+				"Definir entidades, almacenamiento, migraciones, permisos, backups y consistencia de reportes.",
+			evidence: evidence(plan.dataStores.flatMap((store) => store.evidence)),
+			nextAction:
+				"Validar schema/localización de datos antes de modificar persistencia.",
+		},
+		{
+			category: "security",
+			title: "Contrato de seguridad",
+			status: "recommended",
+			requirement:
+				"Acordar auth, sesiones, tokens, secretos, roles, permisos, auditoría y supply chain.",
+			evidence: evidence(plan.securityModel.evidence),
+			nextAction:
+				"Ejecutar o planificar AgentLab de seguridad antes de aprobar cambios sensibles.",
+		},
+		{
+			category: "navigation",
+			title: "Contrato de navegación/flujos UX",
+			status:
+				plan.projectFlows.length > 0 || plan.detectedFlows.length > 0
+					? "confirmed"
+					: "recommended",
+			requirement:
+				"Definir pantallas, rutas, flujos principales, estados de error/carga/vacío y roles visibles.",
+			evidence: evidence([
+				...plan.projectFlows.map((flow) => flow.name),
+				...plan.detectedFlows.map((flow) => flow.name),
+			]),
+			nextAction:
+				"Mantener flujos permanentes en master-plan.flows.json y auditarlos contra UI/código.",
+		},
+		{
+			category: "information_sources",
+			title: "Contrato de fuentes de información",
+			status: hasSourceIndex ? "confirmed" : "recommended",
+			requirement:
+				"Declarar fuentes válidas: documentación canónica, PDFs/normas/libros locales y MCPs/fuentes externas vivas.",
+			evidence: evidence([
+				...plan.canonicalClaims.flatMap((claim) => claim.evidence),
+				...(hasSourceIndex ? ["Doc/<project>/source-index.json"] : []),
+			]),
+			nextAction: hasSourceIndex
+				? "Mantener source-index actualizado cuando cambien normas o documentación."
+				: "Crear Doc/<project>/source-index.json y carpeta sources/local antes de derivar contratos normativos.",
+		},
+		{
+			category: "agentlabs",
+			title: "Contrato de AgentLabs",
+			status: "recommended",
+			requirement:
+				"Definir auditores audit-only por especialidad, cuándo se ejecutan y qué evidencia deben devolver.",
+			evidence: evidence(plan.agentLabReviews.map((lab) => lab.specialty)),
+			nextAction:
+				"Crear solicitudes AgentLab desde el orquestador; los labs no implementan ni hacen commit/push.",
+		},
+		{
+			category: "testing",
+			title: "Contrato de testing/confiabilidad",
+			status: "recommended",
+			requirement:
+				"Definir pruebas mínimas, smoke tests, escenarios críticos y confiabilidad de skills/agentes.",
+			evidence: evidence(plan.toolingDetected),
+			nextAction:
+				"Exigir evidencia de tests antes de declarar tareas finalizadas.",
+		},
+		{
+			category: "delivery",
+			title: "Contrato de entrega",
+			status:
+				plan.status === "approved" ? "confirmed" : "needs_user_confirmation",
+			requirement:
+				"Definir qué significa finalizar: Plan aprobado, tests, auditorías sin blockers, docs y revisión humana.",
+			evidence: evidence([plan.status, ...plan.recommendedNext]),
+			nextAction:
+				"No zarpar con cambios grandes hasta cerrar checklist mínimo.",
+		},
+	];
+}
+
+function buildProjectUnderstanding(plan: MasterPlan): string[] {
+	if (plan.architecture.projectKind === "supervisor-runtime") {
+		return [
+			"Idu-pi es un supervisor/auditor para proyectos guiados por un orquestador Pi.",
+			"MCP es la superficie funcional para que el orquestador consulte contexto, riesgos, contratos y recomendaciones.",
+			"CLI, Telegram y Pi slash son adapters del core; no reemplazan al núcleo.",
+			"AgentLabs son auditores audit-only: revisan con evidencia, no implementan, no modifican repo real y no hacen commit/push.",
+			"Plan Maestro, Doc/cuaderno, reportes y flujos permanentes viven en stateRoot aislado.",
+		];
+	}
+	return dedupeStrings([
+		`${plan.projectId}: ${plan.inferredObjective}`,
+		`Arquitectura: ${plan.architecture.projectKind}; ${plan.architecture.backend}; ${plan.architecture.database}.`,
+		`Alcance: ${plan.scope.join("; ") || "requiere confirmación humana"}.`,
+	]);
+}
+
+function buildRecommendedMcpTools(plan: MasterPlan): string[] {
+	return dedupeStrings([
+		"idu_master_plan_review",
+		"idu_task_context",
+		"idu_orchestrator_procedure",
+		"idu_agentlab_request_create",
+		"idu_agentlab_review_run",
+		...(plan.dataStores.some((store) =>
+			["postgres", "supabase"].includes(store.type),
+		)
+			? [
+					"MCP de base de datos/Supabase para validar schema, permisos y RLS reales.",
+				]
+			: []),
+		"MCP/fuente viva de advisories npm para riesgos de supply chain.",
+	]);
+}
+
+function buildRecommendedAgentLabs(
+	plan: MasterPlan,
+): MasterPlanRecommendedAgentLab[] {
+	if (plan.architecture.projectKind === "supervisor-runtime") {
+		return [
+			{
+				name: "AgentLab seguridad",
+				purpose:
+					"Auditar secretos, supply chain, permisos, auth interna y exposición accidental de estado.",
+				trigger:
+					"Antes de publicar cambios de MCP, instalador, comandos o dependencias.",
+				evidence: ["docs/mcp-server.md", "package.json"],
+			},
+			{
+				name: "AgentLab persistencia/DB",
+				purpose:
+					"Auditar SQLite local, reportes JSON/JSONL, stateRoot y compatibilidad de artefactos.",
+				trigger:
+					"Antes de cambiar schemas, reportes, memoria local o reset de estado.",
+				evidence: ["src/lab-db.ts", "stateRoot"],
+			},
+			{
+				name: "AgentLab flujos funcionales",
+				purpose:
+					"Verificar /idu, MCP, CLI, Telegram/Pi slash y master-plan.flows.json contra el Plan Maestro.",
+				trigger:
+					"Antes de aprobar cambios de navegación operativa o entrypoints.",
+				evidence: ["src/mcp-server.ts", "src/cli.ts"],
+			},
+			{
+				name: "AgentLab optimización de skills",
+				purpose:
+					"Detectar skills/reglas que el proyecto necesita ajustar para el orquestador y sus subagentes.",
+				trigger:
+					"Después de consolidar contratos y antes de escalar trabajo repetitivo.",
+				evidence: ["src/skill-improvement-proposals.ts"],
+			},
+			{
+				name: "AgentLab confiabilidad/tests de skills",
+				purpose:
+					"Diseñar escenarios para probar que skills y contratos guían agentes de forma confiable.",
+				trigger: "Antes de declarar estable un flujo de skills o gobernanza.",
+				evidence: ["test/", "Doc/<project>"],
+			},
+		];
+	}
+	return [
+		{
+			name: "AgentLab seguridad",
+			purpose: "Auditar auth, secretos, permisos y superficie de ataque.",
+			trigger: "Antes de cambios en seguridad, login, dependencias o deploy.",
+			evidence: plan.securityModel.evidence,
+		},
+		{
+			name: "AgentLab datos/DB",
+			purpose: "Auditar schema, migraciones, permisos, consistencia y backups.",
+			trigger: "Antes de modificar persistencia o reportes críticos.",
+			evidence: plan.dataStores.flatMap((store) => store.evidence).slice(0, 6),
+		},
+		{
+			name: "AgentLab flujos funcionales",
+			purpose:
+				"Auditar navegación, flujos de usuario y contratos funcionales permanentes.",
+			trigger: "Antes de cerrar hitos funcionales.",
+			evidence: plan.detectedFlows.flatMap((flow) => flow.evidence).slice(0, 6),
+		},
+	];
+}
+
+function buildRepairStrategy(
+	plan: MasterPlan,
+	hasSourceIndex: boolean,
+): string[] {
+	return dedupeStrings([
+		"Presentar esta revisión al usuario y pedir ajustes antes de tratar el Plan Maestro como ley.",
+		...(plan.status !== "approved"
+			? ["Aprobar o corregir el Plan Maestro."]
+			: []),
+		...(!hasSourceIndex
+			? [
+					"Crear biblioteca de fuentes locales en Doc/<project>/sources/local y un source-index.json.",
+				]
+			: []),
+		"Crear solicitudes AgentLab audit-only para seguridad, datos/persistencia, flujos, skills y confiabilidad cuando apliquen.",
+		"Convertir definiciones humanas en contratos aprobados antes de delegar implementación amplia.",
+	]);
+}
+
+function buildQuestionsForUser(
+	plan: MasterPlan,
+	hasSourceIndex: boolean,
+): string[] {
+	return dedupeStrings([
+		`¿Confirmás que el objetivo del proyecto es: ${plan.inferredObjective}?`,
+		`¿Confirmás este stack/arquitectura: ${plan.architecture.languages.join(", ") || "lenguajes no detectados"}; ${plan.architecture.backend}; ${plan.architecture.database}; auth ${plan.architecture.auth}?`,
+		"¿Qué fuentes humanas, PDFs, normas, leyes o libros deben mandar sobre el scanner?",
+		...(!hasSourceIndex
+			? [
+					"¿Querés crear una biblioteca local de fuentes normativas en Doc/<project>/sources/local?",
+				]
+			: []),
+		"¿Qué AgentLabs querés exigir antes de aprobar cambios: seguridad, DB, flujos, skills o tests/confiabilidad?",
+	]);
+}
+
+function buildBeforeSailingChecklist(
+	_plan: MasterPlan,
+	hasSourceIndex: boolean,
+): string[] {
+	return dedupeStrings([
+		"Aprobar Plan Maestro o corregirlo con las definiciones humanas faltantes.",
+		"Confirmar contratos de objetivo, stack, arquitectura, datos, seguridad, navegación, fuentes, AgentLabs, testing y entrega.",
+		...(!hasSourceIndex
+			? [
+					"Registrar fuentes locales/normativas mínimas o declarar que no aplican para este proyecto.",
+				]
+			: []),
+		"Definir qué MCPs/herramientas externas son necesarias para validar la realidad del proyecto.",
+		"Crear o descartar explícitamente AgentLabs recomendados con motivo.",
+		"Definir pruebas mínimas y evidencia requerida antes de finalizar tareas.",
+	]);
+}
+
+function readinessConfidence(
+	plan: MasterPlan,
+	hasSourceIndex: boolean,
+	hasApprovedContract: boolean,
+): number {
+	let score = 0.45;
+	if (plan.canonicalClaims.some((claim) => claim.source === "canonical_doc"))
+		score += 0.15;
+	if (plan.status === "approved") score += 0.15;
+	if (hasApprovedContract) score += 0.1;
+	if (hasSourceIndex) score += 0.1;
+	if (plan.criticalRisks.length === 0) score += 0.05;
+	return Math.min(0.95, Number(score.toFixed(2)));
 }
 
 export function formatMasterPlanMarkdown(plan: MasterPlan): string {
@@ -2128,6 +2613,10 @@ function incompatibleReview(
 		plan: diagnosticPlan,
 		current,
 		jsonPath,
+		revisionAntesDeZarpar: buildRevisionAntesDeZarpar(
+			diagnosticPlan,
+			stateRoot,
+		),
 		markdown: [
 			"# Plan Maestro incompatible",
 			"",
