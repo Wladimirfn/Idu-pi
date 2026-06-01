@@ -34,7 +34,7 @@ These are ignored and should stay local/generated:
   - `agentlabs/requests/current.json`
   - `agentlabs/runs/current.json`
   - `agentlabs/reports/consolidated-current.json`
-  - `master-plan.json` / `master-plan.md` / `project-index.json` under project `stateRoot`
+  - `master-plan.json` / `master-plan.md` / `master-plan.flows.json` / `project-index.json` under project `stateRoot`
 
 ## Project-local config
 

@@ -41,6 +41,9 @@ export type IduMcpToolName =
 	| "idu_activate"
 	| "idu_deactivate"
 	| "idu_prepare"
+	| "idu_master_plan_status"
+	| "idu_master_plan_create"
+	| "idu_master_plan_review"
 	| "idu_orchestrator_procedure"
 	| "idu_task_context"
 	| "idu_preflight"
@@ -176,6 +179,29 @@ const TOOLS: IduMcpToolDefinition[] = [
 	tool("idu_prepare", "Ejecuta prepare seguro sin IA ni AgentLabs.", {
 		projectPath: optionalString("Ruta opcional del proyecto objetivo."),
 	}),
+	tool(
+		"idu_master_plan_status",
+		"Lee estado y rutas del Plan Maestro sin regenerar ni modificar el repo real.",
+		{
+			projectPath: optionalString("Ruta opcional del proyecto objetivo."),
+		},
+	),
+	tool(
+		"idu_master_plan_create",
+		"Crea o regenera un Plan Maestro normativo en stateRoot; separa documentación declarada, realidad construida y flujos permanentes.",
+		{
+			projectPath: optionalString("Ruta opcional del proyecto objetivo."),
+			reason: optionalString("Motivo de regeneración."),
+		},
+	),
+	tool(
+		"idu_master_plan_review",
+		"Revisa el Plan Maestro actual o selector indicado y devuelve JSON estructurado más markdown.",
+		{
+			projectPath: optionalString("Ruta opcional del proyecto objetivo."),
+			selector: optionalString("Selector; usar latest por defecto."),
+		},
+	),
 	tool(
 		"idu_orchestrator_procedure",
 		"Devuelve procedimiento asesor para que el orquestador cree/actualice plan, implemente o audite sin que Idu-pi se imponga.",
@@ -963,6 +989,97 @@ async function dispatchTool(
 					"Prepare seguro: no ejecuté IA ni AgentLabs.",
 				],
 				errors: result.errors,
+			});
+		}
+		case "idu_master_plan_status": {
+			if (!runtime.masterPlanStatus) {
+				return envelope({
+					ok: false,
+					tool: name,
+					projectId: runtime.projectId,
+					projectPath: runtime.projectPath,
+					summary: "Master Plan no disponible en este runtime.",
+					data: {},
+					safeNotes: resolution.safeNotes,
+					errors: ["Master Plan no disponible en este runtime."],
+				});
+			}
+			const status = runtime.masterPlanStatus();
+			return envelope({
+				ok: true,
+				tool: name,
+				projectId: runtime.projectId,
+				projectPath: runtime.projectPath,
+				summary: `Plan Maestro: ${status.status}`,
+				data: status as unknown as JsonObject,
+				safeNotes: [...resolution.safeNotes, "No regeneré el Plan Maestro."],
+			});
+		}
+		case "idu_master_plan_create": {
+			if (!runtime.masterPlanRedraft) {
+				return envelope({
+					ok: false,
+					tool: name,
+					projectId: runtime.projectId,
+					projectPath: runtime.projectPath,
+					summary: "Master Plan no disponible en este runtime.",
+					data: {},
+					safeNotes: resolution.safeNotes,
+					errors: ["Master Plan no disponible en este runtime."],
+				});
+			}
+			const result = runtime.masterPlanRedraft(stringArg(args, "reason"));
+			return envelope({
+				ok: true,
+				tool: name,
+				projectId: runtime.projectId,
+				projectPath: runtime.projectPath,
+				summary: `Plan Maestro creado: ${result.plan.status}`,
+				data: {
+					status: result.plan.status,
+					jsonPath: result.jsonPath,
+					markdownPath: result.markdownPath,
+					flowArtifact: result.plan.flowArtifact,
+					plan: result.plan,
+				} as unknown as JsonObject,
+				safeNotes: [
+					...resolution.safeNotes,
+					"Creé/regeneré sólo artefactos de gobernanza en stateRoot.",
+					"No ejecuté AgentLabs, no apliqué flows y no toqué el repo real.",
+				],
+			});
+		}
+		case "idu_master_plan_review": {
+			if (!runtime.masterPlanReview) {
+				return envelope({
+					ok: false,
+					tool: name,
+					projectId: runtime.projectId,
+					projectPath: runtime.projectPath,
+					summary: "Master Plan no disponible en este runtime.",
+					data: {},
+					safeNotes: resolution.safeNotes,
+					errors: ["Master Plan no disponible en este runtime."],
+				});
+			}
+			const review = runtime.masterPlanReview(
+				stringArg(args, "selector") ?? "latest",
+			);
+			return envelope({
+				ok: review.plan.status !== "incompatible",
+				tool: name,
+				projectId: runtime.projectId,
+				projectPath: runtime.projectPath,
+				summary: `Review Plan Maestro: ${review.plan.status}`,
+				data: review as unknown as JsonObject,
+				safeNotes: [
+					...resolution.safeNotes,
+					"Review sin regenerar ni ejecutar AgentLabs.",
+				],
+				errors:
+					review.plan.status === "incompatible"
+						? review.plan.criticalRisks
+						: [],
 			});
 		}
 		case "idu_orchestrator_procedure": {

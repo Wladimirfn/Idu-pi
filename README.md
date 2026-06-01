@@ -133,13 +133,16 @@ idu-pi setup mcp-init
 idu-pi project enroll <projectPath> [projectId]
 ```
 
-Desde MCP, el orquestador usa Idu-pi como asesor/auditor, no como autoridad ciega:
+Desde MCP, el orquestador usa Idu-pi como guía de buenas prácticas, asesor y auditor; no como autoridad ciega:
 
 ```text
 idu_project_status
 idu_project_enroll
 idu_bootstrap_project
 idu_start
+idu_master_plan_status
+idu_master_plan_create
+idu_master_plan_review
 idu_orchestrator_procedure
 idu_task_context
 idu_preflight
@@ -148,7 +151,7 @@ idu_agentlab_request_create
 idu_agentlab_review_run
 ```
 
-`idu_activate` sólo activa guardrails; no enrola ni crea drafts. `idu_orchestrator_procedure` e `idu_task_context` devuelven severidad, confianza, evidencia, lecturas requeridas, contratos afectados, labs sugeridos y guía para subagentes. El orquestador revalida y decide. `idu_agentlab_request_create` sólo crea solicitud; los labs se ejecutan únicamente con `idu_agentlab_review_run`.
+`idu_activate` sólo activa guardrails; no enrola ni crea drafts. `idu_master_plan_create` crea/regenera en `stateRoot` un Plan Maestro normativo que separa documentación declarada, realidad construida, drift, contratos y flujos permanentes (`master-plan.flows.json`). `idu_orchestrator_procedure` e `idu_task_context` devuelven severidad, confianza, evidencia, lecturas requeridas, contratos afectados, labs sugeridos y guía para subagentes. El orquestador revalida y decide. `idu_agentlab_request_create` sólo crea solicitud; los labs se ejecutan únicamente con `idu_agentlab_review_run`.
 
 Guía: [Instalador, home CLI y estado por proyecto](docs/installer.md).
 
@@ -195,6 +198,10 @@ Los gates son validadores deterministas. Revisan intención, archivos cambiados 
 ### AgentLabs
 
 AgentLabs son especialistas de revisión audit-only. Inspeccionan en workspaces aislados, producen reportes con evidencia y no aplican cambios al repo real, no crean workspaces permanentes en `stateRoot`, no hacen commit/push y no implementan features. Idu-pi consolida esos reportes en hallazgos, recomendaciones y candidates; el humano/orquestador decide.
+
+### Plan Maestro
+
+Plan Maestro es el documento normativo vivo del proyecto. Responde qué es el repo, qué hace, cómo está construido, qué alcance tiene, qué requisitos debe cumplir, qué contratos gobiernan cambios y qué diferencia existe entre la documentación declarada y la realidad construida. Los flujos permanentes viven aparte en `master-plan.flows.json` para que puedan actualizarse junto al proyecto sin convertir el Plan Maestro en lista de tareas.
 
 ### Supervisor loop
 

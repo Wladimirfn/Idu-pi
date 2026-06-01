@@ -281,6 +281,167 @@ test("Plan Maestro separa tooling y detecta arquitectura datos auth y flujos fun
 	}
 });
 
+test("Plan Maestro renderiza documento normativo y separa flujos permanentes", () => {
+	const root = tempRoot();
+	try {
+		const projectPath = join(root, "idu-pi");
+		const stateRoot = join(root, "state", "projects", "idu-pi");
+		mkdirSync(join(projectPath, "docs"), { recursive: true });
+		mkdirSync(join(projectPath, "src"), { recursive: true });
+		writeFileSync(
+			join(projectPath, "docs", "architecture.md"),
+			[
+				"# Arquitectura de Idu-pi",
+				"",
+				"Idu-pi está organizado como core de supervisión más adaptadores.",
+				"CLI adapter, Telegram adapter, MCP adapter y Pi slash commands llaman al Core Idu-pi.",
+				"El core mantiene reports JSON/JSONL, lab.db SQLite local, Project Core, Constitution, Flows, Plan Maestro, Doc y AgentLabs audit-only.",
+			].join("\n"),
+			"utf8",
+		);
+		writeFileSync(
+			join(projectPath, "README.md"),
+			"# Idu-pi\n\nSupervisor MCP/CLI/Telegram para guiar proyectos.",
+			"utf8",
+		);
+		writeFileSync(
+			join(projectPath, "src", "session.ts"),
+			"export const sessionName = 'pi-session'; // not product login/auth",
+			"utf8",
+		);
+
+		const result = generateMasterPlanDraft({
+			projectId: "idu-pi",
+			projectPath,
+			stateRoot,
+			gitHead: "head1",
+		});
+		const markdown = readFileSync(result.markdownPath, "utf8");
+		const flowArtifact = join(stateRoot, "master-plan.flows.json");
+
+		assert.ok(markdown.includes("## Identidad del proyecto"));
+		assert.ok(
+			markdown.includes("## Documentación declarada vs realidad construida"),
+		);
+		assert.ok(markdown.includes("## Flujos funcionales permanentes"));
+		assert.ok(markdown.includes("master-plan.flows.json"));
+		assert.equal(markdown.includes("Idu-pi generó un Plan Maestro"), false);
+		assert.equal(markdown.includes("## Preguntas abiertas"), false);
+		assert.equal(markdown.includes("## Próximos pasos"), false);
+		assert.equal(markdown.includes("## Plan por hitos"), false);
+		assert.equal(markdown.includes("Login/acceso"), false);
+		assert.equal(existsSync(flowArtifact), true);
+		const flows = JSON.parse(readFileSync(flowArtifact, "utf8")) as {
+			projectId: string;
+			flows: Array<{ name: string; source: string }>;
+		};
+		assert.equal(flows.projectId, "idu-pi");
+		assert.ok(flows.flows.some((flow) => flow.name.includes("MCP")));
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("Plan Maestro prioriza documentación técnica canónica sobre menciones ruidosas", () => {
+	const root = tempRoot();
+	try {
+		const projectPath = join(root, "project");
+		const stateRoot = join(root, "state", "projects", "demo");
+		mkdirSync(join(projectPath, "docs"), { recursive: true });
+		mkdirSync(join(projectPath, "tests"), { recursive: true });
+		mkdirSync(join(projectPath, "prisma"), { recursive: true });
+		writeFileSync(
+			join(projectPath, "DOCUMENTACION_TECNICA_SISTEMA_DE_MANTENCION_RCM.md"),
+			[
+				"# Documentación técnica — Sistema_de_mantencion-RCM",
+				"",
+				"Sistema_de_mantencion-RCM es una plataforma web orientada a la gestión integral del área técnica y mantenimiento industrial.",
+				"",
+				"En términos arquitectónicos, el sistema está compuesto por:",
+				"- un backend en Node.js + Express;",
+				"- un frontend estático servido por el mismo servidor;",
+				"- una base de datos PostgreSQL operada mediante Prisma ORM;",
+				"- Supabase Storage para archivos;",
+				"- autenticación basada en JWT;",
+				"- notificaciones en tiempo real mediante Server-Sent Events (SSE).",
+				"",
+				"Módulos principales: Activos, Mantenimiento, Bitácoras, Inventario, Compras, SGC, Capacitaciones, Turnos, Usuarios y Auditoría.",
+			].join("\n"),
+			"utf8",
+		);
+		writeFileSync(
+			join(projectPath, "package.json"),
+			JSON.stringify({ dependencies: { express: "1.0.0", prisma: "1.0.0" } }),
+			"utf8",
+		);
+		writeFileSync(
+			join(projectPath, "server.js"),
+			"const express = require('express'); app.get('/api/health', () => {});",
+			"utf8",
+		);
+		writeFileSync(
+			join(projectPath, "prisma", "schema.prisma"),
+			'datasource db { provider = "postgresql" url = env("DATABASE_URL") }',
+			"utf8",
+		);
+		writeFileSync(
+			join(projectPath, "docs", "alternativas.md"),
+			"No usar mysql, mongodb ni indexedDB; son menciones comparativas.",
+			"utf8",
+		);
+		writeFileSync(
+			join(projectPath, "tests", "storage.test.js"),
+			"const text = 'localStorage mysql mongodb indexedDB supabase';",
+			"utf8",
+		);
+
+		const result = generateMasterPlanDraft({
+			projectId: "sistema_de_mantencion",
+			projectPath,
+			stateRoot,
+			gitHead: "head1",
+		});
+
+		assert.equal(result.plan.inferredObjective, "Sistema_de_mantencion-RCM");
+		assert.equal(result.plan.architecture.frontend, "HTML/CSS/JS vanilla");
+		assert.equal(result.plan.architecture.backend, "Node/Express");
+		assert.equal(result.plan.architecture.database, "PostgreSQL + Prisma");
+		assert.equal(result.plan.architecture.auth, "JWT");
+		assert.ok(result.plan.architecture.frameworks.includes("SSE"));
+		assert.equal(result.plan.architecture.frameworks.includes("React"), false);
+		assert.ok(
+			result.plan.dataStores.some((store) => store.type === "postgres"),
+		);
+		assert.ok(result.plan.dataStores.some((store) => store.type === "prisma"));
+		assert.ok(
+			result.plan.dataStores.some((store) => store.type === "supabase"),
+		);
+		assert.equal(
+			result.plan.dataStores.some((store) => store.type === "mysql"),
+			false,
+		);
+		assert.equal(
+			result.plan.dataStores.some((store) => store.type === "mongodb"),
+			false,
+		);
+		assert.equal(
+			result.plan.dataStores.some((store) => store.type === "indexedDB"),
+			false,
+		);
+		assert.equal(
+			result.plan.dataStores.some((store) => store.type === "localStorage"),
+			false,
+		);
+		assert.ok(
+			result.plan.sourceFiles.includes(
+				"DOCUMENTACION_TECNICA_SISTEMA_DE_MANTENCION_RCM.md",
+			),
+		);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
 test("Plan Maestro legacy se considera incompatible y /idu regenera", () => {
 	const root = tempRoot();
 	try {

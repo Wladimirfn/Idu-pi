@@ -101,7 +101,7 @@ idu-pi lab-review-plan postflight
 
 ## Plan Maestro
 
-`idu-pi idu` genera o muestra un Plan Maestro draft/approved/stale en el `stateRoot` del proyecto. Es determinista, no usa IA externa, no aplica flows y no confirma Project Core/Constitution.
+`idu-pi idu` genera o muestra un Plan Maestro draft/approved/stale en el `stateRoot` del proyecto. Es determinista, no usa IA externa, no aplica flows y no confirma Project Core/Constitution. El Plan Maestro es normativo: describe qué es el proyecto, su alcance, arquitectura, stack, contratos, documentación declarada versus realidad construida y referencia flujos permanentes en un artefacto separado.
 
 | Comando | Uso |
 | --- | --- |
@@ -128,6 +128,7 @@ Artefactos por proyecto:
 <stateRoot>/master-plan.md
 <stateRoot>/master-plan.current.json
 <stateRoot>/master-plan.memory.json
+<stateRoot>/master-plan.flows.json
 <stateRoot>/project-index.json
 <stateRoot>/agentlabs/
 ```
@@ -225,9 +226,9 @@ Los comandos de skills no modifican skills reales automáticamente.
 
 | Comando | Uso |
 | --- | --- |
-| `idu-pi idu` | Entrada única: activa supervisor, muestra/reutiliza Plan Maestro y reutiliza/ejecuta deep review si el plan lo requiere. |
+| `idu-pi idu` | Entrada única: activa supervisor, muestra/reutiliza Plan Maestro y prepara deep review cuando corresponde; no convierte AgentLabs en workers. |
 | `idu-pi idu-agentlab-request-create postflight` | Crea solicitudes formales desde postflight. |
-| `idu-pi idu-agentlab-request-create master-plan latest` | Comando avanzado equivalente para Plan Maestro: crea solicitudes y ejecuta automáticamente el deep review review-only en sandbox/clone. |
+| `idu-pi idu-agentlab-request-create master-plan latest` | Comando avanzado para Plan Maestro: crea solicitud audit-only; no ejecuta labs automáticamente. |
 | `idu-pi idu-agentlab-request-create skill-draft latest` | Crea solicitud para revisar draft de skill. |
 | `idu-pi idu-agentlab-request-review latest` | Valida solicitud sin ejecutar AgentLab. |
 | `idu-pi idu-agentlab-review-run latest` | Ejecuta revisión review-only en workspace clone. |

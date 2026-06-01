@@ -170,6 +170,75 @@ export type MasterPlanFunctionalFlow = {
 	riskLevel: "low" | "medium" | "high";
 };
 
+export type MasterPlanClaimSource =
+	| "canonical_doc"
+	| "project_config"
+	| "scanner_observed"
+	| "scanner_inferred"
+	| "human_approved"
+	| "agentlab_reviewed";
+
+export type MasterPlanClaimStatus =
+	| "confirmed"
+	| "candidate"
+	| "contradiction"
+	| "unknown";
+
+export type MasterPlanClaim = {
+	title: string;
+	statement: string;
+	source: MasterPlanClaimSource;
+	status: MasterPlanClaimStatus;
+	confidence: number;
+	evidence: string[];
+};
+
+export type MasterPlanRealityObservation = {
+	area: string;
+	statement: string;
+	status: MasterPlanClaimStatus;
+	confidence: number;
+	evidence: string[];
+};
+
+export type MasterPlanDriftFinding = {
+	title: string;
+	declared: string;
+	observed: string;
+	severity: "critical" | "high" | "medium" | "low";
+	recommendation: string;
+	evidence: string[];
+};
+
+export type MasterPlanProjectFlow = {
+	name: string;
+	category:
+		| "entrypoint"
+		| "governance"
+		| "audit"
+		| "state"
+		| "skill"
+		| "data"
+		| "module";
+	purpose: string;
+	entrypoints: string[];
+	modules: string[];
+	outputs: string[];
+	rules: string[];
+	source: MasterPlanClaimSource;
+	evidence: string[];
+};
+
+export type MasterPlanFlowArtifact = {
+	projectId: string;
+	projectPath: string;
+	generatedAt: string;
+	status: "draft" | "approved";
+	purpose: string;
+	flows: MasterPlanProjectFlow[];
+	detectedFlows: MasterPlanFunctionalFlow[];
+};
+
 export type MasterPlanApproval = {
 	approvedAt?: string;
 	rejectedAt?: string;
@@ -237,6 +306,11 @@ export type MasterPlan = {
 	outOfScope: string[];
 	detectedModules: string[];
 	detectedFlows: MasterPlanFunctionalFlow[];
+	projectFlows: MasterPlanProjectFlow[];
+	flowArtifact: string;
+	canonicalClaims: MasterPlanClaim[];
+	observedReality: MasterPlanRealityObservation[];
+	driftFindings: MasterPlanDriftFinding[];
 	dataStores: MasterPlanDataStore[];
 	architecture: MasterPlanArchitecture;
 	securityModel: MasterPlanSecurityModel;
@@ -419,7 +493,8 @@ export function generateMasterPlanDraft(input: {
 		status: "running",
 		message: "Escaneando repositorio completo",
 	});
-	const signals = collectProjectSignals(projectPath);
+	let signals = collectProjectSignals(projectPath);
+	signals = applyCanonicalDocumentationSignals(signals);
 	input.onProgress?.({
 		stage: "scan",
 		status: "ok",
@@ -450,7 +525,9 @@ export function generateMasterPlanDraft(input: {
 		status: "running",
 		message: "Forjando Plan Maestro A-Z y matriz de riesgos",
 	});
-	const inferredObjective = inferObjective(projectPath, signals);
+	const inferredObjective =
+		signals.canonicalDocumentation?.objective ??
+		inferObjective(projectPath, signals);
 	const docNotebook = loadProjectDocNotebook(stateRoot, input.projectId);
 	const operationalContracts = inferOperationalContracts(signals, docNotebook);
 	const contractViolations = detectContractViolations(
@@ -461,6 +538,14 @@ export function generateMasterPlanDraft(input: {
 	const workMilestones = buildContractWorkMilestones(
 		contractViolations,
 		signals,
+	);
+	const projectFlows = buildProjectFlows(signals);
+	const canonicalClaims = buildCanonicalClaims(signals, source);
+	const observedReality = buildObservedReality(signals);
+	const driftFindings = buildDriftFindings(
+		canonicalClaims,
+		observedReality,
+		source,
 	);
 	const plan: MasterPlan = {
 		version: "1.0.0",
@@ -493,6 +578,11 @@ export function generateMasterPlanDraft(input: {
 		],
 		detectedModules: signals.moduleCandidates,
 		detectedFlows: signals.flowCandidates,
+		projectFlows,
+		flowArtifact: "master-plan.flows.json",
+		canonicalClaims,
+		observedReality,
+		driftFindings,
 		dataStores: signals.dataStoreCandidates,
 		architecture: signals.architecture,
 		securityModel: signals.securityModel,
@@ -544,6 +634,7 @@ export function generateMasterPlanDraft(input: {
 	const jsonPath = join(stateRoot, relativeJson);
 	const markdownPath = join(stateRoot, relativeMd);
 	writeProjectDocNotebook(stateRoot, plan);
+	writeMasterPlanFlowArtifact(stateRoot, plan);
 	writeFileSync(jsonPath, `${JSON.stringify(plan, null, 2)}\n`, "utf8");
 	writeFileSync(markdownPath, `${formatMasterPlanMarkdown(plan)}\n`, "utf8");
 	writeSupervisorProjectIndex(stateRoot, plan, signals);
@@ -1370,14 +1461,22 @@ function detectContractViolations(
 			severity: "high",
 		});
 	}
-	const tokenExposure = signals.sourceFiles.filter((file) => {
-		const lower = file.toLowerCase();
-		if (!/\.(js|ts|html)$/iu.test(file)) return false;
-		const content = safeReadText(join(projectPath, file));
-		return /(localStorage|sessionStorage).*?(token|jwt|session)|(token|jwt).*?(searchParams|location\.search|query)/isu.test(
-			`${lower}\n${content}`,
-		);
-	});
+	const tokenExposure = signals.hasAuth
+		? signals.sourceFiles.filter((file) => {
+				const lower = file.toLowerCase();
+				if (!/\.(js|ts|html)$/iu.test(file)) return false;
+				if (
+					/^(test|tests|docs?|config|src\/master-plan|src\/project-map-scanner)/iu.test(
+						lower,
+					)
+				)
+					return false;
+				const content = safeReadText(join(projectPath, file));
+				return /(localStorage|sessionStorage).*?(token|jwt|session)|(token|jwt).*?(searchParams|location\.search|query)/isu.test(
+					`${lower}\n${content}`,
+				);
+			})
+		: [];
 	if (tokenExposure.length > 0) {
 		violations.push({
 			area: "auth",
@@ -1873,106 +1972,120 @@ export function formatMasterPlanOperation(
 	].join("\n");
 }
 
+function writeMasterPlanFlowArtifact(
+	stateRoot: string,
+	plan: MasterPlan,
+): void {
+	const artifact: MasterPlanFlowArtifact = {
+		projectId: plan.projectId,
+		projectPath: plan.projectPath,
+		generatedAt: plan.generatedAt,
+		status: plan.status === "approved" ? "approved" : "draft",
+		purpose:
+			"Mapa permanente de flujos del proyecto. Se actualiza junto al proyecto y no reemplaza el Plan Maestro normativo.",
+		flows: plan.projectFlows,
+		detectedFlows: plan.detectedFlows,
+	};
+	writeFileSync(
+		join(stateRoot, plan.flowArtifact),
+		`${JSON.stringify(artifact, null, 2)}\n`,
+		"utf8",
+	);
+}
+
+function formatClaim(claim: MasterPlanClaim): string {
+	return `${claim.title}: ${claim.statement} [${claim.source}/${claim.status}, confianza ${claim.confidence}] evidencia=${claim.evidence.join(", ") || "—"}`;
+}
+
+function formatReality(observation: MasterPlanRealityObservation): string {
+	return `${observation.area}: ${observation.statement} [${observation.status}, confianza ${observation.confidence}] evidencia=${observation.evidence.join(", ") || "—"}`;
+}
+
+function formatDrift(finding: MasterPlanDriftFinding): string {
+	return `${finding.title} [${finding.severity}] declarado=${finding.declared}; observado=${finding.observed}; recomendación=${finding.recommendation}`;
+}
+
+function formatProjectFlow(flow: MasterPlanProjectFlow): string {
+	return `${flow.name} (${flow.category}) — ${flow.purpose}; entradas=${flow.entrypoints.join(", ") || "—"}; módulos=${flow.modules.join(", ") || "—"}; salidas=${flow.outputs.join(", ") || "—"}; reglas=${flow.rules.join(" | ") || "—"}`;
+}
+
 export function formatMasterPlanMarkdown(plan: MasterPlan): string {
 	return [
-		"# Plan Maestro Idu-pi",
+		`# Plan Maestro Idu-pi: ${plan.inferredObjective}`,
 		"",
-		"## Resumen ejecutivo",
+		"## Identidad del proyecto",
 		plan.executiveSummary,
 		"",
-		"## Modo de análisis automático",
-		formatAutoDepthSummary(plan),
-		"",
-		"Etapa segura:",
-		...bulletList([
-			`deepStage: ${plan.deepStage}`,
-			`deepReviewRecommended: ${String(plan.deepReviewRecommended)}`,
-			`deepReviewRequiresApproval: ${String(plan.deepReviewRequiresApproval)}`,
-			...plan.safeActionsPerformed,
-		]),
-		"",
-		"Señales:",
-		...bulletList(plan.autoDepth.signals),
-		"",
-		"## Memoria externa/local",
-		...bulletList([
-			`Provider: ${plan.memoryContext.provider}`,
-			`Status: ${plan.memoryContext.status}`,
-			`Summary: ${plan.memoryContext.summary || "—"}`,
-			...plan.memoryContext.evidence.map((item) => `Evidencia: ${item}`),
-		]),
-		"",
-		"## Objetivo inferido",
-		plan.inferredObjective,
-		"",
-		"## Alcance",
+		"## Alcance del proyecto",
 		...bulletList(plan.scope),
 		"",
 		"## Fuera de alcance",
 		...bulletList(plan.outOfScope),
 		"",
-		"## Arquitectura detectada",
+		"## Arquitectura detectada / correcta",
 		...bulletList([
 			`Tipo: ${plan.architecture.projectKind}`,
-			`Frontend: ${plan.architecture.frontend}`,
-			`Backend: ${plan.architecture.backend}`,
-			`Base de datos: ${plan.architecture.database}`,
-			`Auth: ${plan.architecture.auth}`,
+			`Interfaces/adaptadores: ${plan.architecture.frontend}`,
+			`Núcleo/backend: ${plan.architecture.backend}`,
+			`Persistencia: ${plan.architecture.database}`,
+			`Auth de producto: ${plan.architecture.auth}`,
 			`Deploy: ${plan.architecture.deployment}`,
 			`Package manager: ${plan.architecture.packageManager}`,
 		]),
 		"",
 		"## Stack/lenguajes",
 		...bulletList([
-			`Lenguajes: ${plan.architecture.languages.join(", ") || "—"}`,
-			`Frameworks: ${plan.architecture.frameworks.join(", ") || "—"}`,
+			`Lenguajes reales: ${plan.architecture.languages.join(", ") || "—"}`,
+			`Runtime/frameworks/interfaces: ${plan.architecture.frameworks.join(", ") || "—"}`,
 			...plan.architecture.evidence.map((item) => `Evidencia: ${item}`),
 		]),
+		"",
+		"## Documentación declarada vs realidad construida",
+		"### Documentación declarada",
+		...bulletList(plan.canonicalClaims.map(formatClaim)),
+		"",
+		"### Realidad construida",
+		...bulletList(plan.observedReality.map(formatReality)),
+		"",
+		"### Drift / contradicciones",
+		...bulletList(plan.driftFindings.map(formatDrift)),
+		"",
+		"## Mapa funcional",
+		...bulletList(plan.detectedModules),
+		"",
+		"## Flujos funcionales permanentes",
+		`Los flujos permanentes se mantienen fuera del documento principal en \`${plan.flowArtifact}\` para poder actualizarlos junto al proyecto sin convertir el Plan Maestro en una lista operativa.`,
+		...bulletList(plan.projectFlows.map(formatProjectFlow)),
 		"",
 		"## Persistencia / datos",
 		...bulletList(plan.dataStores.map(formatDataStoreForMarkdown)),
 		"",
+		"## Tooling detectado",
+		...bulletList(plan.toolingDetected),
+		"",
 		"## Seguridad / auth",
 		...bulletList([
-			`Auth detectado: ${plan.securityModel.authDetected ? "sí" : "no"}`,
-			`Sesión detectada: ${plan.securityModel.sessionDetected ? "sí" : "no"}`,
+			`Auth de producto detectado: ${plan.securityModel.authDetected ? "sí" : "no"}`,
+			`Sesión de producto detectada: ${plan.securityModel.sessionDetected ? "sí" : "no"}`,
 			...plan.securityModel.sensitiveFlows.map(
-				(flow) => `Flujo sensible: ${flow}`,
+				(flow) => `Flujo sensible confirmado: ${flow}`,
 			),
 			...plan.securityModel.evidence.map((item) => `Evidencia: ${item}`),
 		]),
 		"",
-		"## Módulos detectados",
-		...bulletList(plan.detectedModules),
-		"",
-		"## Flujos funcionales",
-		...bulletList(plan.detectedFlows.map(formatFlowForMarkdown)),
-		"",
-		"## Tooling detectado",
-		...bulletList(plan.toolingDetected),
-		"",
-		"## Riesgos",
-		...bulletList([
-			...plan.criticalRisks,
-			...plan.securityRisks,
-			...plan.architectureRisks,
-			...plan.qualityRisks,
-		]),
-		"",
-		"## Cuaderno Idu-pi / Doc",
-		...bulletList([
-			`Root: ${plan.docNotebook.root}`,
-			`Status: ${plan.docNotebook.status}`,
-			`Summary: ${plan.docNotebook.summary}`,
-			...plan.docNotebook.sources.map((source) => `Fuente: ${source}`),
-		]),
-		"",
-		"## Contratos operativos",
+		"## Contratos detectados",
 		...bulletList(
 			plan.operationalContracts.map(
 				(contract) =>
 					`${contract.title} (${contract.mode}/${contract.severity}) — ${contract.rules.join(" | ")}`,
 			),
+		),
+		"",
+		"## Contratos aprobados",
+		...bulletList(
+			plan.canonicalClaims
+				.filter((claim) => claim.source === "human_approved")
+				.map(formatClaim),
 		),
 		"",
 		"## Violaciones contra contratos",
@@ -1983,22 +2096,20 @@ export function formatMasterPlanMarkdown(plan: MasterPlan): string {
 			),
 		),
 		"",
-		"## Plan por hitos",
-		...bulletList(
-			plan.workMilestones.map(
-				(milestone) =>
-					`${milestone.name}: ${milestone.goal}; salida=${milestone.exitCriteria.join(" | ")}`,
-			),
-		),
+		"## Cuaderno Idu-pi / Doc",
+		...bulletList([
+			`Root: ${plan.docNotebook.root}`,
+			`Status: ${plan.docNotebook.status}`,
+			`Summary: ${plan.docNotebook.summary}`,
+			...plan.docNotebook.sources.map((source) => `Fuente: ${source}`),
+		]),
 		"",
-		"## Preguntas abiertas",
-		...bulletList(plan.openQuestions),
-		"",
-		"## Próximos pasos",
-		...bulletList(plan.recommendedNext),
-		"",
-		"## Estado de aprobación",
-		plan.status,
+		"## Estado normativo",
+		...bulletList([
+			`Estado: ${plan.status}`,
+			`Plan JSON: master-plan.json`,
+			`Flujos permanentes: ${plan.flowArtifact}`,
+		]),
 	].join("\n");
 }
 
@@ -2072,6 +2183,11 @@ function diagnosticMasterPlan(
 		outOfScope: [],
 		detectedModules: [],
 		detectedFlows: [],
+		projectFlows: [],
+		flowArtifact: "master-plan.flows.json",
+		canonicalClaims: [],
+		observedReality: [],
+		driftFindings: [],
 		dataStores: [],
 		architecture: {
 			projectKind: "unknown",
@@ -2108,10 +2224,6 @@ function diagnosticMasterPlan(
 		sourceFiles: [],
 		agentLabReviews: [],
 	};
-}
-
-function formatFlowForMarkdown(flow: MasterPlanFunctionalFlow): string {
-	return `${flow.name} [${flow.type}, riesgo ${flow.riskLevel}]: ${flow.from} → ${flow.through.join(" → ") || "proceso detectado"} → ${flow.to}; módulos=${flow.modules.join(", ") || "—"}; datos=${flow.dataStores.join(", ") || "—"}; evidencia=${flow.evidence.slice(0, 3).join(", ")}`;
 }
 
 function updatePlanDecision(
@@ -2162,7 +2274,18 @@ type ProjectSignals = {
 	securityModel: MasterPlanSecurityModel;
 	toolingDetected: string[];
 	ignoredTooling: string[];
+	projectPath: string;
 	sourceFiles: string[];
+	canonicalDocumentation?: CanonicalProjectDocumentation;
+};
+
+type CanonicalProjectDocumentation = {
+	path: string;
+	objective?: string;
+	architecture: Partial<MasterPlanArchitecture>;
+	dataStores: MasterPlanDataStore[];
+	securityModel?: Partial<MasterPlanSecurityModel>;
+	frameworks: string[];
 };
 
 type PackageMetadata = {
@@ -2276,28 +2399,32 @@ function collectProjectSignals(projectPath: string): ProjectSignals {
 		if (TEXT_EXTENSIONS.has(ext)) {
 			approxRelevantBytes += Math.min(Number(stats.size), 512_000);
 			const content = safeReadText(path);
-			collectContentSignals(rel, content, {
-				dataStoreMap,
-				frameworkSet,
-				architectureEvidence,
-				securityEvidence,
-			});
-			if (
-				/upload|storage|preview|normalize|bpi|formData|multipart/iu.test(
-					`${rel} ${content}`,
+			if (shouldCollectRuntimeContentSignals(classification, rel)) {
+				collectContentSignals(rel, content, {
+					dataStoreMap,
+					frameworkSet,
+					architectureEvidence,
+					securityEvidence,
+				});
+				if (
+					/upload|storage|preview|normalize|bpi|formData|multipart/iu.test(
+						`${rel} ${content}`,
+					)
 				)
-			)
-				uploadFiles.push(rel);
-			if (/report|dashboard|analytics|chart|export/iu.test(`${rel} ${content}`))
-				reportFiles.push(rel);
-			if (
-				/auth|login|session|token|password|jwt|middleware/iu.test(
-					`${rel} ${content}`,
+					uploadFiles.push(rel);
+				if (
+					/report|dashboard|analytics|chart|export/iu.test(`${rel} ${content}`)
 				)
-			) {
-				hasAuth = true;
-				authFiles.push(rel);
-				securityEvidence.add(rel);
+					reportFiles.push(rel);
+				if (
+					/auth|login|session|token|password|jwt|middleware/iu.test(
+						`${rel} ${content}`,
+					)
+				) {
+					hasAuth = true;
+					authFiles.push(rel);
+					securityEvidence.add(rel);
+				}
 			}
 		}
 		if (ext === ".md") docsBytes += Number(stats.size);
@@ -2366,6 +2493,7 @@ function collectProjectSignals(projectPath: string): ProjectSignals {
 		evidence: [...securityEvidence].slice(0, 12),
 	};
 	return {
+		projectPath,
 		fileCount: files.length,
 		directoryCount: directories.size,
 		docsBytes,
@@ -2469,6 +2597,419 @@ function safeReadText(path: string): string {
 	}
 }
 
+function shouldCollectRuntimeContentSignals(
+	classification: ProjectPathClassification,
+	rel: string,
+): boolean {
+	if (["docs", "test", "documentation"].includes(classification)) return false;
+	if (/(^|\/)(docs?|tests?|fixtures?|examples?|defaults?)(\/|$)/iu.test(rel))
+		return false;
+	return (
+		isProductClassification(classification) ||
+		["configuration", "data_store", "route", "auth", "service"].includes(
+			classification,
+		)
+	);
+}
+
+function applyCanonicalDocumentationSignals(
+	signals: ProjectSignals,
+): ProjectSignals {
+	const canonical = findCanonicalProjectDocumentation(
+		signals.projectPath,
+		signals.sourceFiles,
+	);
+	if (!canonical) return signals;
+	const inheritedFrameworks =
+		canonical.architecture.frontend === "HTML/CSS/JS vanilla"
+			? signals.architecture.frameworks.filter(
+					(framework) =>
+						!["React", "Vue", "Svelte", "Next.js", "Vite"].includes(framework),
+				)
+			: signals.architecture.frameworks;
+	const frameworkSet = new Set([
+		...inheritedFrameworks,
+		...canonical.frameworks,
+	]);
+	const architecture: MasterPlanArchitecture = {
+		...signals.architecture,
+		...canonical.architecture,
+		frameworks: [...frameworkSet].sort(),
+		evidence: unique([canonical.path, ...signals.architecture.evidence]).slice(
+			0,
+			12,
+		),
+	};
+	const securityEvidence =
+		canonical.securityModel?.authDetected === false
+			? [canonical.path]
+			: unique([canonical.path, ...signals.securityModel.evidence]).slice(
+					0,
+					12,
+				);
+	const securityModel: MasterPlanSecurityModel = {
+		...signals.securityModel,
+		...canonical.securityModel,
+		evidence: securityEvidence,
+	};
+	return {
+		...signals,
+		canonicalDocumentation: canonical,
+		dataStoreCandidates: canonical.dataStores.length
+			? canonical.dataStores
+			: signals.dataStoreCandidates,
+		flowCandidates: signals.flowCandidates
+			.filter(
+				(flow) =>
+					!(
+						canonical.securityModel?.authDetected === false &&
+						flow.type === "auth"
+					),
+			)
+			.map((flow) => ({
+				...flow,
+				dataStores: canonical.dataStores.length
+					? flow.dataStores.filter((store) =>
+							canonical.dataStores.some(
+								(canonicalStore) => canonicalStore.type === store,
+							),
+						)
+					: flow.dataStores,
+			})),
+		architecture,
+		securityModel,
+		hasAuth: canonical.securityModel
+			? securityModel.authDetected
+			: signals.hasAuth || securityModel.authDetected,
+		hasDb: canonical.dataStores.length > 0 || signals.hasDb,
+	};
+}
+
+function findCanonicalProjectDocumentation(
+	projectPath: string,
+	files: string[],
+): CanonicalProjectDocumentation | undefined {
+	const canonicalPath = files.find((file) =>
+		/(^|\/)(DOCUMENTACION_TECNICA[^/]*\.md|docs\/architecture\.md|architecture\.md)$/iu.test(
+			file,
+		),
+	);
+	if (!canonicalPath) return undefined;
+	const content = safeReadText(join(projectPath, canonicalPath));
+	if (!content.trim()) return undefined;
+	return parseCanonicalProjectDocumentation(canonicalPath, content);
+}
+
+function parseCanonicalProjectDocumentation(
+	path: string,
+	content: string,
+): CanonicalProjectDocumentation {
+	const architecture: Partial<MasterPlanArchitecture> = {};
+	const frameworks: string[] = [];
+	const dataStores: MasterPlanDataStore[] = [];
+	const addCanonicalStore = (type: MasterPlanDataStore["type"]): void => {
+		if (!dataStores.some((store) => store.type === type))
+			dataStores.push({
+				name: type === "postgres" ? "PostgreSQL" : type,
+				type,
+				evidence: [path],
+				riskLevel: ["postgres", "supabase", "prisma"].includes(type)
+					? "high"
+					: "medium",
+			});
+	};
+	if (
+		/Idu-pi está organizado como core de supervisi[oó]n m[aá]s adaptadores/iu.test(
+			content,
+		)
+	) {
+		architecture.projectKind = "supervisor-runtime";
+		architecture.frontend = "CLI/Telegram/Pi slash adapters";
+		architecture.backend = "Core Idu-pi + MCP adapter";
+		architecture.database = "SQLite local + reports JSON/JSONL";
+		architecture.auth = "sin auth de producto";
+		frameworks.push("MCP", "Telegram adapter", "Pi slash commands");
+		addCanonicalStore("sqlite");
+		addCanonicalStore("json");
+	}
+	if (/Node\.js\s*\+\s*Express|backend[^\n]+Express/iu.test(content)) {
+		architecture.backend = "Node/Express";
+		frameworks.push("Express");
+	}
+	if (
+		/frontend estático|HTML5|JavaScript vanilla|HTML\/CSS\/JS/iu.test(content)
+	) {
+		architecture.frontend = "HTML/CSS/JS vanilla";
+		frameworks.push("Vanilla JS");
+	}
+	if (/PostgreSQL/iu.test(content)) addCanonicalStore("postgres");
+	if (/Prisma ORM|Prisma/iu.test(content)) addCanonicalStore("prisma");
+	if (/Supabase Storage|Supabase/iu.test(content)) {
+		addCanonicalStore("supabase");
+		frameworks.push("Supabase Storage");
+	}
+	if (/PostgreSQL[^\n]+Prisma|Prisma[^\n]+PostgreSQL/iu.test(content))
+		architecture.database = "PostgreSQL + Prisma";
+	else if (/PostgreSQL/iu.test(content)) architecture.database = "PostgreSQL";
+	if (/JWT|jsonwebtoken/iu.test(content)) architecture.auth = "JWT";
+	if (/Server-Sent Events|\bSSE\b/iu.test(content)) frameworks.push("SSE");
+	const titleObjective = content
+		.match(/Documentaci[oó]n t[eé]cnica\s*[—-]\s*([^\n]+)/iu)?.[1]
+		?.trim();
+	const boldObjective = content
+		.match(/\*\*([^*]+)\*\*\s+es\s+una\s+plataforma/iu)?.[1]
+		?.trim();
+	return {
+		path,
+		...(titleObjective || boldObjective
+			? { objective: titleObjective ?? boldObjective }
+			: {}),
+		architecture,
+		dataStores,
+		frameworks: unique(frameworks),
+		securityModel:
+			architecture.auth === "sin auth de producto"
+				? {
+						authDetected: false,
+						sessionDetected: false,
+						sensitiveFlows: [],
+					}
+				: /JWT|auth|login|autenticaci[oó]n/iu.test(content)
+					? {
+							authDetected: true,
+							sessionDetected: /JWT|token|session|sesi[oó]n/iu.test(content),
+							sensitiveFlows: ["Login/acceso"],
+						}
+					: undefined,
+	};
+}
+
+function buildCanonicalClaims(
+	signals: ProjectSignals,
+	source: MasterPlanSource,
+): MasterPlanClaim[] {
+	const claims: MasterPlanClaim[] = [];
+	if (signals.canonicalDocumentation) {
+		claims.push({
+			title: "Documento canónico principal",
+			statement: `La fuente primaria del plan es ${signals.canonicalDocumentation.path}.`,
+			source: "canonical_doc",
+			status: "confirmed",
+			confidence: 0.95,
+			evidence: [signals.canonicalDocumentation.path],
+		});
+	}
+	claims.push({
+		title: "Arquitectura declarada",
+		statement: `${signals.architecture.projectKind}; ${signals.architecture.frontend}; ${signals.architecture.backend}; ${signals.architecture.database}.`,
+		source: signals.canonicalDocumentation
+			? "canonical_doc"
+			: "scanner_inferred",
+		status: signals.canonicalDocumentation ? "confirmed" : "candidate",
+		confidence: signals.canonicalDocumentation ? 0.9 : 0.55,
+		evidence: signals.architecture.evidence.slice(0, 6),
+	});
+	if (source.flowsStatus === "project-local") {
+		claims.push({
+			title: "Flujos de proyecto declarados",
+			statement:
+				"Existe config/project-flows.json y debe usarse como plano vivo de flujos junto al artefacto permanente de flujos.",
+			source: "project_config",
+			status: "confirmed",
+			confidence: 0.85,
+			evidence: ["config/project-flows.json"],
+		});
+	}
+	return claims;
+}
+
+function buildObservedReality(
+	signals: ProjectSignals,
+): MasterPlanRealityObservation[] {
+	return [
+		{
+			area: "Inventario de repositorio",
+			statement: `${signals.fileCount} archivos, ${signals.directoryCount} carpetas, lenguajes ${signals.architecture.languages.join(", ") || "no detectados"}.`,
+			status: "confirmed",
+			confidence: 0.9,
+			evidence: signals.sourceFiles.slice(0, 5),
+		},
+		{
+			area: "Arquitectura observada",
+			statement: `${signals.architecture.projectKind}; ${signals.architecture.backend}; persistencia ${signals.architecture.database}.`,
+			status: signals.canonicalDocumentation ? "confirmed" : "candidate",
+			confidence: signals.canonicalDocumentation ? 0.85 : 0.55,
+			evidence: signals.architecture.evidence.slice(0, 6),
+		},
+		{
+			area: "Persistencia observada",
+			statement: signals.dataStoreCandidates.length
+				? signals.dataStoreCandidates.map((store) => store.name).join(", ")
+				: "No hay persistencia de producto confirmada por evidencia fuerte.",
+			status: signals.dataStoreCandidates.length ? "confirmed" : "unknown",
+			confidence: signals.dataStoreCandidates.length ? 0.8 : 0.6,
+			evidence: signals.dataStoreCandidates
+				.flatMap((store) => store.evidence)
+				.slice(0, 6),
+		},
+	];
+}
+
+function buildDriftFindings(
+	claims: MasterPlanClaim[],
+	observed: MasterPlanRealityObservation[],
+	source: MasterPlanSource,
+): MasterPlanDriftFinding[] {
+	const findings: MasterPlanDriftFinding[] = [];
+	if (source.blueprintStatus !== "project-local") {
+		findings.push({
+			title: "Project Blueprint no confirmado como fuente local",
+			declared: source.blueprintStatus,
+			observed:
+				"El Plan Maestro no debe tratar defaults como contrato aprobado.",
+			severity: "medium",
+			recommendation:
+				"Confirmar o actualizar Project Core/Blueprint antes de usarlo como ley del proyecto.",
+			evidence: ["config/project-blueprint.json"],
+		});
+	}
+	const hasCanonical = claims.some((claim) => claim.source === "canonical_doc");
+	if (!hasCanonical && observed.some((item) => item.status === "candidate")) {
+		findings.push({
+			title: "Plan basado en hipótesis de scanner",
+			declared: "No hay documentación canónica fuerte.",
+			observed:
+				"La realidad observada existe, pero requiere validación humana o AgentLab.",
+			severity: "high",
+			recommendation:
+				"Crear documentación técnica canónica o aprobar el Plan Maestro antes de gobernar cambios.",
+			evidence: [],
+		});
+	}
+	return findings;
+}
+
+function buildProjectFlows(signals: ProjectSignals): MasterPlanProjectFlow[] {
+	if (signals.architecture.projectKind === "supervisor-runtime") {
+		return [
+			{
+				name: "Flujo MCP advisory",
+				category: "entrypoint",
+				purpose:
+					"Permitir que el orquestador consulte estado, contexto, riesgos y recomendaciones sin delegar autoridad operativa a Idu-pi.",
+				entrypoints: [
+					"idu_status",
+					"idu_prepare",
+					"idu_task_context",
+					"idu_postflight",
+				],
+				modules: [
+					"src/mcp-server.ts",
+					"src/orchestrator-advisory.ts",
+					"src/cli.ts",
+				],
+				outputs: [
+					"JSON envelope MCP",
+					"safeNotes",
+					"recommendation",
+					"evidence",
+				],
+				rules: [
+					"MCP informa y recomienda",
+					"El orquestador decide",
+					"No commit/push",
+				],
+				source: "canonical_doc",
+				evidence: ["docs/architecture.md", "docs/mcp-server.md"],
+			},
+			{
+				name: "Flujo Plan Maestro",
+				category: "governance",
+				purpose:
+					"Crear y revisar la fuente normativa que explica qué es el proyecto, cómo funciona y qué contratos gobiernan cambios futuros.",
+				entrypoints: [
+					"/idu",
+					"idu_master_plan_create",
+					"idu-master-plan-redraft",
+				],
+				modules: ["src/master-plan.ts", "src/cli.ts", "src/mcp-server.ts"],
+				outputs: [
+					"master-plan.json",
+					"master-plan.md",
+					"master-plan.flows.json",
+				],
+				rules: [
+					"Separar docs declaradas de realidad construida",
+					"No usar ruido del scanner como verdad",
+				],
+				source: "canonical_doc",
+				evidence: ["docs/architecture.md", "src/master-plan.ts"],
+			},
+			{
+				name: "Flujo AgentLab audit-only",
+				category: "audit",
+				purpose:
+					"Ejecutar revisiones y pruebas de drift sin permitir que AgentLabs implementen código ni modifiquen el repo real.",
+				entrypoints: [
+					"idu_agentlab_request_create",
+					"idu_agentlab_review_run",
+					"idu_agentlab_review_status",
+				],
+				modules: [
+					"src/agentlab-review-requests.ts",
+					"src/agentlab-review-runner.ts",
+				],
+				outputs: [
+					"agentlabs/requests/current.json",
+					"agentlabs/runs/current.json",
+				],
+				rules: ["Audit-only", "No editar repo real", "No commit/push"],
+				source: "canonical_doc",
+				evidence: ["docs/architecture.md", "docs/mcp-server.md"],
+			},
+			{
+				name: "Flujo Doc/cuaderno y skills",
+				category: "skill",
+				purpose:
+					"Mantener memoria normativa del proyecto y proponer optimizaciones de skills adaptadas al contexto real.",
+				entrypoints: [
+					"/idu",
+					"idu_supervisor_tick",
+					"skill improvement proposals",
+				],
+				modules: [
+					"src/master-plan.ts",
+					"src/skill-improvement-proposals.ts",
+					"src/skill-drafts.ts",
+				],
+				outputs: [
+					"Doc/<project>",
+					"skill-improvement-proposals",
+					"skill-draft",
+				],
+				rules: [
+					"Proponer antes de aplicar",
+					"Optimizar skills al proyecto",
+					"Mantener estado en stateRoot",
+				],
+				source: "canonical_doc",
+				evidence: ["docs/architecture.md"],
+			},
+		];
+	}
+	return signals.flowCandidates.map((flow) => ({
+		name: flow.name,
+		category: "module" as const,
+		purpose: `${flow.from} → ${flow.to}`,
+		entrypoints: flow.triggers,
+		modules: flow.modules,
+		outputs: [flow.to],
+		rules: [`Riesgo ${flow.riskLevel}`, `Tipo ${flow.type}`],
+		source: "scanner_inferred" as const,
+		evidence: flow.evidence,
+	}));
+}
+
 function addLanguageForExtension(languages: Set<string>, ext: string): void {
 	if ([".ts", ".tsx"].includes(ext)) languages.add("TypeScript");
 	if ([".js", ".jsx"].includes(ext)) languages.add("JavaScript");
@@ -2489,25 +3030,33 @@ function collectContentSignals(
 		securityEvidence: Set<string>;
 	},
 ): void {
-	if (/supabase/iu.test(`${rel} ${content}`))
+	if (isRuntimeSupabaseEvidence(content))
 		addDataStore(acc.dataStoreMap, "supabase", rel);
-	if (/postgres|pg\b|create table/iu.test(content))
+	if (isRuntimePostgresEvidence(rel, content))
 		addDataStore(acc.dataStoreMap, "postgres", rel);
-	if (/sqlite|\.sqlite|\.db/iu.test(`${rel} ${content}`))
+	if (isRuntimeSqliteEvidence(content))
 		addDataStore(acc.dataStoreMap, "sqlite", rel);
-	if (/mysql/iu.test(`${rel} ${content}`))
+	if (isRuntimeMysqlEvidence(content))
 		addDataStore(acc.dataStoreMap, "mysql", rel);
-	if (/mongo(db|ose)?/iu.test(`${rel} ${content}`))
+	if (isRuntimeMongoEvidence(content))
 		addDataStore(acc.dataStoreMap, "mongodb", rel);
-	if (/indexedDB/iu.test(content))
+	if (/\bindexedDB\s*\.\s*open\s*\(/u.test(content))
 		addDataStore(acc.dataStoreMap, "indexedDB", rel);
-	if (/localStorage/iu.test(content))
+	if (
+		/\blocalStorage\s*\.\s*(getItem|setItem|removeItem|clear)\s*\(/u.test(
+			content,
+		)
+	)
 		addDataStore(acc.dataStoreMap, "localStorage", rel);
 	if (/fetch\s*\(\s*["']\/api\//u.test(content))
 		addDataStore(acc.dataStoreMap, "api", rel);
-	if (/react/iu.test(content)) acc.frameworkSet.add("React");
-	if (/express/iu.test(content)) acc.frameworkSet.add("Express");
-	if (/createClient\(|@supabase\/supabase-js/iu.test(content))
+	if (isRuntimeReactEvidence(rel, content)) acc.frameworkSet.add("React");
+	if (isRuntimeExpressEvidence(content)) acc.frameworkSet.add("Express");
+	if (
+		/createClient\(|@supabase\/supabase-js|\bsupabase\s*\.\s*(from|auth|storage|rpc|channel)\s*\(/iu.test(
+			content,
+		)
+	)
 		acc.frameworkSet.add("Supabase");
 	if (/auth|login|password|jwt|middleware/iu.test(`${rel} ${content}`))
 		acc.securityEvidence.add(rel);
@@ -2519,6 +3068,54 @@ function collectContentSignals(
 		)
 	)
 		acc.architectureEvidence.add(rel);
+}
+
+function isRuntimeSupabaseEvidence(content: string): boolean {
+	return /createClient\s*\(|@supabase\/supabase-js|\bsupabase\s*\.\s*(from|auth|storage|rpc|channel)\s*\(/iu.test(
+		content,
+	);
+}
+
+function isRuntimePostgresEvidence(rel: string, content: string): boolean {
+	return (
+		/\.sql$/iu.test(rel) ||
+		/(?:from\s+["']pg["']|require\s*\(\s*["']pg["']\s*\)|\bnew\s+(?:Pool|Client)\s*\(|\bPOSTGRES(?:QL)?[_A-Z]*\b|\bDATABASE_URL\b)/u.test(
+			content,
+		)
+	);
+}
+
+function isRuntimeSqliteEvidence(content: string): boolean {
+	return /(?:from\s+["'](?:sqlite3?|better-sqlite3)["']|require\s*\(\s*["'](?:sqlite3?|better-sqlite3)["']\s*\)|\bsqlite3?\s*\.\s*(Database|open)\s*\(|\bnew\s+Database\s*\([^)]*(?:\.db|sqlite)?)/iu.test(
+		content,
+	);
+}
+
+function isRuntimeMysqlEvidence(content: string): boolean {
+	return /(?:from\s+["']mysql2?["']|require\s*\(\s*["']mysql2?["']\s*\)|mysql2?\s*\.\s*(createPool|createConnection)\s*\(|\bMYSQL[_A-Z]*\b)/u.test(
+		content,
+	);
+}
+
+function isRuntimeMongoEvidence(content: string): boolean {
+	return /(?:from\s+["'](?:mongodb|mongoose)["']|require\s*\(\s*["'](?:mongodb|mongoose)["']\s*\)|\bMongoClient\b|\bmongoose\s*\.\s*connect\s*\(|mongodb(?:\+srv)?:\/\/)/iu.test(
+		content,
+	);
+}
+
+function isRuntimeReactEvidence(rel: string, content: string): boolean {
+	return (
+		/\.[jt]sx$/iu.test(rel) ||
+		/(?:from\s+["']react["']|require\s*\(\s*["']react["']\s*\)|React\.createElement)/u.test(
+			content,
+		)
+	);
+}
+
+function isRuntimeExpressEvidence(content: string): boolean {
+	return /(?:from\s+express\s+from\s+["']express["']|require\s*\(\s*["']express["']\s*\)|\bexpress\s*\(\s*\)|\bapp\s*\.\s*(get|post|put|patch|delete|use)\s*\()/u.test(
+		content,
+	);
 }
 
 function dataStoreFromPath(rel: string): MasterPlanDataStore["type"] {
@@ -2943,10 +3540,13 @@ function inferObjective(projectPath: string, signals: ProjectSignals): string {
 
 function buildExecutiveSummary(
 	projectId: string,
-	autoDepth: MasterPlanAutoDepth,
+	_autoDepth: MasterPlanAutoDepth,
 	signals: ProjectSignals,
 ): string {
-	return `Idu-pi generó un Plan Maestro draft para ${projectId} en modo ${autoDepth.mode}. Se revisaron ${signals.fileCount} archivos y ${signals.directoryCount} carpetas con escaneo determinista; AgentLabs quedan sólo como selección/recomendación.`;
+	if (signals.architecture.projectKind === "supervisor-runtime") {
+		return `${projectId} es un supervisor/auditor para proyectos guiados por un orquestador Pi. Su función es leer documentación y realidad del repositorio, exponer contexto por MCP, mantener estado aislado, gobernar contratos, coordinar auditorías AgentLab audit-only y optimizar skills sin reemplazar la decisión del orquestador.`;
+	}
+	return `${projectId} es un proyecto que debe gobernarse por este Plan Maestro: el documento separa documentación declarada, realidad construida, arquitectura, contratos y flujos permanentes para que futuros cambios respeten sus lineamientos.`;
 }
 
 function buildProblemStatement(
@@ -2965,12 +3565,21 @@ function buildProblemStatement(
 }
 
 function inferScope(signals: ProjectSignals): string[] {
+	if (signals.architecture.projectKind === "supervisor-runtime") {
+		return [
+			"Supervisar proyectos desde MCP/CLI/Telegram/Pi slash sin convertirse en implementador por defecto.",
+			"Mantener Plan Maestro, Doc/cuaderno, contratos, reportes y auditorías en stateRoot aislado.",
+			"Comparar documentación declarada contra realidad construida antes de orientar al orquestador.",
+			"Optimizar skills y reglas para el proyecto mediante propuestas revisables, no cambios automáticos.",
+		];
+	}
 	return unique([
-		"Reconocer estructura del proyecto",
-		"Consolidar objetivo, riesgos y próximos pasos en un draft revisable",
-		...(signals.hasDb ? ["Revisar datos/schema como área sensible"] : []),
+		"Definir qué es el proyecto y qué alcance debe respetar.",
+		"Registrar arquitectura, stack, persistencia, seguridad y flujos permanentes.",
+		"Separar documentación declarada de realidad construida y drift.",
+		...(signals.hasDb ? ["Gobernar datos/schema como área sensible."] : []),
 		...(signals.hasAuth
-			? ["Revisar auth/login/security como área sensible"]
+			? ["Gobernar auth/login/security como área sensible."]
 			: []),
 	]);
 }
@@ -3778,6 +4387,11 @@ function normalizeMasterPlan(raw: Partial<MasterPlan>): MasterPlan {
 			raw.detectedModules ?? [],
 			dataStores,
 		),
+		projectFlows: raw.projectFlows ?? [],
+		flowArtifact: raw.flowArtifact ?? "master-plan.flows.json",
+		canonicalClaims: raw.canonicalClaims ?? [],
+		observedReality: raw.observedReality ?? [],
+		driftFindings: raw.driftFindings ?? [],
 		dataStores,
 		architecture,
 		securityModel,

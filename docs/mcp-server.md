@@ -134,6 +134,9 @@ Herramientas mínimas:
 | `idu_activate` | Sólo activa guardrails automáticos sin enrolar, bootstrap, scan pesado ni AgentLabs. |
 | `idu_deactivate` | Apaga guardrails automáticos. |
 | `idu_prepare` | Ejecuta prepare seguro. |
+| `idu_master_plan_status` | Lee estado/rutas del Plan Maestro sin regenerar. |
+| `idu_master_plan_create` | Crea o regenera el Plan Maestro normativo en `stateRoot`, con docs declaradas vs realidad construida y flujos permanentes aparte. |
+| `idu_master_plan_review` | Revisa el Plan Maestro actual/selector y devuelve JSON estructurado más markdown. |
 | `idu_orchestrator_procedure` | Devuelve procedimiento asesor para crear/actualizar plan, implementar o revisar postflight sin reemplazar al orquestador. |
 | `idu_task_context` | Devuelve contratos afectados, lecturas requeridas, labs sugeridos audit-only y guía para subagentes del orquestador. |
 | `idu_preflight` | Evalúa riesgo/impacto de una solicitud humana y devuelve advisory compacto para el orquestador. |

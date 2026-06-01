@@ -156,6 +156,42 @@ function fakeRuntime(projectPath = "C:/projects/sistema"): CliRuntime {
 			suggestedActions: [],
 		}),
 		formatPrepare: () => "prepare",
+		masterPlanStatus: () =>
+			({
+				status: "draft",
+				currentPlanJson: "master-plan.json",
+				currentPlanMd: "master-plan.md",
+				projectId: "sistema_de_mantencion",
+				projectPath,
+				updatedAt: "2026-06-01T00:00:00.000Z",
+			}) as never,
+		masterPlanRedraft: () =>
+			({
+				jsonPath:
+					"C:/idu/workspace/projects/sistema_de_mantencion/master-plan.json",
+				markdownPath:
+					"C:/idu/workspace/projects/sistema_de_mantencion/master-plan.md",
+				current: {},
+				memory: {},
+				plan: {
+					status: "draft",
+					flowArtifact: "master-plan.flows.json",
+				},
+			}) as never,
+		masterPlanReview: () =>
+			({
+				current: {},
+				jsonPath:
+					"C:/idu/workspace/projects/sistema_de_mantencion/master-plan.json",
+				markdown: "# Plan Maestro\n\n## Identidad del proyecto",
+				plan: {
+					status: "draft",
+					criticalRisks: [],
+				},
+			}) as never,
+		formatMasterPlanStatus: () => "master status",
+		formatMasterPlanReview: () => "master review",
+		formatMasterPlanOperation: () => "master operation",
 		projectStateReset: () => ({
 			projectId: "sistema_de_mantencion",
 			projectPath,
@@ -457,7 +493,38 @@ test("mcp server lists Idu-pi tools", async () => {
 	assert.ok(tools.some((tool) => tool.name === "idu_agentlab_review_run"));
 	assert.ok(tools.some((tool) => tool.name === "idu_orchestrator_procedure"));
 	assert.ok(tools.some((tool) => tool.name === "idu_task_context"));
-	assert.equal(tools.length, 21);
+	assert.ok(tools.some((tool) => tool.name === "idu_master_plan_status"));
+	assert.ok(tools.some((tool) => tool.name === "idu_master_plan_create"));
+	assert.ok(tools.some((tool) => tool.name === "idu_master_plan_review"));
+	assert.equal(tools.length, 24);
+});
+
+test("MCP exposes direct Master Plan lifecycle tools", async () => {
+	const status = await callIduMcpTool(
+		"idu_master_plan_status",
+		{},
+		{ runtimeFactory: factory(), projectResolver: () => registered() },
+	);
+	assert.equal(status.ok, true);
+	assert.equal(status.data.status, "draft");
+	assert.equal(status.data.currentPlanJson, "master-plan.json");
+
+	const create = await callIduMcpTool(
+		"idu_master_plan_create",
+		{ reason: "crear plan normativo" },
+		{ runtimeFactory: factory(), projectResolver: () => registered() },
+	);
+	assert.equal(create.ok, true);
+	assert.equal(create.data.status, "draft");
+	assert.equal(create.data.flowArtifact, "master-plan.flows.json");
+
+	const review = await callIduMcpTool(
+		"idu_master_plan_review",
+		{ selector: "latest" },
+		{ runtimeFactory: factory(), projectResolver: () => registered() },
+	);
+	assert.equal(review.ok, true);
+	assert.match(String(review.data.markdown), /Plan Maestro/u);
 });
 
 test("idu_status works with explicit projectPath", async () => {
